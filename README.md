@@ -19,7 +19,9 @@ Windows-first time tracking for a remote team, with a React dashboard and Go API
 
 ## Status
 
-Initial development is in progress.
+Initial V1 source is implemented and pushed.
+The dashboard, API and portable agent tests have passed local checks.
+See `docs/VALIDATION.md` for observed results and remaining release gates.
 Do not deploy to workers until Windows capture, lock/suspend handling, installation, authorization and backup restoration have been tested end to end.
 The current implementation and component READMEs take precedence over earlier research proposals.
 Screenshots follow a fixed 10-minute elapsed interval, not randomized clock windows.
@@ -37,7 +39,10 @@ Use a published retention period and a legally reviewed employment policy before
 Application services and data are intended to stay on Hetzner.
 GitHub hosts source and CI builds, not worker data.
 No live Hetzner infrastructure is created by this repository.
-See `deploy/` for setup instructions once available.
+See `server/README.md`, `web/README.md`, `agent/README.md` and `deploy/README.md` for component setup.
+In production, Caddy serves the built React dashboard and proxies `/api/*` to Go.
+PostgreSQL is private to the Docker network.
+The initial desktop release intentionally leaves autostart and auto-update disabled.
 
 Keep all credentials out of git.
 On the developer machine, use envkit for secrets.
