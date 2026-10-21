@@ -28,7 +28,7 @@ func (a *app) cleanupUploads(ctx context.Context) {
 	}
 }
 
-const cleanupCondition = `x.expires_at<now() AND ((b.id IS NULL AND x.expires_at<now()-interval '24 hours') OR b.deleted_at IS NOT NULL OR b.screenshot_deleted_at IS NOT NULL)`
+const cleanupCondition = `x.expires_at<now() AND ((b.id IS NULL AND x.expires_at<now()-interval '8 days') OR b.deleted_at IS NOT NULL OR b.screenshot_deleted_at IS NOT NULL)`
 
 func (a *app) cleanUploadsOnce(ctx context.Context) {
 	rows, e := a.db.Query(ctx, `SELECT x.block_id::text,x.user_id::text FROM uploads x LEFT JOIN blocks b ON b.id=x.block_id WHERE `+cleanupCondition+` LIMIT 100`)

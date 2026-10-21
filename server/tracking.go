@@ -179,8 +179,12 @@ func (a *app) blocks(w http.ResponseWriter, r *http.Request) {
 		var reserved bool
 		if b.Screenshot != "" {
 			e = tx.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM uploads WHERE block_id=$1 AND user_id=$2 AND object_key=$3)", b.ID, u.ID, b.Screenshot).Scan(&reserved)
-			if e != nil || !reserved {
-				fail(w, 400, "screenshot upload reservation required")
+			if e != nil {
+				fail(w, 500, "could not validate screenshot reservation")
+				return
+			}
+			if !reserved {
+				writeJSON(w, 400, map[string]string{"code": "upload_expired", "error": "screenshot upload reservation expired; request a new upload URL and upload again"})
 				return
 			}
 		}

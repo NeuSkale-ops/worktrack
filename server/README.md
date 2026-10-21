@@ -35,7 +35,9 @@ Screenshot-only deletion preserves hours, whereas explicit block deletion remove
 Deletion immediately hides screenshot metadata and attempts object deletion.
 Durable upload reservations remain until a background cleanup successfully deletes the object after every outstanding PUT URL has expired.
 Cleanup retries every minute, including after process restarts.
-Abandoned, unfinalized uploads are cleaned after 24 hours.
+Abandoned, unfinalized uploads are cleaned after eight days, longer than the seven-day accepted offline window.
+The agent retains JPEG bytes until its block is acknowledged.
+If block submission returns HTTP 400 with `code: "upload_expired"`, the agent clears the staged key, requests another URL, reuploads the retained JPEG with the same block UUID, and retries the block.
 At most 200 unfinalized reservations per user are allowed.
 The client must not capture when stopped and must capture exactly every 600 elapsed running seconds.
 The server validates session ownership, bounded exact-second durations, non-overlap, and immutable UUID retries, but cannot prove that an untrusted desktop really captured an image at a particular moment.
