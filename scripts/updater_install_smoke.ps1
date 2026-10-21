@@ -15,7 +15,14 @@ try {
     Start-Sleep -Seconds 5
     $app.Refresh()
     if ($app.HasExited) { throw "Application exited during startup with $($app.ExitCode)" }
-    Write-Host 'PASS: exact signed installer fresh install and process startup'
+    for ($i = 0; $i -lt 5; $i++) {
+        $app.Refresh()
+        if ($app.HasExited) { throw 'Application exited during responsiveness check' }
+        if ($app.MainWindowHandle -eq [IntPtr]::Zero) { throw 'Application main window is missing' }
+        if (-not $app.Responding) { throw 'Application main window is not responding' }
+        Start-Sleep -Seconds 1
+    }
+    Write-Host 'PASS: exact signed installer fresh install, process startup and responsive main window'
     Write-Host 'NOT an in-app upgrade test. Windows upgrade/data-preservation evidence is required before production approval.'
 } finally {
     if ($null -ne $app -and -not $app.HasExited) { Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue }

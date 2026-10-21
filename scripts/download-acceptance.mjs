@@ -25,9 +25,9 @@ assert(asset, 'Production HTML must reference the actual React bundle')
 const bundle = await get(asset[1])
 assert.equal(bundle.status, 200)
 const source = await bundle.text()
-assert(source.includes('/downloads/0.1.4/WorkTrack_0.1.4_x64-setup.exe'))
+assert(source.includes('/downloads/0.1.5/WorkTrack_0.1.5_x64-setup.exe'))
 assert(source.includes('Download for Windows 64-bit'))
-assert(source.includes('/downloads/0.1.4/SHA256SUMS'))
+assert(source.includes('/downloads/0.1.5/SHA256SUMS'))
 assert.equal((await get('/api/health')).status, 200)
 assert.equal((await get('/api/auth/me')).status, 401)
 
@@ -48,17 +48,17 @@ try {
   assert.equal((await me.json()).id, user.id)
   console.log('PASS: deployed React download entry point, existing account login and authenticated API')
 
-  const file = await get('/downloads/0.1.4/WorkTrack_0.1.4_x64-setup.exe')
+  const file = await get('/downloads/0.1.5/WorkTrack_0.1.5_x64-setup.exe')
   assert.equal(file.status, 200)
   assert.match(file.headers.get('content-disposition') || '', /attachment/i)
   assert.match(file.headers.get('cache-control') || '', /immutable/i)
   const bytes = Buffer.from(await file.arrayBuffer())
   assert.equal(bytes.subarray(0, 2).toString(), 'MZ', 'Download must be an actual Windows executable, not dashboard HTML')
   assert.equal(createHash('sha256').update(bytes).digest('hex'), expected)
-  const sums = await get('/downloads/0.1.4/SHA256SUMS')
+  const sums = await get('/downloads/0.1.5/SHA256SUMS')
   assert.equal(sums.status, 200)
-  assert.equal((await sums.text()).trim(), `${expected}  WorkTrack_0.1.4_x64-setup.exe`)
-  for (const path of ['/downloads/missing.exe', '/downloads/0.1.4/.private', '/downloads/0.1.4/']) {
+  assert.equal((await sums.text()).trim(), `${expected}  WorkTrack_0.1.5_x64-setup.exe`)
+  for (const path of ['/downloads/missing.exe', '/downloads/0.1.5/.private', '/downloads/0.1.5/']) {
     assert.equal((await get(path)).status, 404)
   }
   console.log(`PASS: anonymous HTTPS installer download (${bytes.length} bytes), exact verified SHA-256, checksum link, hidden/missing/listing 404`)
