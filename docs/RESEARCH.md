@@ -42,6 +42,23 @@ Takeaways:
 - Plan: **pilot Cattr first** (1 to 2 days to self-host).
   Build our own only if it does not fit (UI, performance, missing features, license).
 
+### Windows signing check (2026-10-21)
+
+The Authenticode signature block (the part of an `.exe` that holds the digital signature) was read from each installer's PE header.
+
+| Installer | Signed? | Signer |
+|---|---|---|
+| Cattr `Cattr_Setup.exe` and `Cattr.exe` v3.0.1 | **No** (signature block size 0) | - |
+| Gauzy `gauzy-desktop-timer-x64-111.44.48.exe` | **Yes** | "Ever Co. LTD", certificate from "Microsoft ID Verified CS EOC CA 03", with a Microsoft timestamp |
+
+The Gauzy chain is Microsoft's Artifact Signing service.
+The signature only covers their official build.
+Rebuilding or rebranding the app removes it, and then we would need our own certificate.
+
+**Updated plan: pilot Ever Gauzy, because Cattr fails the signing requirement.**
+Self-host the Gauzy server and point the official signed Desktop Timer at it.
+Confirm on a real Windows 11 PC that the timer accepts a custom server URL.
+
 ## 3. Features
 
 ### V1 - minimal (build first)
