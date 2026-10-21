@@ -1,0 +1,24 @@
+# Overlay for the approved shared VM. Existing Caddy owns public ports 80/443.
+services:
+  db:
+    mem_limit: 256m
+    cpus: 0.5
+  api:
+    image: worktrack-api:ae8b8f8
+    mem_limit: 512m
+    cpus: 1.0
+  web:
+    image: worktrack-web:ae8b8f8
+    mem_limit: 96m
+    cpus: 0.5
+    ports: !reset []
+    volumes: !override
+      - /opt/worktrack/deploy/Caddyfile.shared:/etc/caddy/Caddyfile:ro
+    networks:
+      edge: {}
+      shared_proxy:
+        aliases: [worktrack-web]
+networks:
+  shared_proxy:
+    external: true
+    name: oms-network
