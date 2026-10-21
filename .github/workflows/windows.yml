@@ -1,8 +1,16 @@
 name: Windows agent
 on:
   pull_request:
+    paths:
+      - 'agent/**'
+      - '.github/workflows/windows.yml'
+      - 'deploy/windows-ci.json'
   push:
     branches: [main]
+    paths:
+      - 'agent/**'
+      - '.github/workflows/windows.yml'
+      - 'deploy/windows-ci.json'
   workflow_dispatch:
 permissions:
   contents: read

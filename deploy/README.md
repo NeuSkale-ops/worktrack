@@ -108,9 +108,10 @@ Coordinate database role rotation and the API URL in a maintenance window.
 
 ## CI and Windows installers
 
-The CI workflow builds and tests the dashboard, runs Go formatting/vet/race tests against a disposable Postgres 17 service, validates Compose/Caddy, builds both Docker targets, and smoke-tests hardened Caddy startup, HTTPS, SPA fallback, UID, health and redirects.
+The CI workflow builds and tests the dashboard, runs Go formatting/vet/race tests against a disposable Postgres 17 service, exercises the live HTTP API with `scripts/integration.mjs`, validates Compose/Caddy, builds both Docker targets, and smoke-tests hardened Caddy startup, HTTPS, SPA fallback, UID, health and redirects.
 CI-only database passwords are disposable test values, not production secrets.
 The Windows workflow runs Cargo check/tests with the committed lockfile and builds an NSIS installer on a Windows runner.
+It runs for agent or Windows workflow/override changes, so unrelated documentation/backend commits do not cancel an in-progress Windows build.
 Artifacts expire after seven days and are not GitHub releases.
 No workflow has deployment credentials, SSH access, write permissions, release publishing, or automatic deployment steps.
 GitHub-hosted runner/artifact quotas and private-repository billing are external account constraints.
@@ -127,6 +128,7 @@ Authenticode signing, reputation, and any certificate purchase need separate app
 
 On October 21, 2026, both Docker targets built locally and `bash deploy/test-web.sh worktrack-web:validation` passed against the real Caddy runtime image.
 Compose validation, workflow actionlint, YAML parsing, and shell syntax checks passed.
+Go race tests with `WT_TEST_DATABASE_URL` and the real HTTP acceptance script also passed against a separate disposable Postgres 17 container.
 The smoke test runs an isolated disposable local container with no published ports and no external network.
 Encrypted backup creation/restoration was not executed locally because age and a recovery identity are not configured.
 Windows builds must be verified on the Windows CI runner.

@@ -49,6 +49,7 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: postgres://worktrack:ci-only-not-a-secret@localhost:5432/worktrack_test?sslmode=disable
+      WT_TEST_DATABASE_URL: postgres://worktrack:ci-only-not-a-secret@localhost:5432/worktrack_test?sslmode=disable
     defaults:
       run:
         working-directory: server
@@ -62,7 +63,30 @@ jobs:
         run: test -z "$(gofmt -l .)"
       - run: go vet ./...
       - run: go test -race ./...
-      - run: go build ./...
+      - run: go build -o "$RUNNER_TEMP/worktrack-api" .
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Real HTTP API integration
+        working-directory: .
+        env:
+          WT_TEST_BASE: http://127.0.0.1:8080
+          WT_TEST_OWNER_EMAIL: owner@example.test
+          WT_TEST_OWNER_PASSWORD: ci-only-disposable-password
+          APP_ORIGIN: http://localhost:5173
+          LISTEN_ADDR: '127.0.0.1:8080'
+          DEV_MODE: 'true'
+        run: |
+          BOOTSTRAP_EMAIL="$WT_TEST_OWNER_EMAIL" BOOTSTRAP_PASSWORD="$WT_TEST_OWNER_PASSWORD" BOOTSTRAP_NAME='CI owner' \
+            "$RUNNER_TEMP/worktrack-api" >"$RUNNER_TEMP/worktrack-api.log" 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true; cat "$RUNNER_TEMP/worktrack-api.log"' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent "$WT_TEST_BASE/api/health"; then break; fi
+            if [ "$attempt" = 30 ]; then exit 1; fi
+            sleep 1
+          done
+          node scripts/integration.mjs
   deployment-config:
     runs-on: ubuntu-latest
     env:
