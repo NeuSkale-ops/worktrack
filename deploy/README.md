@@ -109,10 +109,15 @@ Coordinate database role rotation and the API URL in a maintenance window.
 ## CI and Windows installers
 
 The CI workflow builds and tests the dashboard, runs Go formatting/vet/race tests against a disposable Postgres 17 service, exercises the live HTTP API with `scripts/integration.mjs`, validates Compose/Caddy, builds both Docker targets, and smoke-tests hardened Caddy startup, HTTPS, SPA fallback, UID, health and redirects.
+It also runs `scripts/container-acceptance.sh` through the production React/Caddy, Go and Postgres images over HTTPS, using only its disposable fixture CA for the test Node process.
 CI-only database passwords are disposable test values, not production secrets.
 The Windows workflow runs Cargo check/tests with the committed lockfile and builds an NSIS installer on a Windows runner.
 It runs for agent or Windows workflow/override changes, so unrelated documentation/backend commits do not cancel an in-progress Windows build.
 Artifacts expire after seven days and are not GitHub releases.
+A separate `Windows installer smoke` workflow runs only after a successful same-repository `main` Windows build.
+It downloads that exact run's artifact with an ephemeral Actions read token, silently installs it per-user under the disposable runner's temporary directory, and checks the installed process survives five seconds before stopping only that process.
+It uses no configured repository secrets and grants no write permissions.
+This is a packaging/startup smoke test, not a test of tracking-off UI, desktop capture, lock, suspend, or an actual worker machine.
 No workflow has deployment credentials, SSH access, write permissions, release publishing, or automatic deployment steps.
 GitHub-hosted runner/artifact quotas and private-repository billing are external account constraints.
 Review those settings before enabling workflows on a paid account.

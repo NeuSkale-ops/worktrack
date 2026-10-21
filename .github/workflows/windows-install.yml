@@ -1,0 +1,52 @@
+name: Windows installer smoke
+on:
+  workflow_run:
+    workflows: [Windows agent]
+    branches: [main]
+    types: [completed]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  install:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download same-repository upstream installer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_RUN_ID: ${{ github.event.workflow_run.id }}
+        shell: pwsh
+        run: |
+          gh run download $env:UPSTREAM_RUN_ID --repo $env:GITHUB_REPOSITORY `
+            --name windows-nsis-unsigned --dir "$env:RUNNER_TEMP\installer"
+          if ($LASTEXITCODE -ne 0) { throw 'Upstream installer download failed' }
+      - name: Install per-user and verify process startup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installers = @(Get-ChildItem "$env:RUNNER_TEMP\installer" -Filter '*-setup.exe' -File)
+          if ($installers.Count -ne 1) { throw 'Expected exactly one NSIS installer' }
+          $installDir = Join-Path $env:RUNNER_TEMP "worktrack-install-$env:GITHUB_RUN_ID"
+          # NSIS requires /D to be last. This runner-local path contains no spaces.
+          if ($installDir.Contains(' ')) { throw 'NSIS smoke path must not contain spaces' }
+          $installer = Start-Process -FilePath $installers[0].FullName `
+            -ArgumentList "/S /D=$installDir" -Wait -PassThru
+          if ($installer.ExitCode -ne 0) { throw "NSIS exited with $($installer.ExitCode)" }
+          $exe = Join-Path $installDir 'worktrack-agent.exe'
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Installed application executable missing' }
+          $app = $null
+          try {
+            $app = Start-Process -FilePath $exe -PassThru
+            Start-Sleep -Seconds 5
+            $app.Refresh()
+            if ($app.HasExited) { throw "Application exited during startup with $($app.ExitCode)" }
+            Write-Host 'PASS: unsigned per-user NSIS install and five-second process survival'
+            Write-Host 'Not verified: tracking-off UI, capture, idle/lock/suspend behavior, or a real worker desktop.'
+          } finally {
+            if ($null -ne $app -and -not $app.HasExited) { Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue }
+          }

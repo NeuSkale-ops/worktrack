@@ -106,3 +106,10 @@ jobs:
       - run: docker build --target api -f deploy/Dockerfile .
       - run: docker build --target web -t worktrack-web:test -f deploy/Dockerfile .
       - run: bash deploy/test-web.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Production HTTPS container acceptance
+        env:
+          JCODE_SCRATCH_DIR: ${{ runner.temp }}
+        run: bash scripts/container-acceptance.sh
