@@ -20,8 +20,8 @@ function App() {
   return <main>
     <header><span className="mark">W</span><div><h1>WorkTrack</h1><p>Your time. Clearly recorded.</p></div></header>
     <section className="disclosure"><h2>What monitoring means</h2><p>Only while you choose Start, WorkTrack measures elapsed time and input activity, and takes a compressed screenshot of your primary display at each exact 10-minute elapsed boundary. No random captures.</p><p>No typed text, keys, window titles, or websites are recorded. Locking or suspending pauses monitoring. Stop ends all collection. Queued records may still upload while stopped.</p><p>Screenshots can contain private information. Close private content before starting. This app remains visible in the tray and never starts tracking automatically.</p></section>
-    {!status?.authenticated || renew ? <form onSubmit={e => { e.preventDefault(); const data = new FormData(e.currentTarget); void run('login', { server: data.get('server'), email: data.get('email'), password: data.get('password') }); }}>
-      <label>Server URL<input name="server" type="url" defaultValue={status?.server || 'https://'} required placeholder="https://work.example.com" /></label>
+    {!status?.authenticated || renew ? <form onSubmit={e => { e.preventDefault(); const data = new FormData(e.currentTarget); void run('login', { email: data.get('email'), password: data.get('password') }); }}>
+      <p>Connected to your WorkTrack workspace. Sign in with the account created from your invitation.</p>
       <label>Email<input name="email" type="email" autoComplete="username" required /></label>
       <label>Password<input name="password" type="password" autoComplete="current-password" required /></label>
       <button disabled={busy}>Sign in</button>

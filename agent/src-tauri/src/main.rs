@@ -15,6 +15,12 @@ use tauri::{
     Manager, State,
 };
 
+const SERVER_URL: &str = "https://worktrack.178.156.213.40.sslip.io";
+
+fn queue_matches_server(saved_server: &str, pending: usize) -> bool {
+    pending == 0 || saved_server == SERVER_URL
+}
+
 struct Runtime {
     queue: Queue,
     server: String,
@@ -71,20 +77,16 @@ fn status(state: State<Shared>) -> Result<Status, String> {
 #[tauri::command]
 async fn login(
     state: State<'_, Shared>,
-    server: String,
     email: String,
     password: String,
 ) -> Result<(), String> {
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let url = reqwest::Url::parse(server.trim()).map_err(|_| "Invalid server URL")?;
-        let local = matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
-        if url.scheme() != "https" && !(url.scheme() == "http" && local) { return Err("HTTPS is required except on localhost".into()); }
-        if !url.username().is_empty() || url.password().is_some() || url.query().is_some() || url.fragment().is_some() || url.path() != "/" { return Err("Use a server origin without a path, query, or credentials".into()); }
-        let server = url.as_str().trim_end_matches('/').to_string();
+        let server = SERVER_URL.to_string();
         let mut r = state.lock().map_err(|e| e.to_string())?;
         if r.session.is_some() { return Err("Stop tracking before signing in".into()); }
-        if r.queue.count() > 0 && (r.server != server || r.queue.get("email").as_deref() != Some(email.trim().to_lowercase().as_str())) { return Err("Queued records belong to another account. Use that account to sync first.".into()); }
+        if !queue_matches_server(&r.queue.get("server").unwrap_or_default(), r.queue.count()) { return Err("This installation has unsynced records for another server. Sync them using version 0.1.0 before upgrading. No records were moved or deleted.".into()); }
+        if r.queue.count() > 0 && r.queue.get("email").as_deref() != Some(email.trim().to_lowercase().as_str()) { return Err("Queued records belong to another account. Use that account to sync first.".into()); }
         let response = client()?.post(format!("{server}/api/auth/login")).json(&json!({"email":&email,"password":password,"device_name":std::env::var("COMPUTERNAME").unwrap_or_else(|_| "WorkTrack desktop".into())})).send().map_err(|_| "Cannot reach server".to_string())?;
         if !response.status().is_success() { return Err(format!("Login rejected ({})", response.status())); }
         let body: serde_json::Value = response.json().map_err(|_| "Invalid login response")?;
@@ -403,8 +405,14 @@ fn main() {
                     q.set("active_session", "")
                 })?;
             }
-            let server = queue.get("server").unwrap_or_default();
-            let token = credential(&server).ok().and_then(|e| e.get_password().ok());
+            let saved_server = queue.get("server").unwrap_or_default();
+            let compatible_queue = queue_matches_server(&saved_server, queue.count());
+            let server = SERVER_URL.to_string();
+            let token = if compatible_queue {
+                credential(&server).ok().and_then(|e| e.get_password().ok())
+            } else {
+                None
+            };
             let shared = Arc::new(Mutex::new(Runtime {
                 queue,
                 server,
@@ -417,7 +425,7 @@ fn main() {
                 next_capture: 600.0,
                 last: Instant::now(),
                 paused: false,
-                error: None,
+                error: if compatible_queue { None } else { Some("Unsynced records belong to another server. Sync using version 0.1.0 before upgrading. No records were moved or deleted.".into()) },
             }));
             app.manage(shared.clone());
             let show =
@@ -532,6 +540,17 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fixed_server_preserves_queue_ownership() {
+        assert_eq!(SERVER_URL, "https://worktrack.178.156.213.40.sslip.io");
+        assert!(queue_matches_server("", 0));
+        assert!(queue_matches_server(SERVER_URL, 3));
+        assert!(queue_matches_server("https://previous.invalid", 0));
+        assert!(!queue_matches_server("https://previous.invalid", 3));
+        assert!(!queue_matches_server("", 3));
+    }
+
     fn runtime() -> Runtime {
         Runtime {
             queue: Queue::open(std::path::Path::new(":memory:")).unwrap(),

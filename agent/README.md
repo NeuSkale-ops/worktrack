@@ -3,6 +3,23 @@
 Windows-first Tauri 2 application with React and TypeScript.
 No projects, autostart, updater, hidden tracking, keyboard hooks, or keylogging.
 
+## Worker sign-in and updates
+
+Version 0.1.1 pins the server origin to `https://worktrack.178.156.213.40.sslip.io` in Rust.
+Workers enter only their invited account email and password, with no server URL field.
+The invite creates their account when accepted, but installation and Start remain explicit actions.
+
+There is no update check, update notification, or automatic installation in versions 0.1.0 or 0.1.1.
+Publishing a GitHub release alone does not update installed agents.
+Stop tracking, wait until queued records reach zero, quit the agent, and run the new per-user installer manually.
+Do not uninstall or remove application data as an update shortcut.
+Automatic updates would require a separate signed updater and distribution endpoint.
+
+Existing credentials and queued records for the pinned origin retain the same application identifier and storage paths.
+Pending records from a different server are never redirected into this workspace.
+Sync such records using version 0.1.0 before upgrading.
+The new version blocks sign-in if it finds an incompatible pending queue rather than deleting or moving evidence.
+
 ## Run and package
 
 Use Node 22.12+ and current stable Rust with the Windows MSVC build tools and WebView2 installed.
