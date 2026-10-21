@@ -3,7 +3,7 @@
 Host: `neuskale-app-ash` (`178.156.213.40`).
 Approved hostname: `worktrack.178.156.213.40.sslip.io`.
 API image source: `641cf6b`.
-Web image source: `ae8b8f8`.
+Web image source: `31c783e`, deployed as `worktrack-web:downloads-0.1.2`.
 
 ## Layout
 
@@ -44,7 +44,8 @@ The VM had about 1.5 GiB available RAM after deployment in a short snapshot, not
 
 ## Operation
 
-Run `docker compose -p worktrack -f /etc/worktrack/compose.runtime.json ps` on the VM to inspect only this deployment.
+Run `docker compose -p worktrack -f /etc/worktrack/compose.runtime.json -f /opt/worktrack/deploy/compose.downloads.yaml ps` on the VM to inspect only this deployment.
+Use both files for future web updates to retain the deployed image and read-only installer mount.
 Do not print the runtime configuration because it contains storage and database credentials.
 No public database or API ports are published.
 No backup schedule or restore drill has been completed.

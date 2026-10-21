@@ -43,6 +43,25 @@ The script checks the deployed bundle, real login and authenticated API, anonymo
 It creates and revokes only its own authentication session and does not create workers or change tracking records.
 Never include credential values in shell arguments or logs.
 
+## Observed deployment, October 21, 2026
+
+Production-channel signed build `39585141690` succeeded from `53792b70a0f0a75aaa5aa1d67e3ba14be41db578`.
+The exact installer passed native Windows installation/startup smoke and independent signature, trusted-version, and checksum verification.
+The downloaded production candidate was independently verified again locally, including matching its public key to the reviewed configuration and checking its production manifest URL.
+The dashboard image was built from web source `31c783e` for AMD64 and deployed as `worktrack-web:downloads-0.1.2`.
+The download overlay was activated on the shared host at approximately 10:55 UTC.
+
+The installer is 3,871,906 bytes.
+Its SHA-256 is `23f1e7ec845e49c2123c72cc2d2abe3bcf32350e534c1565ec74b201a4bfe9ff`.
+Real public HTTPS acceptance passed for existing-account login, authenticated API access, deployed React download entry point, anonymous installer bytes/checksum, attachment/cache headers, checksum link, missing/hidden paths, and disabled listing.
+The acceptance login session was revoked afterward.
+The installer mount is read-only.
+WorkTrack, OMS, and portal all returned HTTPS 200 after activation, and the API/database remained healthy with their original creation timestamps.
+Real Firefox React checks with mocked APIs covered owner, manager, and worker download cards plus 1800px and 375px layouts without horizontal overflow.
+These mocked browser checks do not constitute a live worker login or Windows tracking test.
+
+No production update manifest was published and no old-to-new in-app upgrade is claimed.
+
 ## Auto-update scope
 
 The production-configured v0.1.2 installer includes the production updater endpoint and verification public key.
