@@ -23,6 +23,25 @@ It should stay small, cheap, and respectful of worker privacy.
 Takeaway: our V1 should match Worksnaps in features, with a modern, clean product.
 Sources: worksnaps.net/www/pricing.shtml, insightful.io/pricing.
 
+## 2b. Open-source alternatives (checked 2026-10-21 via GitHub API)
+
+| Project | Screenshots + activity? | Windows app | License | Stars | Notes |
+|---|---|---|---|---|---|
+| **Ever Gauzy** (ever-co/ever-gauzy) | Yes | Yes, Electron "Desktop Timer" (latest v111.44.48, Sep 2026) | AGPL-3.0 | 8.4k | Full ERP/CRM/HRM platform. Time tracker is one module. Very active, but heavy to run. |
+| **Cattr** (cattr-app) | Yes | Yes, Electron (`Cattr_Setup.exe`, v3.0.1, Sep 2026) | SSPL (MongoDB license) | ~240 | Focused on exactly our use case. Laravel server + Docker. Small community. |
+| ActivityWatch | No screenshots | Yes | MPL-2.0 | 19k | Personal tracker on one PC. No team dashboard. |
+| Kimai, solidtime, Traggo | No | Web only | AGPL / GPL | 1.6k to 9k | Manual timesheets. No desktop monitoring. |
+
+Takeaways:
+- Only **Ever Gauzy** and **Cattr** match the "screenshots + activity + team dashboard" use case.
+- **Cattr is the closest fit** to our minimal V1 and can be self-hosted with Docker.
+- Both agents are Electron (heavy), and both share our signing problem: we must build our own Windows installer pointed at our server, or use their unsigned or vendor-signed builds.
+- License: AGPL and SSPL are fine for internal use.
+  If we modify them and offer them to outside clients as a service, we must publish our source code.
+  SSPL goes further and covers the whole service stack.
+- Plan: **pilot Cattr first** (1 to 2 days to self-host).
+  Build our own only if it does not fit (UI, performance, missing features, license).
+
 ## 3. Features
 
 ### V1 - minimal (build first)
