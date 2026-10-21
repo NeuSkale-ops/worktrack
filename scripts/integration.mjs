@@ -115,7 +115,7 @@ const revoked = await request(`/api/users/${worker.user.id}/revoke-devices`, { m
 assert.equal(revoked.revoked, 1);
 await request('/api/auth/me', { token: device, status: 401 });
 const reset = await request(`/api/users/${worker.user.id}/password-reset`, { method: 'POST', browser: true, body: {}, status: 201 });
-assert(reset.url.startsWith(`${base}/reset?token=`));
+assert(reset.url.startsWith(`${process.env.APP_ORIGIN || base}/reset?token=`), reset.url);
 await request('/api/auth/reset-password', { method: 'POST', browser: true, body: { token: reset.token, password: 'acceptance-reset-password' } });
 await request('/api/auth/reset-password', { method: 'POST', browser: true, body: { token: reset.token, password: 'acceptance-reset-password2' }, status: 400 });
 await request('/api/auth/login', { method: 'POST', body: { email: workerEmail, password, device_name: 'old' }, status: 401 });
