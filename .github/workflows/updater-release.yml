@@ -12,8 +12,12 @@ on:
         required: true
         type: string
       notes:
-        description: Worker-facing release notes
+        description: Worker-facing notes for a new build, retained unchanged when reusing a candidate
         required: true
+        type: string
+      candidate_run:
+        description: Optional completed signed-build run to retest exact bytes without rebuilding
+        required: false
         type: string
       publish:
         description: Publish publicly after the separate production environment approval
@@ -25,12 +29,13 @@ on:
         type: string
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: windows-updater-release
   cancel-in-progress: false
 jobs:
   build:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && inputs.candidate_run == ''
     environment: updater-release
     runs-on: windows-latest
     timeout-minutes: 60
@@ -101,24 +106,60 @@ jobs:
           retention-days: 30
   verify:
     needs: build
+    if: >-
+      !cancelled() && github.ref == 'refs/heads/main' &&
+      (needs.build.result == 'success' || inputs.candidate_run != '')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Validate configuration and reused candidate provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN: ${{ inputs.candidate_run }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+          PUBLISH_REQUESTED: ${{ inputs.publish }}
+          UPGRADE_EVIDENCE: ${{ inputs.upgrade_evidence }}
+        run: |
+          set -euo pipefail
+          if [[ "$PUBLISH_REQUESTED" == true && "$RELEASE_CHANNEL" == production && ! "$UPGRADE_EVIDENCE" =~ [^[:space:]] ]]; then
+            echo 'Production publication requires real Windows upgrade evidence.' >&2
+            exit 1
+          fi
+          python scripts/updater_release.py config --config agent/src-tauri/tauri.conf.json --version "$RELEASE_VERSION" --channel "$RELEASE_CHANNEL" --output "$RUNNER_TEMP/windows-release.generated.json"
+          if [[ -n "$CANDIDATE_RUN" ]]; then
+            [[ "$CANDIDATE_RUN" =~ ^[1-9][0-9]*$ ]]
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN" > "$RUNNER_TEMP/candidate-run.json"
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN/jobs?per_page=100" > "$RUNNER_TEMP/candidate-jobs.json"
+            source_sha=$(python -c 'import json,os,pathlib; root=pathlib.Path(os.environ["RUNNER_TEMP"]); run=json.loads((root/"candidate-run.json").read_text()); jobs=json.loads((root/"candidate-jobs.json").read_text())["jobs"]; assert (run["head_repository"]["full_name"],run["head_branch"],run["event"],run["path"],run["status"]) == (os.environ["GITHUB_REPOSITORY"],"main","workflow_dispatch",".github/workflows/updater-release.yml","completed"), "Untrusted candidate source"; assert all(any(job["name"] == name and job["conclusion"] == "success" for job in jobs) for name in ("build","verify")), "Original signed build and independent verification must pass"; print(run["head_sha"])')
+            [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
+            # Test-only or workflow fixes may change, but built application/release code may not.
+            if ! git diff --quiet "$source_sha" HEAD -- agent scripts/updater_release.py; then
+              echo 'Candidate application or release code differs from this revision. Build a new candidate.' >&2
+              exit 1
+            fi
+          fi
       - uses: actions/download-artifact@v4
         with:
           name: updater-candidate
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.candidate_run || github.run_id }}
       - name: Install public signature verifier
         run: sudo apt-get update && sudo apt-get install --yes minisign
       - name: Verify exact installer, trusted version, signature and checksum
         env:
           RELEASE_CHANNEL: ${{ inputs.channel }}
+          RELEASE_VERSION: ${{ inputs.version }}
         run: |
           python -c 'import json,pathlib; expected=json.loads(pathlib.Path("agent/src-tauri/tauri.conf.json").read_text())["plugins"]["updater"]["pubkey"]; actual=pathlib.Path("updater-public-key.txt").read_text().strip(); assert actual == expected, "Candidate key differs from committed trust anchor"'
           python scripts/updater_release.py verify --archive updater-candidate.tar --public-key updater-public-key.txt --channel "$RELEASE_CHANNEL"
+          python -c 'import json,os,tarfile; archive=tarfile.open("updater-candidate.tar"); assert json.load(archive.extractfile("latest.json"))["version"] == os.environ["RELEASE_VERSION"], "Candidate version differs from requested release"'
   upgrade:
     needs: verify
     if: inputs.channel == 'production'
@@ -132,6 +173,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: updater-candidate
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.candidate_run || github.run_id }}
       - name: Download immutable signed baseline
         shell: pwsh
         run: |
@@ -168,6 +211,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: updater-candidate
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.candidate_run || github.run_id }}
       - name: Publish with restricted SSH identity
         env:
           WORKTRACK_UPDATER_SSH_KEY: ${{ secrets.WORKTRACK_UPDATER_SSH_KEY }}
