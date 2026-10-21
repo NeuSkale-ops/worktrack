@@ -3,6 +3,19 @@
 Date: 2026-10-21.
 This records observed checks, not a production-readiness claim.
 
+## Live deployment follow-up
+
+WorkTrack was deployed to the existing approved `neuskale-app-ash` VM on 2026-10-21.
+The approved hostname `worktrack.178.156.213.40.sslip.io` serves the rendered React login page with valid HTTPS.
+Owner login, device login, reports and an actual private Cloudflare R2 PUT/GET round trip passed through the public application API.
+A synthetic JPEG-marker object was used and the associated test block was deleted, so this does not prove Windows screen capture.
+Screenshot-only deletion preserved time, anonymous object access was rejected, and test auth tokens were revoked.
+After removing bootstrap settings and recreating the API, the original owner credentials still logged in.
+Both pre-existing public apps remained HTTP 200 with valid TLS.
+The short owner password was explicitly approved by the user and remains a security limitation.
+See `deploy/SHARED-HOST.md` for image revisions, resource limits and remaining backup/runtime gates.
+The following initial validation record predates this deployment, so statements about unavailable Hetzner access below are historical.
+
 ## Passed locally
 
 - Go API compiled, `go vet ./...` passed.
