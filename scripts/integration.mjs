@@ -98,6 +98,15 @@ const istReport = await request(`/api/reports/hours?from=${istDate}&to=${istDate
 assert.equal(istReport.find(row => row.user_id === worker.user.id)?.seconds, 60, 'tz report must count the block on its local date');
 await request(`/api/reports/hours?from=${date}&to=${date}&tz=Not/AZone`, { browser: true, status: 400 });
 console.log('PASS: tz=Asia/Kolkata report through production image (embedded tzdata) and invalid zone rejected');
+// Team ribbon source: owner sees the worker's span, the worker sees only their own, no screenshot URLs.
+const ownerDay = await request(`/api/reports/day?date=${istDate}&tz=Asia/Kolkata`, { browser: true });
+const span = ownerDay.find(row => row.user_id === worker.user.id);
+assert(span && Date.parse(span.end_at) - Date.parse(span.start_at) === 60_000, 'owner day report must include the worker block');
+assert(!JSON.stringify(ownerDay).includes('X-Amz'), 'day report must not sign screenshot URLs');
+const workerDay = await request(`/api/reports/day?date=${istDate}&tz=Asia/Kolkata`, { token });
+assert(workerDay.length >= 1 && workerDay.every(row => row.user_id === worker.user.id), 'workers see only their own spans');
+await request(`/api/reports/day?date=${istDate}&tz=Not/AZone`, { browser: true, status: 400 });
+console.log('PASS: /api/reports/day returns visible spans per role through production image');
 const csv = await request(`/api/reports/hours.csv?from=${date}&to=${date}`, { browser: true });
 assert(csv.includes('Integration worker'));
 await request(`/api/blocks/${block.id}/screenshot`, { method: 'DELETE', token });

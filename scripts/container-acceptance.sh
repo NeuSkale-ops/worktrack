@@ -63,5 +63,12 @@ NODE_EXTRA_CA_CERTS="$scratch/root.crt" APP_ORIGIN="$origin" \
 NODE_EXTRA_CA_CERTS="$scratch/root.crt" APP_ORIGIN="$origin" \
   WT_TEST_BASE="$origin" WT_TEST_OWNER_EMAIL=container-owner@example.test \
   WT_TEST_OWNER_PASSWORD=disposable-acceptance-password node scripts/team-acceptance.mjs
+if [ "${WT_BROWSER:-}" = 1 ]; then
+  # Optional: WT_PLAYWRIGHT_DIR is a directory whose node_modules has playwright-core; Chrome via CHROME_PATH.
+  [ -n "${WT_KEEP_SCRIPT:-}" ] || cp scripts/dashboard-acceptance.mjs "${WT_PLAYWRIGHT_DIR:?set WT_PLAYWRIGHT_DIR}/dashboard-acceptance.mjs"
+  NODE_EXTRA_CA_CERTS="$scratch/root.crt" WT_TEST_BASE="$origin" \
+    WT_TEST_OWNER_EMAIL=container-owner@example.test \
+    WT_TEST_OWNER_PASSWORD=disposable-acceptance-password node "$WT_PLAYWRIGHT_DIR/dashboard-acceptance.mjs"
+fi
 curl --silent --fail --cacert "$scratch/root.crt" "$origin/invite?token=example" | grep -q '<html'
 echo 'PASS: production nonroot read-only React/Caddy + Go + PostgreSQL stack over HTTPS, Secure cookies and SPA routing'
