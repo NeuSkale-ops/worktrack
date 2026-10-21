@@ -61,7 +61,11 @@ fn reserve(r: &mut Runtime) -> Result<(), String> {
             )
             .optional()
             .map_err(|e| e.to_string())?;
-        if r.session.is_some() || queued != 0 || active.is_some_and(|id| !id.is_empty()) {
+        if r.session.is_some()
+            || r.pending_stop.is_some()
+            || queued != 0
+            || active.is_some_and(|id| !id.is_empty())
+        {
             return Err("Stop tracking and sync all pending records before installing an update. Pending data has been retained.".into());
         }
         Ok(())
@@ -97,6 +101,9 @@ fn configured_updater(app: &tauri::AppHandle) -> Result<tauri_plugin_updater::Up
     if !cfg!(windows) {
         return Err("UPDATER_UNAVAILABLE: In-app updates are supported only on Windows.".into());
     }
+    if cfg!(debug_assertions) {
+        return Err("UPDATER_UNAVAILABLE: Development builds cannot install updates. Use a signed release installer.".into());
+    }
     let config = app.config().plugins.0.get("updater");
     if config
         .and_then(|c| c.get("pubkey"))
@@ -120,6 +127,13 @@ fn configured_updater(app: &tauri::AppHandle) -> Result<tauri_plugin_updater::Up
         .map_err(|e| e.to_string())
 }
 
+fn check_error(error: tauri_plugin_updater::Error) -> String {
+    match error {
+        tauri_plugin_updater::Error::ReleaseNotFound => "The update feed is unavailable or no release has been published. Ask your administrator to check update publication. You can keep using this version.".into(),
+        error => error.to_string(),
+    }
+}
+
 #[tauri::command]
 pub async fn check_update(
     app: tauri::AppHandle,
@@ -138,13 +152,7 @@ pub async fn check_update(
             ..Default::default()
         };
     }
-    let result = async {
-        configured_updater(&app)?
-            .check()
-            .await
-            .map_err(|e| e.to_string())
-    }
-    .await;
+    let result = async { configured_updater(&app)?.check().await.map_err(check_error) }.await;
     let mut r = shared.lock().map_err(|e| e.to_string())?;
     match result {
         Ok(update) => {
@@ -193,12 +201,15 @@ async fn install(shared: Shared, version: String) -> Result<(), String> {
     let update: Update = {
         let mut r = shared.lock().map_err(|e| e.to_string())?;
         ensure_not_reserved(&r)?;
-        let update = r
+        let mut update = r
             .pending_update
             .as_ref()
             .filter(|u| u.version == version)
             .ok_or("This update is no longer available. Check for updates again.")?
             .clone();
+        // Plugin 2.14.0 does not copy the builder's check timeout into Update.
+        // Bound the entire download so a stalled connection cannot reserve tracking forever.
+        update.timeout = Some(Duration::from_secs(10 * 60));
         reserve(&mut r)?;
         r.update = UpdateStatus {
             phase: "downloading",
@@ -257,6 +268,17 @@ mod tests {
     use super::*;
     use crate::tests::runtime;
     #[test]
+    fn missing_feed_explains_publication_without_hiding_other_failures() {
+        let message = check_error(tauri_plugin_updater::Error::ReleaseNotFound);
+        assert!(message.contains("no release has been published"));
+        assert!(message.contains("administrator"));
+        assert!(!message.starts_with("UPDATER_UNAVAILABLE:"));
+        let error = tauri_plugin_updater::Error::Network("offline".into());
+        let expected = error.to_string();
+        assert_eq!(check_error(error), expected);
+    }
+
+    #[test]
     fn active_paused_queue_and_unfinished_stop_block_install() {
         let mut r = runtime();
         r.paused = true;
@@ -277,6 +299,16 @@ mod tests {
         assert!(reserve(&mut r).is_err());
         assert!(r.update_reserved);
     }
+    #[test]
+    fn unsaved_final_interval_blocks_update_even_without_a_session_marker() {
+        let mut r = runtime();
+        let id = r.session.take().unwrap();
+        r.pending_stop = Some((id, chrono::Utc::now()));
+        assert!(reserve(&mut r).is_err());
+        assert!(!r.update_reserved);
+        assert!(r.pending_stop.is_some());
+    }
+
     #[test]
     fn reservation_releases_on_failure_and_retains_on_success() {
         for installed in [false, true] {

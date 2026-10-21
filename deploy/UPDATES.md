@@ -1,7 +1,10 @@
 # Signed Windows updates
 
-Status: signing key configured locally and public verification key committed.
-Protected GitHub environments, public update hosting, and production manifest publication still require setup and acceptance.
+Status: signed candidate builds and manual installer distribution are verified.
+As checked on October 21, 2026 at 18:06 UTC, both production and staging `latest.json` endpoints return HTTP 404.
+Signed workflow `39619325968` passed build and verification, but its publication job was skipped.
+A successful candidate build or GitHub release does not enable automatic updates.
+Real signed Windows upgrade acceptance and manifest publication remain required.
 The source is prepared as version `0.1.5`, with the owner-provided public key and ordinary updater artifact generation disabled.
 Manual installer distribution is recorded in `DOWNLOADS.md` and does not publish an automatic-update manifest.
 The owner key pair passed a real Tauri signing and independent minisign verification check on October 21, 2026.
@@ -30,6 +33,8 @@ Commit only the actual Tauri public key into `agent/src-tauri/tauri.conf.json` a
 Keep `requireSignedVersion: true`, the application identifier, current-user installation scope, and production endpoint unchanged.
 Bump the committed Tauri, Cargo package, and npm package versions together for a release newer than `0.1.1`.
 The release workflow uses a generated config overlay to enable updater artifacts and select a fixed staging or production endpoint.
+Development builds reject native update checks. The unsigned CI overlay explicitly clears the updater public key and endpoints, because disabling artifact generation alone does not disable receiving updates.
+Update checks have a 60-second timeout. Installer downloads have an explicit ten-minute timeout because pinned plugin 2.14.0 does not carry the check timeout into the download.
 Do not enable signing in the ordinary unsigned CI workflow.
 Do not grant frontend `updater:*` capabilities, because only the custom Rust commands enforce the tracking/data installation gate.
 
@@ -129,18 +134,20 @@ Test both account restrictions and that the staging account cannot write product
 
 Run **Windows updater release** manually from reviewed `main` only.
 Its default channel is `staging`, and `publish` defaults to false.
+Requesting production publication without Windows upgrade evidence now fails preflight instead of silently skipping publication.
 A build-only run creates a private GitHub candidate artifact but exposes nothing publicly.
 The package includes the tested NSIS installer, its Tauri signature, manifest with signature contents, and SHA-256 checksum.
 The Linux verification job independently verifies the minisign signature and trusted-comment version against the committed public key.
 A fresh install on Windows is a prerequisite, not proof of a real in-app update.
 
-1. After approved key and environment setup, commit the first staging version, proposed `0.1.2`.
+1. After approved key and environment setup, commit an unused staging version newer than the installed test version.
+   Do not reuse the already distributed `0.1.2` through `0.1.5` production installer identities for changed production bytes.
    Dispatch `channel=staging`, that exact version, and `publish=true` after approving staging public distribution.
    Only `updater-release` and `updater-staging` are used, not the production deployment credentials.
    The staging installer embeds the separate `/updates-staging/windows/x86_64/latest.json` endpoint.
 2. Manually install that staging installer once on a disposable, connected Windows worker environment.
    Prepare an existing worker identity, settings, pending queue, and tracking state for the acceptance checks.
-3. Commit the next version, proposed `0.1.3`, and release it to staging through the same workflow.
+3. Commit a strictly higher unused version and release it to staging through the same workflow.
    From the installed older staging app, exercise the actual in-app signed upgrade and restart.
    Verify the resulting version, stable current-user installation, preserved identity/settings/data, pending-data/tracking installation blocks, stopped tracking after restart, and all failure/tampering cases from the plan.
    Record the Windows observations and workflow run/artifact identifiers.

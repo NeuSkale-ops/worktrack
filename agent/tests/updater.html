@@ -17,7 +17,7 @@ window.setInterval = (callback, delay, ...args) => {
 };
 const offer = { version: '0.1.2', current_version: '0.1.1', body: 'Test release notes', date: null };
 const state = {
-  authenticated: true, tracking: false, paused: false, elapsed: 0,
+  authenticated: true, tracking: false, stopping: false, paused: false, elapsed: 0,
   next_capture: 600, queued: 0, rejected: 0, error: null, server: 'mock', update_reserved: false,
   diagnostics_enabled: false, diagnostics_queued: 0, diagnostics_error: null,
   location_enabled: false, location_pending: false, location_error: null,
@@ -107,6 +107,10 @@ try {
   await refresh();
   await check('tracking blocks Update now but allows Stop', () => button('Update now')?.disabled && !button('Stop tracking')?.disabled);
   state.tracking = false;
+  state.stopping = true;
+  await refresh();
+  await check('unsaved final interval blocks update, Start and sign-out but permits sign-in renewal', () => button('Update now')?.disabled && button('Start tracking')?.disabled && button('Sign out')?.disabled && !button('Renew sign-in')?.disabled && text().includes('Saving the final interval') && !text().includes('All records synced'));
+  state.stopping = false;
   state.queued = 1;
   await refresh();
   await check('queued records block Update now', () => button('Update now')?.disabled && text().includes('1 records waiting to sync'));
@@ -117,6 +121,9 @@ try {
   checkError = 'Offline';
   click('Check for updates');
   await check('failed check clears stale offer and leaves tracking usable', () => text().includes('Could not check for updates') && !button('Update now') && !text().includes('Version 0.1.2') && !button('Start tracking').disabled);
+  checkError = 'The update feed is unavailable or no release has been published. Ask your administrator to check update publication. You can keep using this version.';
+  click('Check for updates');
+  await check('unpublished feed explains administrator action without blaming worker connection', () => text().includes('no release has been published') && text().includes('administrator') && !text().includes('Check your connection') && !button('Start tracking').disabled);
   checkError = null;
   available = null;
   click('Check for updates');

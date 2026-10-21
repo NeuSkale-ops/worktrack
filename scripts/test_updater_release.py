@@ -20,6 +20,17 @@ def signature(version="0.1.2"):
 
 
 class ValidationTests(unittest.TestCase):
+    def test_unsigned_ci_cannot_receive_production_updates(self):
+        root = Path(__file__).resolve().parents[1]
+        overlay = json.loads((root / "deploy/windows-ci.json").read_text())
+        self.assertIs(overlay["bundle"]["createUpdaterArtifacts"], False)
+        self.assertEqual(overlay["plugins"]["updater"]["pubkey"], "")
+        self.assertEqual(overlay["plugins"]["updater"]["endpoints"], [])
+        # Release configuration must retain the real production trust anchor.
+        config = root / "agent/src-tauri/tauri.conf.json"
+        version = json.loads(config.read_text())["version"]
+        release.config(config, version)
+
     def test_stable_versions_only(self):
         for value in ("../1.2.3", "01.2.3", "1.2.3-rc.1", "v1.2.3", "1.2", "1.2.3\n"):
             with self.subTest(value=value), self.assertRaises(ValueError):

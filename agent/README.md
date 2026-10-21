@@ -3,7 +3,7 @@
 Windows-first Tauri 2 application with React and TypeScript.
 No projects, autostart, hidden tracking, keyboard hooks, or keylogging.
 The source includes an opt-in signed updater for release-configured builds.
-Ordinary development and unsigned CI builds do not have a trusted update key and cannot install updates.
+Development builds reject update checks. Unsigned CI installers clear the trusted update key and endpoints, so they cannot install updates.
 
 ## Worker sign-in and updates
 

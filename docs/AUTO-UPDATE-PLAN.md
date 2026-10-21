@@ -1,7 +1,7 @@
 # Windows auto-update plan
 
 Status: implementation plan recorded October 21, 2026.
-Source implementation now exists, but production updates remain disabled pending signing setup and real Windows upgrade acceptance.
+Source implementation and signed installer builds exist, but production updates remain unpublished pending real Windows upgrade acceptance.
 See `deploy/UPDATES.md` and `docs/VALIDATION.md` for current setup and observed checks.
 
 ## Recommended behavior
@@ -91,13 +91,14 @@ Do not implement forced downgrades in V1.
 
 A connected Windows environment is required for the full in-app upgrade and restart checks.
 GitHub Windows compilation, unit tests, and silent fresh installation are useful prerequisites but cannot replace those observations.
-These checks have not been run for an updater because the feature is not implemented yet.
+These real in-app upgrade checks have not been completed. Signed candidate builds and fresh-install smoke tests are recorded in `deploy/DOWNLOADS.md`; they do not satisfy this gate.
 
 ## Official references
 
 - Tauri updater documentation: https://v2.tauri.app/plugin/updater/
 - Windows publisher signing: https://v2.tauri.app/distribute/sign/windows/
 
-The repository now includes the updater plugin, while ordinary unsigned CI explicitly keeps `createUpdaterArtifacts` set to `false`.
-The committed public verification key is empty, so no production update installation is enabled.
-Already-installed releases and production hosting are unchanged by the source implementation.
+The repository now includes the updater plugin and the real public verification key.
+Ordinary unsigned CI explicitly clears its update key and endpoints and keeps `createUpdaterArtifacts` set to `false`.
+Signed production-channel installers have been distributed manually, but both update feeds returned HTTP 404 on October 21, 2026.
+A signed build, manual download, or GitHub release does not publish `latest.json` or prove an in-app upgrade.

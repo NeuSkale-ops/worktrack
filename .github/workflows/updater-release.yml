@@ -49,8 +49,11 @@ jobs:
           RELEASE_VERSION: ${{ inputs.version }}
           RELEASE_CHANNEL: ${{ inputs.channel }}
           RELEASE_NOTES: ${{ inputs.notes }}
+          PUBLISH_REQUESTED: ${{ inputs.publish }}
+          UPGRADE_EVIDENCE: ${{ inputs.upgrade_evidence }}
         shell: pwsh
         run: |
+          if ($env:PUBLISH_REQUESTED -eq 'true' -and $env:RELEASE_CHANNEL -eq 'production' -and [string]::IsNullOrWhiteSpace($env:UPGRADE_EVIDENCE)) { throw 'Production publication requires real Windows upgrade evidence. Use publish=false for a private candidate.' }
           python scripts/updater_release.py config --config agent/src-tauri/tauri.conf.json --version $env:RELEASE_VERSION --channel $env:RELEASE_CHANNEL --output deploy/windows-release.generated.json
           if ($LASTEXITCODE -ne 0) { throw 'Release configuration is not ready' }
           [IO.File]::WriteAllText("$pwd/release-notes.txt", $env:RELEASE_NOTES)

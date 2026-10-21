@@ -11,7 +11,7 @@ import './style.css';
 
 type Update = { version: string; current_version: string; body: string | null; date: string | null };
 type UpdateStatus = { phase: 'idle' | 'checking' | 'available' | 'downloading' | 'installing' | 'installed' | 'error' | 'unavailable'; downloaded: number; total: number | null; error: string | null };
-type Status = { authenticated: boolean; tracking: boolean; paused: boolean; elapsed: number; next_capture: number; queued: number; rejected: number; error: string | null; server: string; update: UpdateStatus; update_reserved: boolean; diagnostics_enabled: boolean; diagnostics_queued: number; diagnostics_error: string | null; location_enabled: boolean; location_pending: boolean; location_error: string | null };
+type Status = { authenticated: boolean; tracking: boolean; stopping: boolean; paused: boolean; elapsed: number; next_capture: number; queued: number; rejected: number; error: string | null; server: string; update: UpdateStatus; update_reserved: boolean; diagnostics_enabled: boolean; diagnostics_queued: number; diagnostics_error: string | null; location_enabled: boolean; location_pending: boolean; location_error: string | null };
 function App() {
   const [status, setStatus] = useState<Status>();
   const [error, setError] = useState('');
@@ -41,7 +41,7 @@ function App() {
     } catch (e) {
       const message = String(e);
       if (message.startsWith('UPDATER_UNAVAILABLE:')) setUnavailable(message.replace(/^UPDATER_UNAVAILABLE:\s*/, ''));
-      else setUpdateError(`Could not check for updates: ${message}. Check your connection and try again. You can keep tracking.`);
+      else setUpdateError(`Could not check for updates: ${message}. Try again later. You can keep tracking.`);
     }
     finally { checkPending.current = false; setChecking(false); }
   }
@@ -85,7 +85,7 @@ function App() {
   const updateBusy = checking || update?.phase === 'checking';
   const unavailableMessage = unavailable || (update?.phase === 'unavailable' ? update.error?.replace(/^UPDATER_UNAVAILABLE:\s*/, '') : '');
   const updateFailure = updateError || (update?.phase !== 'unavailable' ? update?.error : null);
-  const unsafeInstall = !status || status.tracking || status.queued > 0;
+  const unsafeInstall = !status || status.tracking || status.stopping || status.queued > 0;
   const signedIn = Boolean(status?.authenticated) && !renew;
   const locationReady = Boolean(status?.location_enabled);
   const clock = [elapsed / 3600, elapsed / 60 % 60, elapsed % 60].map(n => Math.floor(n).toString().padStart(2, '0')).join(':');
@@ -93,7 +93,7 @@ function App() {
   const nextShot = Math.ceil(status?.next_capture ?? 0);
   const stateClass = !status?.tracking ? 'off' : status.paused ? 'paused' : 'on';
   const stateText = !status?.tracking ? 'Not tracking' : status.paused ? 'Paused, screen locked' : 'Tracking';
-  const syncText = status?.queued ? `${status.queued} records waiting to sync` : 'All records synced';
+  const syncText = status?.stopping ? 'Saving the final interval. Keep WorkTrack open while records retry.' : status?.queued ? `${status.queued} records waiting to sync` : 'All records synced';
   const notice = <details className="facts" open={!signedIn}>
     <summary>What WorkTrack records</summary>
     <div className="cols">
@@ -152,7 +152,7 @@ function App() {
           <div className="acts"><button disabled={busy || installReserved} onClick={() => void run('open_location_settings')}>Open location settings</button><button disabled={busy || installReserved || status?.location_pending} onClick={() => void run('request_location')}>Try again</button></div>
         </div>}
         {!status?.tracking && <label className="consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /><span>I understand what is recorded, including location with each screenshot and diagnostic logs, and agree to it. Close private content before starting.</span></label>}
-        <button className={status?.tracking ? 'big stop' : 'primary big'} disabled={busy || installReserved || (!status?.tracking && (!consent || !locationReady))} onClick={() => void run(status?.tracking ? 'stop' : 'start', { consent })}>{status?.tracking ? 'Stop tracking' : 'Start tracking'}</button>
+        <button className={status?.tracking ? 'big stop' : 'primary big'} disabled={busy || installReserved || (!status?.tracking && (!consent || !locationReady || status?.stopping))} onClick={() => void run(status?.tracking ? 'stop' : 'start', { consent })}>{status?.tracking ? 'Stop tracking' : 'Start tracking'}</button>
         <p className="sync-line"><span>{syncText}</span></p>
         {Boolean(status?.rejected) && <p role="status" className="note">{status?.rejected} records refused by the server were set aside on this PC. Contact your manager.</p>}
         {(error || status?.error) && <p role="alert" className="error">{error || status?.error}</p>}
@@ -161,7 +161,7 @@ function App() {
           <div className="row"><span className={`req ${status?.diagnostics_error ? 'warn' : 'ok'}`} aria-hidden="true" /><div>Diagnostic logs<small>Required. {status?.diagnostics_queued ?? 0} diagnostic events waiting. {status?.diagnostics_error || 'Error codes only, kept 7 days.'}</small></div></div>
         </section>
         {notice}
-        <div className="account-actions"><button disabled={busy || installReserved || status?.tracking} onClick={() => setRenew(true)}>Renew sign-in</button><button disabled={busy || installReserved || status?.tracking || (status?.queued ?? 0) > 0} onClick={() => void run('logout')}>Sign out</button></div>
+        <div className="account-actions"><button disabled={busy || installReserved || status?.tracking} onClick={() => setRenew(true)}>Renew sign-in</button><button disabled={busy || installReserved || status?.tracking || status?.stopping || (status?.queued ?? 0) > 0} onClick={() => void run('logout')}>Sign out</button></div>
       </>}
       <section className="updates" aria-labelledby="updates-title">
         <h2 id="updates-title" className="sr-only">App updates</h2>
