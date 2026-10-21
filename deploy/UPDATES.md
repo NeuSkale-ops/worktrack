@@ -29,6 +29,15 @@ The release workflow uses a generated config overlay to enable updater artifacts
 Do not enable signing in the ordinary unsigned CI workflow.
 Do not grant frontend `updater:*` capabilities, because only the custom Rust commands enforce the tracking/data installation gate.
 
+### Signing trust boundary
+
+V1 uses one updater verification key for both staging and production builds.
+The separate endpoints, accounts, directories, and deployment approvals isolate publication, not cryptographic trust.
+An artifact signed for staging is therefore also trusted by the production public key if it is offered through a compromised production manifest.
+Treat staging signing approval as production-sensitive and do not sign unreviewed code for either channel.
+Separate signing keys and protected signing environments would be required for cryptographic channel isolation.
+This is a known limitation, not a claim that staging signatures are production-incompatible.
+
 ## Protected GitHub environments
 
 Create these environments before dispatching the workflow.

@@ -15,8 +15,14 @@ Observed cases included startup and six-hour scheduling, version/notes display, 
 This validates frontend interactions, not native updater behavior or Windows installation.
 All 15 Rust tests passed, including six updater tests for active/paused sessions, pending queue and stop markers, unreadable SQLite tables, exclusive mutation admission, quit admission, and reservation release after failure.
 Strict all-target Clippy passed.
+An independent cross-model source review found no blocking issue in the reservation race, frontend capability restrictions, signature/version checks, or default-disabled configuration.
+The shared staging/production signing-key trust limitation is documented in `deploy/UPDATES.md`.
 Linux CI run `39569652459` passed on source commit `86efd51`, including Go/PostgreSQL race tests, real API acceptance, dashboard tests/build, Docker builds, actual minisign boundary tests, Caddy update hosting, and the existing production HTTPS container journey.
 The real release CLI also refused the committed legacy/unconfigured build before generating a release overlay.
+Native Windows run `39569652544` passed all-target compilation, Cargo tests, unsigned NSIS release packaging, and artifact upload on the same source commit.
+Its `windows-nsis-unsigned` CI artifact is a development validation build with no updater key, not a new published updater-enabled release.
+Windows installer smoke run `39571471042` then passed per-user installation and five-second application process survival using that upstream artifact.
+That is native packaging/startup evidence, not a signed in-app upgrade or a worker-data-preservation test.
 Twelve release-plumbing tests passed for version validation, signature-version binding, archive restrictions, failed-public-download recovery, immutable artifacts, publication locking, interruption recovery, and rollback prevention.
 Four additional tests exercised the actual `minisign` CLI through the release verifier in an isolated Python 3.12 Alpine container.
 A public upstream Tauri test signature was accepted, while modified payload bytes with a recomputed checksum, a different valid public key, and forged trusted-comment/version metadata were rejected.
