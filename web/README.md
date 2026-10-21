@@ -46,6 +46,7 @@ Network responses are stubbed only in isolated client tests, never in the applic
 - Status, timeline URLs, and hours refresh every 30 seconds while the tab is visible.
 - Reporting dates and timeline times are UTC, matching the API.
 - The selected date chooses the Monday-to-Sunday reporting week and CSV export range.
+- A stale unfinished session can be recovered for the signed-in user after two minutes without a heartbeat. This requires confirmation and is only for a lost computer or app data. Stop and sync the original computer if available, since recovery can prevent its remaining queued records from syncing.
 - Screenshot deletion keeps recorded time, while time-block deletion deducts hours.
   Both require explicit confirmation and are available only for the signed-in person's own blocks.
 - Browser authentication uses the API's HttpOnly session cookie.

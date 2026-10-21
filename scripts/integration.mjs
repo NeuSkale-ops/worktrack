@@ -46,9 +46,13 @@ const token = worker.device_token;
 await request('/api/invites', { method: 'POST', token, body: { email: 'forbidden@example.test', role: 'manager' }, status: 403 });
 await request(`/api/timeline?user=${owner.user.id}&date=${new Date().toISOString().slice(0, 10)}`, { token, status: 403 });
 const sessionID = randomUUID();
-const start = new Date(Math.floor((Date.now() - 120_000) / 1000) * 1000);
+const start = new Date(Math.floor((Date.now() - 120_000) / 60_000) * 60_000);
 const end = new Date(start.getTime() + 60_000);
 await request('/api/sessions/start', { method: 'POST', token, body: { id: sessionID, started_at: start.toISOString() } });
+const currentSession = await request('/api/sessions/current', { token });
+assert.equal(currentSession.id, sessionID);
+assert.equal(currentSession.recoverable, false);
+await request('/api/sessions/recover', { method: 'POST', token, body: { id: sessionID }, status: 409 });
 await request('/api/heartbeat', { method: 'POST', token, body: {} });
 if (process.env.WT_TEST_R2_CONFIG === 'true') {
   const upload = await request('/api/uploads/screenshot-url', { method: 'POST', token, body: { block_id: randomUUID(), content_type: 'image/jpeg', size_bytes: 128 } });
@@ -65,6 +69,7 @@ await request('/api/blocks', { method: 'POST', token, body: { blocks: [block] } 
 await request('/api/blocks', { method: 'POST', token, body: { blocks: [{ ...block, active_seconds: 31 }] }, status: 409 });
 await request('/api/blocks', { method: 'POST', token, body: { blocks: [{ ...block, id: randomUUID(), active_seconds: 999 }] }, status: 400 });
 await request('/api/sessions/stop', { method: 'POST', token, body: { id: sessionID, stopped_at: end.toISOString() } });
+assert.equal(await request('/api/sessions/current', { token }), null);
 const date = start.toISOString().slice(0, 10);
 const timeline = await request(`/api/timeline?user=${worker.user.id}&date=${date}`, { browser: true });
 assert.equal(timeline.filter(row => row.id === block.id).length, 1, 'Retry must not duplicate a block');

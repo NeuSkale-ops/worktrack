@@ -14,6 +14,8 @@ Agent requests use Authorization: Bearer <device_token>.
 | POST | /api/auth/accept-invite | {token,name,password} | {ok:true}, then login |
 | POST | /api/invites | {email,role:"worker"} | {token,url,expires_at} |
 | GET | /api/team | | array of {id,email,name,role,working,last_seen_at} |
+| GET | /api/sessions/current | | own open session {id,started_at,recoverable}, or null |
+| POST | /api/sessions/recover | {id:UUID} | {ok:true}, explicitly closes own stale session |
 | POST | /api/sessions/start | {id?:UUID,started_at?:timestamp} | {id,started_at,stopped_at:null} |
 | POST | /api/sessions/stop | {id,stopped_at?:timestamp} | {ok:true} |
 | POST | /api/heartbeat | {} | {ok:true} |
@@ -36,6 +38,8 @@ Blocks must fit their session and must not overlap other blocks. Partial final b
 Screenshots must use the returned object_key. size_bytes must be 1..5242880 and PUT Content-Length must match it. An own session within the last seven days is required before requesting upload URLs. Unfinished upload reservations are capped at 200 per user. Abandoned uploads expire after eight days, beyond the seven-day accepted offline window. A block referencing a missing reservation returns HTTP 400 with `{code:"upload_expired",error:"screenshot upload reservation expired; request a new upload URL and upload again"}`. Retain JPEG bytes until block acknowledgment, clear the staged key on this code, then presign and PUT again using the same block UUID. Deleted uploads are retried durably after all five-minute PUT URLs expire.
 The agent captures exactly every 600 elapsed running seconds, never while stopped, not randomized.
 Session start and stop accept client timestamps for offline buffering, no more than 7 days old or 2 minutes in future.
+Recovery is for a lost computer or lost app data, not ordinary offline delivery. Stop and sync the original computer whenever possible.
+The dashboard requires confirmation. The API only recovers the explicitly supplied session ID belonging to the caller, with no heartbeat in the last two minutes. It closes at the latest uploaded block end (including deleted blocks), or the session start if empty, without adding tracked time. Recovery also works for sessions older than seven days. Active, foreign, closed, or stale-ID requests return 409. Unsynced records beyond the recovered endpoint may be rejected if the original computer later reconnects.
 Deleting one's block excludes its time and makes its screenshot inaccessible through this API.
 Date report ranges include both dates and default to today UTC.
 Timeline dates select whole blocks by their UTC start date, preserving the original block duration and activity without clipping.

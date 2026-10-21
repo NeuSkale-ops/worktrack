@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, ApiError, post } from './api'
-import type { Block, Hours, Invite, User, Worker } from './api'
+import type { Block, Hours, Invite, OpenSession, User, Worker } from './api'
 import { activity, duration, utcDate, weekRange } from './utils'
 
 const time = (value: string) =>
@@ -213,6 +213,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
   const [date, setDate] = useState(utcDate())
   const [blocks, setBlocks] = useState<Block[]>([])
   const [hours, setHours] = useState<Hours[]>([])
+  const [openSession, setOpenSession] = useState<OpenSession | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(true)
   const [updated, setUpdated] = useState<Date | null>(null)
@@ -224,17 +225,19 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
   const load = useCallback(async () => {
     const current = ++generation.current
     try {
-      const [members, timeline, report] = await Promise.all([
+      const [members, timeline, report, session] = await Promise.all([
         manager ? api<Worker[]>('/team') : Promise.resolve([]),
         api<Block[]>(
           `/timeline?${new URLSearchParams({ user: selected, date })}`,
         ),
         api<Hours[]>(`/reports/hours?${new URLSearchParams(weekRange(date))}`),
+        api<OpenSession | null>('/sessions/current'),
       ])
       if (generation.current !== current) return
       setTeam(members || [])
       setBlocks(timeline || [])
       setHours(report || [])
+      setOpenSession(session)
       setError('')
       setUpdated(new Date())
     } catch (error) {
@@ -278,6 +281,23 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
     try {
       await post('/auth/logout', {})
       onLogout()
+    } catch (error) {
+      setError(message(error))
+    } finally {
+      setActionBusy(false)
+    }
+  }
+  async function recoverSession() {
+    if (
+      !openSession ||
+      !confirm(
+        'Recover your unfinished session? Stop and sync the original computer first if it is available. Recovery closes the session at its last uploaded block. Unsynced records beyond that point may be rejected. Continue only if the original computer or its app data was lost.',
+      )
+    ) return
+    setActionBusy(true)
+    try {
+      await post('/sessions/recover', { id: openSession.id })
+      await load()
     } catch (error) {
       setError(message(error))
     } finally {
@@ -353,6 +373,30 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
           <div className="error" role="alert">
             {error} Existing data may be out of date.
           </div>
+        )}
+        {openSession && (
+          <section className="download-card" aria-labelledby="recovery-heading">
+            <div>
+              <h2 id="recovery-heading">Tracking session recovery</h2>
+              <p>
+                Your open session started{' '}
+                {new Date(openSession.started_at).toLocaleString()}. Stop and sync
+                the original computer if possible. Only recover here if that
+                computer or its app data was lost.
+              </p>
+              <p>
+                {openSession.recoverable
+                  ? 'No heartbeat received for at least two minutes. Recovery is available.'
+                  : 'Stop tracking on all computers and wait two minutes before recovering.'}
+              </p>
+            </div>
+            <button
+              disabled={actionBusy || busy || !openSession.recoverable}
+              onClick={() => void recoverSession()}
+            >
+              Recover my session
+            </button>
+          </section>
         )}
         <section className="download-card" aria-labelledby="download-heading">
           <div>

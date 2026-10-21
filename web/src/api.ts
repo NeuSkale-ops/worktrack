@@ -4,6 +4,11 @@ export interface User {
   email: string
   role: 'owner' | 'manager' | 'worker'
 }
+export interface OpenSession {
+  id: string
+  started_at: string
+  recoverable: boolean
+}
 export interface Worker extends User {
   working: boolean
   last_seen_at: string | null

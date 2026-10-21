@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 func validID(s string) bool { _, e := uuid.Parse(s); return e == nil }
@@ -76,6 +78,61 @@ func (a *app) start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"id": in.ID, "started_at": in.StartedAt, "stopped_at": nil})
+}
+func (a *app) openSession(w http.ResponseWriter, r *http.Request) {
+	var out struct {
+		ID          string    `json:"id"`
+		StartedAt   time.Time `json:"started_at"`
+		Recoverable bool      `json:"recoverable"`
+	}
+	e := a.db.QueryRow(r.Context(), `SELECT s.id::text,s.started_at,COALESCE(u.last_seen_at<now()-interval '2 minutes',true) FROM work_sessions s JOIN users u ON u.id=s.user_id WHERE s.user_id=$1 AND s.stopped_at IS NULL`, current(r).ID).Scan(&out.ID, &out.StartedAt, &out.Recoverable)
+	if errors.Is(e, pgx.ErrNoRows) {
+		writeJSON(w, 200, nil)
+		return
+	}
+	if e != nil {
+		fail(w, 500, "session unavailable")
+		return
+	}
+	writeJSON(w, 200, out)
+}
+func (a *app) recoverSession(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		ID string `json:"id"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if !validID(in.ID) {
+		fail(w, 400, "invalid session ID")
+		return
+	}
+	tx, e := a.db.Begin(r.Context())
+	if e != nil {
+		fail(w, 500, "session recovery failed")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	uid := current(r).ID
+	if _, e = tx.Exec(r.Context(), "SELECT id FROM users WHERE id=$1 FOR UPDATE", uid); e != nil {
+		fail(w, 500, "session recovery failed")
+		return
+	}
+	// Close only the explicitly selected stale session, without inventing tracked time.
+	tag, e := tx.Exec(r.Context(), `UPDATE work_sessions s SET stopped_at=GREATEST(s.started_at,(SELECT max(end_at) FROM blocks WHERE session_id=s.id)) WHERE s.id=$1 AND s.user_id=$2 AND s.stopped_at IS NULL AND NOT EXISTS(SELECT 1 FROM users WHERE id=$2 AND last_seen_at>=now()-interval '2 minutes')`, in.ID, uid)
+	if e != nil {
+		fail(w, 500, "session recovery failed")
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		fail(w, 409, "session is active, already closed, or not your session")
+		return
+	}
+	if tx.Commit(r.Context()) != nil {
+		fail(w, 500, "session recovery failed")
+		return
+	}
+	ok(w)
 }
 func (a *app) stop(w http.ResponseWriter, r *http.Request) {
 	var in struct {

@@ -107,6 +107,9 @@ Never put the age private key in GitHub Actions or on the production host.
 
 ## Updates and rollback
 
+For the session-recovery update, deploy the API before the dashboard or desktop agent. The dashboard uses the new session endpoints, and desktop sign-out relies on the API distinguishing unavailable authentication from an invalid token.
+The new report index is created during API startup. Allow startup time for the index build when the database already has substantial history.
+
 Record the source commit and resolved image digests for each approved deployment.
 Image tags here select maintained major lines, not immutable artifacts.
 Review and pin tested digests for a production release and schedule dependency updates.

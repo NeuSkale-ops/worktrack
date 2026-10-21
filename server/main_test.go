@@ -152,6 +152,17 @@ func TestPostgresHTTP(t *testing.T) {
 	}
 	login := request("POST", "/api/auth/login", map[string]any{"email": email, "password": password, "device_name": "test"}, 200)
 	bearer = login["device_token"].(string)
+	// An auth lookup failure must not masquerade as successful prior revocation.
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	failedLogout := httptest.NewRequest("POST", "/api/auth/logout", strings.NewReader("{}")).WithContext(canceled)
+	failedLogout.Header.Set("Authorization", "Bearer "+bearer)
+	failedResponse := httptest.NewRecorder()
+	handler.ServeHTTP(failedResponse, failedLogout)
+	if failedResponse.Code != 503 {
+		t.Fatalf("auth lookup failure: want 503 got %d", failedResponse.Code)
+	}
+	request("GET", "/api/auth/me", nil, 200)
 	var stored string
 	if e = db.QueryRow(ctx, "SELECT token_hash FROM credentials WHERE user_id=$1", uid).Scan(&stored); e != nil || stored == bearer || stored != digest(bearer) {
 		t.Fatal("raw bearer persisted")
@@ -220,6 +231,64 @@ func TestPostgresHTTP(t *testing.T) {
 		t.Fatal("cleanup reservation not removed")
 	}
 	request("DELETE", "/api/blocks/"+bid, nil, 200)
+	if request("GET", "/api/sessions/current", nil, 200) != nil {
+		t.Fatal("closed session must not be offered for recovery")
+	}
+	recoveryID := uuid.NewString()
+	recoveryStart := time.Now().UTC().Truncate(time.Second).Add(-5 * time.Minute)
+	request("POST", "/api/sessions/start", map[string]any{"id": recoveryID, "started_at": recoveryStart}, 200)
+	open := request("GET", "/api/sessions/current", nil, 200)
+	if open["id"] != recoveryID || open["recoverable"] != false {
+		t.Fatal("fresh session must not be recoverable")
+	}
+	request("POST", "/api/sessions/recover", map[string]string{"id": recoveryID}, 409)
+	request("POST", "/api/sessions/recover", map[string]string{"id": "invalid"}, 400)
+	recoveryBlock := block{ID: uuid.NewString(), SessionID: recoveryID, Start: recoveryStart, End: recoveryStart.Add(30 * time.Second), Active: 15}
+	request("POST", "/api/blocks", map[string]any{"blocks": []block{recoveryBlock}}, 200)
+	request("DELETE", "/api/blocks/"+recoveryBlock.ID, nil, 200)
+	if _, e = db.Exec(ctx, "UPDATE users SET last_seen_at=now()-interval '3 minutes' WHERE id=$1", uid); e != nil {
+		t.Fatal(e)
+	}
+	if request("GET", "/api/sessions/current", nil, 200)["recoverable"] != true {
+		t.Fatal("stale session must be recoverable")
+	}
+	otherUser, otherSession := uuid.NewString(), uuid.NewString()
+	if _, e = db.Exec(ctx, "INSERT INTO users(id,email,name,role,password_hash) VALUES($1,$2,'Other','worker','unused')", otherUser, otherUser+"@example.test"); e != nil {
+		t.Fatal(e)
+	}
+	defer func() {
+		_, _ = db.Exec(ctx, "DELETE FROM work_sessions WHERE user_id=$1", otherUser)
+		_, _ = db.Exec(ctx, "DELETE FROM users WHERE id=$1", otherUser)
+	}()
+	if _, e = db.Exec(ctx, "INSERT INTO work_sessions(id,user_id,started_at) VALUES($1,$2,$3)", otherSession, otherUser, recoveryStart); e != nil {
+		t.Fatal(e)
+	}
+	request("POST", "/api/sessions/recover", map[string]string{"id": otherSession}, 409)
+	request("POST", "/api/sessions/recover", map[string]string{"id": sid}, 409)
+	request("POST", "/api/sessions/recover", map[string]string{"id": recoveryID}, 200)
+	var recoveredAt time.Time
+	if e = db.QueryRow(ctx, "SELECT stopped_at FROM work_sessions WHERE id=$1", recoveryID).Scan(&recoveredAt); e != nil || !recoveredAt.Equal(recoveryBlock.End) {
+		t.Fatalf("recovery must preserve all block bounds without adding time: %v %v", recoveredAt, e)
+	}
+	// A stale recovery request must not close a newer session.
+	nextID := uuid.NewString()
+	request("POST", "/api/sessions/start", map[string]string{"id": nextID}, 200)
+	if _, e = db.Exec(ctx, "UPDATE users SET last_seen_at=now()-interval '3 minutes' WHERE id=$1", uid); e != nil {
+		t.Fatal(e)
+	}
+	request("POST", "/api/sessions/recover", map[string]string{"id": recoveryID}, 409)
+	if request("GET", "/api/sessions/current", nil, 200)["id"] != nextID {
+		t.Fatal("recovery affected another session")
+	}
+	// Empty sessions remain recoverable after the ordinary seven-day upload window.
+	oldStart := time.Now().UTC().Truncate(time.Second).Add(-8 * 24 * time.Hour)
+	if _, e = db.Exec(ctx, "UPDATE work_sessions SET started_at=$2 WHERE id=$1", nextID, oldStart); e != nil {
+		t.Fatal(e)
+	}
+	request("POST", "/api/sessions/recover", map[string]string{"id": nextID}, 200)
+	if e = db.QueryRow(ctx, "SELECT stopped_at FROM work_sessions WHERE id=$1", nextID).Scan(&recoveredAt); e != nil || !recoveredAt.Equal(oldStart) {
+		t.Fatalf("empty session must close at its start: %v %v", recoveredAt, e)
+	}
 	request("POST", "/api/auth/logout", map[string]any{}, 200)
 	request("GET", "/api/auth/me", nil, 401)
 }

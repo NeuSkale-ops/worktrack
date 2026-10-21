@@ -103,11 +103,13 @@ The server rejects data older than seven days.
 A permanent server rejection is retained, reported, and retried rather than silently dropping evidence.
 An administrator must resolve permanently rejected records before the FIFO queue can progress.
 There is no destructive purge button in V1.
+If the original computer or app data is lost while tracking, sign in to the dashboard and use Recover my session after its heartbeat has been absent for two minutes. Stop and sync the original computer instead whenever possible. Recovery closes at the last uploaded block and can cause later unsynced records from the original computer to be rejected.
 
 ## Credentials and transport
 
 Passwords are used only for login and are not written to disk.
 Device tokens are stored using the OS credential service, including Windows Credential Manager.
+Sign out revokes the device token on the server before removing its local copy. Network or server failures retain the saved sign-in for retry. An already expired or revoked token can still be removed locally.
 Failure to store a token fails login rather than falling back to plaintext.
 SQLite stores the server origin and normalized account email, never the token.
 The Renew sign-in action remains available with queued records and only permits the same server/account until those records sync.
