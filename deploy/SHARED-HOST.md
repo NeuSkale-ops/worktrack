@@ -2,8 +2,8 @@
 
 Host: `neuskale-app-ash` (`178.156.213.40`).
 Approved hostname: `worktrack.178.156.213.40.sslip.io`.
-API and web image source: `f60d9604852dbdfeffcc077992ccf3786cf029ca`.
-Deployed images: `worktrack-api:f60d960` and `worktrack-web:f60d960`.
+API and web image source: `fb46c07483dadb6309306ba087d5dcc33e113186`.
+Deployed images: `worktrack-api:fb46c07` and `worktrack-web:fb46c07`.
 Apply `compose.release.yaml` last to retain these images.
 
 ## Layout
@@ -74,4 +74,24 @@ Previous images are retained on the host as `worktrack-api:before-f60d960` and `
 For application rollback, append `/opt/worktrack/deploy/compose.rollback-before-f60d960.yaml` after all three configuration files above and recreate `web` first, then `api`, with `up -d --no-deps --no-build --pull never --wait`.
 This rollback overlay is host-only. The added index is backward compatible and does not require a database restore. Do not delete volumes or restore over production as an application rollback shortcut.
 
-The published Windows installer remains v0.1.2 with its original immutable bytes. The desktop logout fix in source has not shipped to workers and needs a separately versioned signed Windows release. No update manifest was published.
+At this audit-fix deployment, the published Windows installer remained v0.1.2 with its original immutable bytes. The subsequent diagnostics release below ships the desktop logout fix. No update manifest was published.
+
+## Diagnostic logging deployment, 2026-10-21
+
+Source `fb46c07483dadb6309306ba087d5dcc33e113186` was built for AMD64 off-host. The API was deployed at 12:38 UTC, then the dashboard at 12:58 UTC after the new installer was verified and published.
+Both containers are healthy with zero restarts/OOM events, original memory limits, correct revision labels, and no public API/database ports.
+The database and shared HTTPS proxy were not recreated. Tracking counts remained 2 users, 4 sessions, and 4 blocks.
+The new `agent_logs` table and indexes were created by the existing idempotent migration.
+
+Public HTTPS acceptance used the existing owner account and temporary browser/device sessions. Device-only log ingestion, retry deduplication, owner reads, free-form text rejection, session reads, and device/browser revocation passed.
+Only one synthetic diagnostic event was created and then removed by its exact owner/event UUID. No worker tracking records, passwords, or real sessions were changed.
+Installer/download and live owner-dashboard acceptance are recorded in `DOWNLOADS.md` and `docs/VALIDATION.md`.
+WorkTrack, OMS, and portal continued returning HTTPS 200. The immutable v0.1.2 installer checksum is unchanged, and no automatic-update manifest was published.
+
+Pre-deployment encrypted backup: `~/.local/share/worktrack-backups/20261021T123549Z-fb46c07.dump.age`.
+It was restored into isolated disposable PostgreSQL 17 with matching user/session/block counts.
+Its recovery identity is the existing mode-0600 `20261021T113204Z-f60d960.agekey` in that directory, not a new key. Preserve a protected offline recovery copy. Screenshot objects are not part of this database backup.
+
+For application rollback, append host-only `/opt/worktrack/deploy/compose.rollback-before-fb46c07.yaml` after the three normal Compose files. Recreate `web` first, then `api`, using `up -d --no-deps --no-build --pull never --wait`.
+This selects retained `worktrack-web:f60d960` and `worktrack-api:f60d960` images. The added log table is backward compatible and needs no database restore.
+The new manual v0.1.3 installer remains immutable even after server rollback. Diagnostics would receive 404/retry on the older API without blocking tracking. Do not repoint users to a downgrade or overwrite installer bytes.

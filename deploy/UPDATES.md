@@ -2,7 +2,8 @@
 
 Status: signing key configured locally and public verification key committed.
 Protected GitHub environments, public update hosting, and production manifest publication still require setup and acceptance.
-The source is prepared as version `0.1.2`, with the owner-provided public key and ordinary updater artifact generation disabled.
+The source is prepared as version `0.1.3`, with the owner-provided public key and ordinary updater artifact generation disabled.
+Manual installer distribution is recorded in `DOWNLOADS.md` and does not publish an automatic-update manifest.
 The owner key pair passed a real Tauri signing and independent minisign verification check on October 21, 2026.
 This probe does not prove a signed Windows installer or an in-app upgrade.
 This version change alone does not create a signed or published release.

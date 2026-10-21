@@ -140,7 +140,8 @@ Delivery failures appear in the diagnostic section, never as tracking failures o
 
 The API accepts at most six diagnostic requests per account per minute and 120 new events per account per hour. Diagnostic quota failures retry without affecting tracking.
 Owners see the newest 100 retained events. Logs older than seven days are hidden immediately and deleted hourly from the live database. Existing database backups follow their separate backup retention policy.
-This source feature is not present in the published immutable v0.1.2 installer. Deploy the updated API before shipping a newly versioned signed Windows installer.
+Diagnostics first ship in the manually installed v0.1.3 release; the immutable v0.1.2 installer does not include them.
+Deploy the updated API before distributing the new installer. Automatic-update manifest publication remains gated on real signed-upgrade and data-preservation acceptance.
 
 ## Release acceptance checklist
 

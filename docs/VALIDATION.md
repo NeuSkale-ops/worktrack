@@ -15,8 +15,28 @@ Chromium ran 22 desktop UI harness checks, including diagnostic opt-in/status/op
 The real dashboard passed eight owner and two checks each for manager/worker with mocked APIs at 375px width, including escaped names, explicit loading, empty results, and error recovery.
 The production-image HTTPS container journey passed real diagnostic ingestion/deduplication, owner-only reads, and free-form text rejection, plus the existing 25-worker tracking/report journey.
 
-This feature has not been deployed to the live host or included in a new signed Windows installer. The live source revision below and the immutable v0.1.2 download are unchanged.
-Pending diagnostics are intentionally lost on exit, overflow, or sign-in changes, and pre-sign-in/startup/crash errors are not remotely captured. No real Windows logging/capture journey or worker-data collection was performed.
+At this source checkpoint, the feature had not yet been deployed or included in a new signed Windows installer. The subsequent deployment below ships it without changing the immutable v0.1.2 download.
+Pending diagnostics are intentionally lost on exit, overflow, or sign-in changes, and pre-sign-in/startup/crash errors are not remotely captured.
+
+## Diagnostic deployment and signed Windows release
+
+On October 21, 2026, production API/dashboard images built from `fb46c07483dadb6309306ba087d5dcc33e113186` were deployed API first (12:38 UTC), then dashboard (12:58 UTC).
+An encrypted off-host pre-deployment database backup restored successfully into isolated PostgreSQL 17. Tracking counts remained 2 users, 4 sessions, and 4 blocks; the database/shared proxy were not recreated.
+
+Protected production-channel workflow `39600736918` passed native Windows Rust tests, signed NSIS build, exact installer fresh-install/startup smoke, and independent Ubuntu signature/version/checksum verification.
+The downloaded candidate was independently verified locally against the committed key before manual publication at `/downloads/0.1.3/WorkTrack_0.1.3_x64-setup.exe`.
+Its 3,890,558 bytes have SHA-256 `28e0a0b88a34292fa2272f53e2794ed98f0f0ec1f238d8e9f506d41a4aeb279f`.
+Both ordinary CI (`39600731183`) and Windows build/test CI (`39600731230`) passed for the same source.
+
+Public HTTPS tests passed actual device diagnostic ingestion, duplicate retries, owner reads, browser-upload rejection, free-form text rejection, authenticated session reads, and browser/device logout revocation.
+Only one synthetic log event was inserted and then removed by its exact owner/event UUID; no tracking records or passwords were changed.
+New installer bytes/checksum, attachment/cache headers, dashboard link, hidden/missing/directory 404s, and unchanged v0.1.2 checksum passed through public HTTPS.
+Live Chromium at 375px width passed existing-owner sign-in, v0.1.3 download link, no automatic diagnostic fetch, explicit log loading, real empty state, and no full-page horizontal overflow. Its session was revoked afterward.
+WorkTrack, OMS, and portal remained HTTPS 200, with healthy WorkTrack containers, zero restarts/OOM events, unchanged resource ceilings, and no new public ports.
+
+No automatic-update manifest was published, and `/updates/windows/x86_64/latest.json` still returns 404.
+Real worker capture/lock/suspend, installed-app diagnostic delivery, and old-to-new identity/data-preserving upgrade acceptance still need a connected Windows PC. Installer startup smoke is not proof of those journeys.
+Deployment, backup, rollback, installer signature, and consent instructions are recorded in `deploy/SHARED-HOST.md`, `deploy/DOWNLOADS.md`, and `agent/README.md`.
 
 ## Audit-fix deployment follow-up
 

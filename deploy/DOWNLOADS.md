@@ -1,6 +1,6 @@
 # Worker installer downloads
 
-The signed-in dashboard offers the production-configured Windows x64 installer at `/downloads/0.1.2/WorkTrack_0.1.2_x64-setup.exe`.
+The signed-in dashboard offers the production-configured Windows x64 installer at `/downloads/0.1.3/WorkTrack_0.1.3_x64-setup.exe`.
 Existing workers use their existing email and password after installation.
 A new invitation is not required.
 Tracking starts only when the worker clicks Start tracking.
@@ -15,17 +15,17 @@ No credentials or worker data are stored in the download directory.
 ## Standalone deployment
 
 The default `compose.yaml` mounts `/srv/worktrack-downloads` read-only, and its Caddy configuration serves `/downloads/*` as files rather than the React app.
-Place the verified installer and `SHA256SUMS` under `/srv/worktrack-downloads/0.1.2/` with mode 0755 directories and 0644 files.
+Place the verified installer and `SHA256SUMS` under `/srv/worktrack-downloads/0.1.3/` with mode 0755 directories and 0644 files.
 Use the standalone Compose commands in `README.md`. The shared-host image overlay below is not required.
 `deploy/test-web.sh` checks exact fixture bytes, attachment/cache headers, and 404 responses for missing, hidden, and directory paths against the standalone image.
 
 ## Shared host deployment
 
-Build the AMD64 web image away from the shared VM and load it as `worktrack-web:downloads-0.1.2`.
-Place the verified installer in `/srv/worktrack-downloads/0.1.2/WorkTrack_0.1.2_x64-setup.exe` with public read permissions.
+Build the AMD64 web image away from the shared VM and load it using the reviewed release tag in `compose.release.yaml`.
+Place the verified installer in `/srv/worktrack-downloads/0.1.3/WorkTrack_0.1.3_x64-setup.exe` with public read permissions.
 Keep the existing image and Caddy configuration available for rollback.
 Deploy the reviewed `Caddyfile.shared` and `compose.downloads.yaml` into `/opt/worktrack/deploy`.
-The overlay adds only a read-only installer directory mount and selects the new web image.
+The downloads overlay adds a read-only installer directory mount; the final release overlay selects the current web image.
 It does not change the API, database, outer HTTPS proxy, signing secrets, or screenshot storage.
 
 ```sh
@@ -70,6 +70,24 @@ Real Firefox React checks with mocked APIs covered owner, manager, and worker do
 These mocked browser checks do not constitute a live worker login or Windows tracking test.
 
 No production update manifest was published and no old-to-new in-app upgrade is claimed.
+
+## Diagnostic release v0.1.3, October 21, 2026
+
+Protected production-channel build `39600736918` succeeded from `fb46c07483dadb6309306ba087d5dcc33e113186`, including all 22 native Rust tests, exact signed-installer fresh install/startup on Windows, and independent Ubuntu minisign verification.
+The downloaded candidate was verified again locally against the committed public key, trusted version `0.1.3`, checksum, and production manifest URL before publishing only its manual-download files.
+
+Public installer: `/downloads/0.1.3/WorkTrack_0.1.3_x64-setup.exe`, 3,890,558 bytes.
+SHA-256: `28e0a0b88a34292fa2272f53e2794ed98f0f0ec1f238d8e9f506d41a4aeb279f`.
+The same directory contains `SHA256SUMS` and `WorkTrack_0.1.3_x64-setup.exe.sig`.
+The v0.1.2 directory and its original checksum are unchanged.
+
+AMD64 API/dashboard images `worktrack-api:fb46c07` and `worktrack-web:fb46c07` are deployed.
+Public HTTPS download acceptance passed for the new React entry point, existing-account login, anonymous executable bytes, exact checksum, attachment/immutable-cache headers, and hidden/missing/directory 404s. Acceptance credentials were revoked afterward.
+
+After manual installation, sign in and enable **Send diagnostic logs for this launch**. Owners expand **Desktop diagnostic logs (owner only)** on the dashboard and click **Load recent logs**.
+Only failures are logged, so a healthy run can leave this list empty. Consent resets on restart or successful sign-in. Pending diagnostics are memory-only; tracking records remain durable and separate.
+Real worker login/capture/lock/suspend and old-to-new identity/data-preserving upgrade acceptance remain unperformed. Windows publisher warnings remain possible because Tauri updater signatures are not Authenticode publisher signing.
+No production automatic-update manifest was published. This is a manual-install testing release.
 
 ## Auto-update scope
 
