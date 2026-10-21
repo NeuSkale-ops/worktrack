@@ -403,8 +403,9 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
         <section className="download-card" aria-labelledby="download-heading">
           <div>
             <h2 id="download-heading">Get WorkTrack for Windows</h2>
-            <p className="muted">Windows 64-bit · v0.1.3</p>
+            <p className="muted">Windows 64-bit · v0.1.4</p>
             <ol>
+              <li>If upgrading, stop tracking and wait until queued records have synced. Do not uninstall or remove app data.</li>
               <li>Download and install WorkTrack.</li>
               <li>Sign in with your existing account.</li>
               <li>Select Start tracking.</li>
@@ -419,15 +420,15 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
               separate from signed update verification.
             </p>
             <p className="muted">
-              <a href="/downloads/0.1.3/SHA256SUMS">View SHA-256 checksums</a>
+              <a href="/downloads/0.1.4/SHA256SUMS">View SHA-256 checksums</a>
             </p>
           </div>
           <a
             className="button primary"
-            href="/downloads/0.1.3/WorkTrack_0.1.3_x64-setup.exe"
+            href="/downloads/0.1.4/WorkTrack_0.1.4_x64-setup.exe"
             download
           >
-            Download for Windows 64-bit (v0.1.3)
+            Download for Windows 64-bit (v0.1.4)
           </a>
         </section>
         <section className="overview" aria-label="Work summary">
