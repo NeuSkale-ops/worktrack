@@ -45,9 +45,12 @@ This is a known limitation, not a claim that staging signatures are production-i
 
 Create these environments before dispatching the workflow.
 Do not put these credentials in repository-wide secrets.
-Restrict all three environments to the selected branch `main` only, require trusted reviewers, prevent self-review, and disable administrator bypass where the repository plan permits it.
-Protect `main` and require review of workflow, script, dependency, and public-key changes before merge.
-If the repository plan cannot enforce environment approval and branch restrictions, do not configure release secrets or run this workflow.
+Restrict all three environments to the selected branch `main` only.
+For this solo project, the owner explicitly approved proceeding without required reviewers on October 21, 2026.
+Keep release dispatch manual and signing credentials scoped to `updater-release`, never repository-wide secrets.
+Anyone who can modify trusted release code or workflows can misuse these credentials, so this setup does not provide independent approval or protection against a compromised owner account.
+Use required reviewers, prevent self-review, and disable administrator bypass if a future repository plan and team support those controls.
+Verify the environment's `main` branch restriction before configuring release secrets or running this workflow.
 
 | Environment | Environment secrets | Environment variables |
 | --- | --- | --- |
