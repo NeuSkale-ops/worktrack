@@ -14,8 +14,8 @@ This records observed checks, not a production-readiness claim.
 - The browser created an invitation, logged out, accepted that invitation, and signed in as the new worker.
   The worker view hid the team and invite controls and displayed only that worker's report.
 - Desktop frontend TypeScript and production build passed.
-- Rust desktop code compiled on macOS and seven tests passed.
-  These cover stopped/locked/suspended scheduling, fixed 600-second capture boundaries, whole-second partial stops, SQLite transaction rollback, queue persistence and retrying finalized blocks without uploading the screenshot again.
+- Rust desktop code compiled on macOS and eight tests passed.
+  These cover stopped/locked/suspended scheduling, fixed 600-second capture boundaries, whole-second partial stops, SQLite transaction rollback, queue persistence, retrying finalized blocks without uploading the screenshot again, and reuploading retained evidence after an expired upload reservation.
 - Go production Docker image built successfully.
 - Dashboard Docker image built and its nonroot, read-only Caddy startup, SPA fallback, HTTPS, health and public redirect smoke tests passed.
 - A review reproduced a 48-hour offline upload failure against real PostgreSQL.
@@ -23,6 +23,14 @@ This records observed checks, not a production-readiness claim.
   A regression now checks that delayed screenshot finalization survives cleanup.
 - Deployment worker validated Compose and Caddy configuration and shell syntax.
   A hardened Caddy smoke test caught and fixed an incompatible file capability before commit.
+
+## GitHub CI
+
+- Linux CI passed on commit `c0f2f98`, including real database tests, HTTP acceptance and Docker/Caddy smoke tests.
+- Windows compilation and NSIS packaging are running in GitHub Actions.
+  Do not interpret portable macOS compilation as a successful Windows build.
+- Offline-recovery changes after that CI snapshot were rerun locally with all six Go tests against PostgreSQL and all eight Rust tests passing.
+  The latest pushed revision must also pass CI before release.
 
 ## Test limitations
 
