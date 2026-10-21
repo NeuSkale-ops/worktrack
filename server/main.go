@@ -52,6 +52,7 @@ type user struct {
 type identity struct {
 	user
 	hash string
+	kind string
 }
 type contextKey struct{}
 
@@ -94,6 +95,7 @@ func main() {
 		a.bucket = os.Getenv("R2_BUCKET")
 	}
 	go a.cleanupUploads(ctx)
+	go a.cleanupAgentLogs(ctx)
 	srv := &http.Server{Addr: env("LISTEN_ADDR", ":8080"), Handler: a.routes(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 	go func() {
 		<-ctx.Done()
@@ -264,6 +266,7 @@ func (a *app) auth(next http.HandlerFunc) http.HandlerFunc {
 		}
 		var i identity
 		i.hash = digest(value)
+		i.kind = kind
 		e := a.db.QueryRow(r.Context(), "SELECT u.id::text,u.email,u.name,u.role FROM credentials c JOIN users u ON u.id=c.user_id WHERE c.token_hash=$1 AND c.kind=$2 AND c.expires_at>now()", i.hash, kind).Scan(&i.ID, &i.Email, &i.Name, &i.Role)
 		if errors.Is(e, pgx.ErrNoRows) {
 			fail(w, 401, "invalid or expired session")
@@ -288,7 +291,7 @@ func (a *app) routes() http.Handler {
 	m.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { ok(w) })
 	m.HandleFunc("POST /api/auth/login", a.login)
 	m.HandleFunc("POST /api/auth/accept-invite", a.acceptInvite)
-	for path, h := range map[string]http.HandlerFunc{"GET /api/auth/me": func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, current(r).user) }, "POST /api/auth/logout": a.logout, "POST /api/invites": a.invite, "GET /api/team": a.team, "GET /api/sessions/current": a.openSession, "POST /api/sessions/recover": a.recoverSession, "POST /api/sessions/start": a.start, "POST /api/sessions/stop": a.stop, "POST /api/heartbeat": a.heartbeat, "POST /api/uploads/screenshot-url": a.upload, "POST /api/blocks": a.blocks, "DELETE /api/blocks/{id}/screenshot": a.deleteScreenshot, "DELETE /api/blocks/{id}": a.deleteBlock, "GET /api/timeline": a.timeline, "GET /api/reports/hours": a.hours, "GET /api/reports/hours.csv": a.hours} {
+	for path, h := range map[string]http.HandlerFunc{"GET /api/auth/me": func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, current(r).user) }, "POST /api/auth/logout": a.logout, "POST /api/invites": a.invite, "GET /api/team": a.team, "POST /api/agent/logs": a.ingestAgentLogs, "GET /api/agent/logs": a.agentLogs, "GET /api/sessions/current": a.openSession, "POST /api/sessions/recover": a.recoverSession, "POST /api/sessions/start": a.start, "POST /api/sessions/stop": a.stop, "POST /api/heartbeat": a.heartbeat, "POST /api/uploads/screenshot-url": a.upload, "POST /api/blocks": a.blocks, "DELETE /api/blocks/{id}/screenshot": a.deleteScreenshot, "DELETE /api/blocks/{id}": a.deleteBlock, "GET /api/timeline": a.timeline, "GET /api/reports/hours": a.hours, "GET /api/reports/hours.csv": a.hours} {
 		m.HandleFunc(path, a.auth(h))
 	}
 	return a.security(m)

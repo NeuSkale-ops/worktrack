@@ -34,3 +34,12 @@ CREATE TABLE IF NOT EXISTS uploads (
  object_key text NOT NULL, expires_at timestamptz NOT NULL
 );
 CREATE INDEX IF NOT EXISTS uploads_user ON uploads(user_id);
+CREATE TABLE IF NOT EXISTS agent_logs (
+ user_id uuid NOT NULL REFERENCES users(id), id uuid NOT NULL,
+ occurred_at timestamptz NOT NULL, received_at timestamptz NOT NULL DEFAULT now(),
+ version text NOT NULL CHECK(version ~ '^[0-9]{1,5}\.[0-9]{1,5}\.[0-9]{1,5}$'),
+ code text NOT NULL CHECK(code IN ('login_failed','sync_failed','capture_failed','activity_failed','queue_failed','heartbeat_failed','update_check_failed','update_install_failed')),
+ status integer CHECK(status BETWEEN 100 AND 599), PRIMARY KEY(user_id,id)
+);
+CREATE INDEX IF NOT EXISTS agent_logs_time ON agent_logs(occurred_at DESC,id DESC);
+CREATE INDEX IF NOT EXISTS agent_logs_user_received ON agent_logs(user_id,received_at);
