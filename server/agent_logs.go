@@ -20,6 +20,7 @@ var agentLogCodes = map[string]logDefinition{
 	"heartbeat_failed":      {"warn", "Tracking heartbeat failed."},
 	"update_check_failed":   {"warn", "Update check failed."},
 	"update_install_failed": {"error", "Update download or installation failed."},
+	"sync_rejected":         {"error", "A record refused by the server for 24 hours was set aside on the device."},
 }
 var agentVersion = regexp.MustCompile(`^[0-9]{1,5}\.[0-9]{1,5}\.[0-9]{1,5}$`)
 

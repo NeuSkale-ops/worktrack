@@ -18,6 +18,7 @@ pub enum Code {
     HeartbeatFailed,
     UpdateCheckFailed,
     UpdateInstallFailed,
+    SyncRejected,
 }
 
 #[derive(Clone, Serialize)]

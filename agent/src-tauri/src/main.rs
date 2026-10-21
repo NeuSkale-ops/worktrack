@@ -20,7 +20,12 @@ use tauri::{
     Manager, State,
 };
 
-const SERVER_URL: &str = "https://worktrack.178.156.213.40.sslip.io";
+// Override at build time with WORKTRACK_SERVER_URL for staging or a new domain.
+// The updater endpoint in tauri.conf.json must be changed separately.
+const SERVER_URL: &str = match option_env!("WORKTRACK_SERVER_URL") {
+    Some(url) => url,
+    None => "https://worktrack.178.156.213.40.sslip.io",
+};
 
 fn queue_matches_server(saved_server: &str, pending: usize) -> bool {
     pending == 0 || saved_server == SERVER_URL
@@ -56,6 +61,7 @@ struct Status {
     elapsed: f64,
     next_capture: f64,
     queued: usize,
+    rejected: usize,
     error: Option<String>,
     server: String,
     update_reserved: bool,
@@ -96,6 +102,7 @@ fn snapshot_status(shared: &Shared) -> Result<Status, String> {
         elapsed: r.elapsed,
         next_capture: (r.next_capture - r.elapsed).max(0.0),
         queued: r.queue.count(),
+        rejected: r.queue.rejected_count(),
         error: r.error.clone(),
         server: r.server.clone(),
         update_reserved: r.update_reserved,
@@ -498,6 +505,18 @@ fn sync_one(shared: &Shared) -> Result<bool, String> {
                     .into(),
             );
         }
+        if permanent_rejection(status) {
+            let mut r = shared.lock().map_err(|e| e.to_string())?;
+            if hold_or_reject(&mut r, item.id, status.as_u16(), utc_now())? {
+                r.error = Some(format!(
+                    "The server refused one record ({status}) for 24 hours. It was set aside locally so newer records can sync. Contact your manager."
+                ));
+                return Ok(true);
+            }
+            return Err(format!(
+                "Sync refused ({status}). Retrying. If this persists for 24 hours the record is set aside so newer records can sync."
+            ));
+        }
         return Err(format!(
             "Sync rejected ({}). Records retained. Sign-in may need renewal.",
             status
@@ -505,7 +524,41 @@ fn sync_one(shared: &Shared) -> Result<bool, String> {
     }
     let mut r = shared.lock().map_err(|e| e.to_string())?;
     r.queue.ack(item.id)?;
+    r.queue.set(HEAD_REJECTED, "")?;
     r.error = None;
+    Ok(true)
+}
+const HEAD_REJECTED: &str = "head_rejected";
+/// Hold time before a refused record is set aside. A rolled-back or misconfigured
+/// API can also answer 4xx, so valid data gets a day for the server to be fixed.
+const REJECT_AFTER_SECONDS: i64 = 24 * 3600;
+fn permanent_rejection(status: reqwest::StatusCode) -> bool {
+    matches!(status.as_u16(), 400 | 403 | 404 | 409 | 410 | 413 | 422)
+}
+/// Returns true when the head item was moved to the local rejected table.
+/// The clock runs per refusal streak, not per item, and any accepted record
+/// resets it. Once refusals persist a day, later refused items (often blocks of
+/// an already-refused session) are set aside without another day's wait.
+fn hold_or_reject(
+    r: &mut Runtime,
+    id: i64,
+    status: u16,
+    now: chrono::DateTime<Utc>,
+) -> Result<bool, String> {
+    let first = r
+        .queue
+        .get(HEAD_REJECTED)
+        .and_then(|at| chrono::DateTime::parse_from_rfc3339(&at).ok())
+        .map(|at| at.with_timezone(&Utc));
+    let Some(first) = first else {
+        r.queue.set(HEAD_REJECTED, &now.to_rfc3339())?;
+        return Ok(false);
+    };
+    if (now - first).num_seconds() < REJECT_AFTER_SECONDS {
+        return Ok(false);
+    }
+    r.queue.reject(id, status)?;
+    r.diagnostics.record(LogCode::SyncRejected, Some(status));
     Ok(true)
 }
 fn icon(on: bool) -> tauri::image::Image<'static> {
@@ -943,6 +996,43 @@ mod tests {
         assert_eq!(r.queue.count(), 2);
         stop_runtime(&mut r).unwrap();
         assert_eq!(r.queue.count(), 2);
+    }
+    #[test]
+    fn refused_head_is_held_for_a_day_then_set_aside() {
+        let mut r = runtime();
+        r.diagnostics.enabled = true;
+        r.queue
+            .push("/api/blocks", &json!({"id":"bad"}), None)
+            .unwrap();
+        r.queue
+            .push("/api/blocks", &json!({"id":"good"}), None)
+            .unwrap();
+        let id = r.queue.first().unwrap().unwrap().id;
+        let t0 = utc_now();
+        assert!(!hold_or_reject(&mut r, id, 409, t0).unwrap());
+        assert!(!hold_or_reject(&mut r, id, 409, t0 + chrono::Duration::hours(23)).unwrap());
+        assert_eq!(r.queue.count(), 2);
+        assert!(hold_or_reject(&mut r, id, 409, t0 + chrono::Duration::hours(24)).unwrap());
+        assert_eq!((r.queue.count(), r.queue.rejected_count()), (1, 1));
+        assert!(r.queue.first().unwrap().unwrap().json.contains("good"));
+        assert_eq!(r.diagnostics.count(), 1);
+        // The streak continues: the next refused record is set aside at once.
+        let next = r.queue.first().unwrap().unwrap().id;
+        assert!(hold_or_reject(&mut r, next, 400, t0 + chrono::Duration::hours(25)).unwrap());
+        assert_eq!(r.queue.count(), 0);
+        // An accepted record clears the streak, so a later refusal waits again.
+        r.queue.set(HEAD_REJECTED, "").unwrap();
+        r.queue
+            .push("/api/blocks", &json!({"id":"later"}), None)
+            .unwrap();
+        let later = r.queue.first().unwrap().unwrap().id;
+        assert!(!hold_or_reject(&mut r, later, 400, t0 + chrono::Duration::hours(48)).unwrap());
+        assert!(permanent_rejection(reqwest::StatusCode::CONFLICT));
+        assert!(!permanent_rejection(reqwest::StatusCode::UNAUTHORIZED));
+        assert!(!permanent_rejection(reqwest::StatusCode::TOO_MANY_REQUESTS));
+        assert!(!permanent_rejection(
+            reqwest::StatusCode::SERVICE_UNAVAILABLE
+        ));
     }
     #[test]
     fn missing_activity_fails_closed() {

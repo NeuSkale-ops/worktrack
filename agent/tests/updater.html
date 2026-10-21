@@ -18,7 +18,7 @@ window.setInterval = (callback, delay, ...args) => {
 const offer = { version: '0.1.2', current_version: '0.1.1', body: 'Test release notes', date: null };
 const state = {
   authenticated: true, tracking: false, paused: false, elapsed: 0,
-  next_capture: 600, queued: 0, error: null, server: 'mock', update_reserved: false,
+  next_capture: 600, queued: 0, rejected: 0, error: null, server: 'mock', update_reserved: false,
   diagnostics_enabled: false, diagnostics_queued: 0, diagnostics_error: null,
   location_enabled: false, location_pending: false, location_error: null,
   update: { phase: 'idle', downloaded: 0, total: null, error: null },

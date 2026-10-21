@@ -34,7 +34,7 @@ impl Queue {
     }
     pub fn open(path: &Path) -> Result<Self, String> {
         let c = Connection::open(path).map_err(|e| e.to_string())?;
-        c.execute_batch("PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA max_page_count=73728; CREATE TABLE IF NOT EXISTS queue(id INTEGER PRIMARY KEY, path TEXT NOT NULL, json TEXT NOT NULL, image BLOB); CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE INDEX IF NOT EXISTS queue_location_pending ON queue(id) WHERE json_extract(json,'$.blocks[0].location.status')='pending';").map_err(|e| e.to_string())?;
+        c.execute_batch("PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA max_page_count=73728; CREATE TABLE IF NOT EXISTS queue(id INTEGER PRIMARY KEY, path TEXT NOT NULL, json TEXT NOT NULL, image BLOB); CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS rejected(id INTEGER PRIMARY KEY, path TEXT NOT NULL, json TEXT NOT NULL, image BLOB, status INTEGER NOT NULL, rejected_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP); CREATE INDEX IF NOT EXISTS queue_location_pending ON queue(id) WHERE json_extract(json,'$.blocks[0].location.status')='pending';").map_err(|e| e.to_string())?;
         Ok(Self(c))
     }
     pub fn push(&self, path: &str, json: &Value, image: Option<&[u8]>) -> Result<(), String> {
@@ -137,11 +137,49 @@ impl Queue {
             .map(|_| ())
             .map_err(|e| e.to_string())
     }
+    /// Moves an item the server permanently refused out of the FIFO so later
+    /// records can sync. The row is kept locally for support, never resent.
+    pub fn reject(&self, id: i64, status: u16) -> Result<(), String> {
+        self.atomic(|q| {
+            q.0.execute("INSERT INTO rejected(path,json,image,status) SELECT path,json,image,?2 FROM queue WHERE id=?1", params![id, status]).map_err(|e| e.to_string())?;
+            // shortcut: keep only the newest 20 (screenshots are ~300 KB) inside the SQLite page cap.
+            q.0.execute("DELETE FROM rejected WHERE id NOT IN (SELECT id FROM rejected ORDER BY id DESC LIMIT 20)", []).map_err(|e| e.to_string())?;
+            q.ack(id)
+        })
+    }
+    pub fn rejected_count(&self) -> usize {
+        self.0
+            .query_row("SELECT COUNT(*) FROM rejected", [], |r| r.get(0))
+            .unwrap_or(0)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn rejected_item_leaves_fifo_and_is_retained() {
+        let q = Queue::open(Path::new(":memory:")).unwrap();
+        q.push("/api/blocks", &serde_json::json!({"id":"bad"}), Some(&[9]))
+            .unwrap();
+        q.push("/stop", &serde_json::json!({"id":"next"}), None)
+            .unwrap();
+        let bad = q.first().unwrap().unwrap();
+        q.reject(bad.id, 409).unwrap();
+        assert_eq!(q.first().unwrap().unwrap().path, "/stop");
+        assert_eq!((q.count(), q.rejected_count()), (1, 1));
+        let (status, image): (i64, Vec<u8>) =
+            q.0.query_row("SELECT status,image FROM rejected", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!((status, image), (409, vec![9]));
+        for _ in 0..120 {
+            q.push("/x", &serde_json::json!({}), None).unwrap();
+            q.reject(q.first().unwrap().unwrap().id, 400).unwrap();
+        }
+        assert_eq!(q.rejected_count(), 20);
+    }
     #[test]
     fn rollback_keeps_lifecycle_and_queue_together() {
         let q = Queue::open(Path::new(":memory:")).unwrap();

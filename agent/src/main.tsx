@@ -6,7 +6,7 @@ import './style.css';
 
 type Update = { version: string; current_version: string; body: string | null; date: string | null };
 type UpdateStatus = { phase: 'idle' | 'checking' | 'available' | 'downloading' | 'installing' | 'installed' | 'error' | 'unavailable'; downloaded: number; total: number | null; error: string | null };
-type Status = { authenticated: boolean; tracking: boolean; paused: boolean; elapsed: number; next_capture: number; queued: number; error: string | null; server: string; update: UpdateStatus; update_reserved: boolean; diagnostics_enabled: boolean; diagnostics_queued: number; diagnostics_error: string | null; location_enabled: boolean; location_pending: boolean; location_error: string | null };
+type Status = { authenticated: boolean; tracking: boolean; paused: boolean; elapsed: number; next_capture: number; queued: number; rejected: number; error: string | null; server: string; update: UpdateStatus; update_reserved: boolean; diagnostics_enabled: boolean; diagnostics_queued: number; diagnostics_error: string | null; location_enabled: boolean; location_pending: boolean; location_error: string | null };
 function App() {
   const [status, setStatus] = useState<Status>();
   const [error, setError] = useState('');
@@ -86,7 +86,7 @@ function App() {
       <output>{Math.floor(elapsed / 3600).toString().padStart(2, '0')}:{Math.floor(elapsed / 60 % 60).toString().padStart(2, '0')}:{Math.floor(elapsed % 60).toString().padStart(2, '0')}</output>
       {status.tracking ? <p>Next screenshot in {Math.ceil(status.next_capture)} elapsed seconds</p> : <label className="consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} />I understand and agree to the monitoring described above.</label>}
       <button className={status.tracking ? 'stop' : ''} disabled={busy || installReserved || (!status.tracking && !consent)} onClick={() => void run(status.tracking ? 'stop' : 'start', { consent })}>{status.tracking ? 'Stop tracking' : 'Start tracking'}</button>
-      <p>{status.queued} records waiting to sync</p><button className="secondary" disabled={busy || installReserved || status.tracking} onClick={() => setRenew(true)}>Renew sign-in</button><button className="secondary" disabled={busy || installReserved || status.tracking || status.queued > 0} onClick={() => void run('logout')}>Sign out</button>
+      <p>{status.queued} records waiting to sync</p>{status.rejected > 0 && <p role="status">{status.rejected} records refused by the server were set aside on this PC. Contact your manager.</p>}<button className="secondary" disabled={busy || installReserved || status.tracking} onClick={() => setRenew(true)}>Renew sign-in</button><button className="secondary" disabled={busy || installReserved || status.tracking || status.queued > 0} onClick={() => void run('logout')}>Sign out</button>
     </section>}
     {(error || status?.error) && <p role="alert" className="error">{error || status?.error}</p>}
     <section className="disclosure" aria-labelledby="location-title">
