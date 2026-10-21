@@ -9,6 +9,7 @@ const role = new URLSearchParams(location.search).get('role') || 'owner';
 if (!['owner', 'manager', 'worker'].includes(role)) throw new Error('Unknown test role');
 const user = { id: '00000000-0000-4000-8000-000000000001', email: 'fixture@example.test', name: 'Fixture', role };
 let logCalls = 0;
+let dayCalls = 0;
 let mode = 'events';
 const screenshotCanvas = document.createElement('canvas');
 screenshotCanvas.width = screenshotCanvas.height = 1;
@@ -16,7 +17,8 @@ const screenshotImage = screenshotCanvas.toDataURL('image/jpeg');
 window.fetch = async input => {
   const path = String(input);
   if (path === '/api/auth/me') return Response.json(user);
-  if (path === '/api/team') return Response.json([user]);
+  if (path === '/api/team') return Response.json([user, { id: '00000000-0000-4000-8000-000000000009', email: 'w@example.test', name: 'Second Worker', role: 'worker', working: true, last_seen_at: null }]);
+  if (path.startsWith('/api/reports/day?')) { dayCalls++; if (role === 'worker') throw new Error('Workers must not fetch the team day report'); return Response.json([{ user_id: user.id, start_at: '2026-10-21T12:00:00Z', end_at: '2026-10-21T12:10:00Z', screenshot: true }, { user_id: '00000000-0000-4000-8000-000000000009', start_at: '2026-10-21T09:00:00Z', end_at: '2026-10-21T09:30:00Z', screenshot: false }]); }
   if (path.startsWith('/api/reports/hours?')) return Response.json([]);
   if (path.startsWith('/api/timeline?')) return Response.json([
     { id:'one', user_id:user.id, start_at:'2026-10-21T12:00:00Z', end_at:'2026-10-21T12:01:00Z', duration_seconds:60, active_seconds:30, screenshot_url:screenshotImage, screenshot_status:'available', location:{status:'available',captured_at:'2026-10-21T12:01:00Z',latitude:0,longitude:0,accuracy_m:25,observed_at:'2026-10-21T12:01:01Z'}, application_usage:[{app:'chrome.exe',milliseconds:60000}] },
@@ -54,7 +56,18 @@ async function check(description, predicate) {
 try {
   await import('/src/main.tsx');
   await check('real dashboard loaded', () => Boolean(document.querySelector('.page-heading')));
-  await check('foreground minutes aggregate for selected worker/day', () => [...document.querySelectorAll('[aria-labelledby="applications-heading"] tbody tr')].some(row => row.innerText.includes('chrome.exe') && row.innerText.includes('1.50')));
+  await check('foreground minutes aggregate for selected worker/day', () => [...document.querySelectorAll('[aria-labelledby="applications-heading"] .app-row')].some(row => row.innerText.includes('chrome.exe') && row.innerText.includes('1.50')));
+  await check('screenshot tiles are grouped under an hour heading', () => [...document.querySelectorAll('.hourgrp h3')].some(h => /\d\d:00/.test(h.textContent)) && document.querySelectorAll('.tile').length === 5);
+  if (role === 'worker') {
+    await check('worker sees no team ribbon and makes no team day request', () => !document.querySelector('.ribbons') && dayCalls === 0);
+  } else {
+    await check('manager ribbon renders one row per person with tracked segments and screenshot ticks', () => document.querySelectorAll('.rrow').length === 2 && document.querySelectorAll('.rrow .seg').length >= 2 && document.querySelectorAll('.rrow .shot').length === 1);
+    await check('ribbon row is keyboard-operable and selects the person', () => { const row = [...document.querySelectorAll('.rrow')].find(r => r.innerText.includes('Second Worker')); row?.click(); return row?.getAttribute('aria-pressed') === 'true'; });
+    [...document.querySelectorAll('.rrow')].find(r => r.innerText.includes('Fixture')).click();
+    await check('selection returns to own row', () => [...document.querySelectorAll('.rrow')].find(r => r.innerText.includes('Fixture'))?.getAttribute('aria-pressed') === 'true' && document.querySelectorAll('.tile').length === 5);
+    await check('selected day finished reloading', () => document.querySelector('[aria-labelledby="day-heading"]')?.getAttribute('aria-busy') === 'false' && document.querySelectorAll('.tile').length === 5);
+    await wait(150);
+  }
   await check('location shows zero coordinates, accuracy and honest missing states', () => document.body.innerText.includes('0.00000, 0.00000 (accuracy ±25 m)') && document.body.innerText.includes('Screenshot location: unavailable') && document.body.innerText.includes('Screenshot location: sharing off'));
   await check('stored screenshot image decodes and renders', () => document.querySelector('.screenshot img')?.naturalWidth === 1);
   await check('ordinary time blocks explain screenshot scheduling', () => document.body.innerText.includes('No screenshot captured (30s time block).') && document.body.innerText.includes('every 10 running minutes'));

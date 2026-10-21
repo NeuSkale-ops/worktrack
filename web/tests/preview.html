@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Dashboard preview (mock API)</title></head>
+<body><div id="root"></div>
+<script type="module">
+// Dev-only visual preview with sample data: ?role=owner|worker or ?auth=1 for sign-in.
+const params = new URLSearchParams(location.search);
+const role = params.get('role') || 'owner';
+const today = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+const at = (h, m) => { const d = new Date(`${today}T00:00:00`); d.setHours(h, m); return d.toISOString(); };
+const me = { id: 'u1', email: 'priya@company.com', name: role === 'owner' ? 'Priya Raman' : 'Arjun Kumar', role };
+const people = [
+  { id: 'u1', email: 'priya@company.com', name: me.name, role, working: role !== 'owner', last_seen_at: null },
+  { id: 'u2', email: 'maria@company.com', name: 'Maria Fernandes', role: 'worker', working: true, last_seen_at: null },
+  { id: 'u3', email: 'david@company.com', name: 'David Okafor', role: 'worker', working: true, last_seen_at: null },
+  { id: 'u4', email: 'sofia@company.com', name: 'Sofia Lindqvist', role: 'worker', working: false, last_seen_at: null },
+  { id: 'u5', email: 'ben@company.com', name: 'Ben Carter', role: 'worker', working: false, last_seen_at: null },
+];
+const runs = { u1: [[8, 40, 11, 50], [12, 30, 14, 55]], u2: [[10, 5, 14, 55]], u3: [[6, 0, 8, 0], [13, 10, 14, 55]], u4: [[7, 0, 12, 30]], u5: [] };
+const spans = Object.entries(runs).flatMap(([id, list]) => list.flatMap(([h1, m1, h2, m2]) => { const out = []; for (let t = h1 * 60 + m1; t < h2 * 60 + m2; t += 10) out.push({ user_id: id, start_at: at(0, t), end_at: at(0, t + 10), screenshot: true }); return out; }));
+const canvas = document.createElement('canvas'); canvas.width = 320; canvas.height = 200;
+const g = canvas.getContext('2d');
+const shot = (dark) => { g.fillStyle = dark ? '#1f2a3c' : '#f3f5f9'; g.fillRect(0, 0, 320, 200); g.fillStyle = '#2f3654'; g.fillRect(0, 0, 320, 22); g.fillStyle = '#c9cfdd'; for (let i = 0; i < 6; i++) g.fillRect(dark ? 90 : 30, 50 + i * 20, 160, 8); return canvas.toDataURL('image/jpeg'); };
+const images = [shot(false), shot(true)];
+const blocks = [];
+for (let t = 13 * 60; t < 14 * 60 + 60; t += 10) {
+  const i = blocks.length;
+  const status = i === 3 ? 'deleted' : i === 7 ? 'not_captured' : 'available';
+  blocks.push({ id: `b${i}`, user_id: 'u1', session_id: 's', start_at: at(0, t), end_at: at(0, t + 10), duration_seconds: 600, active_seconds: 300 + (i * 37) % 290, screenshot_url: status === 'available' ? images[i % 2] : null, screenshot_status: status, location: i === 2 ? { status: 'available', captured_at: at(0, t), latitude: 12.97, longitude: 77.59, accuracy_m: 40 } : null, application_usage: [{ app: 'Code.exe', milliseconds: 320000 }, { app: 'chrome.exe', milliseconds: 180000 }, { app: 'Teams.exe', milliseconds: 60000 }] });
+}
+const hours = people.map(p => ({ user_id: p.id, name: p.name, date: today, seconds: runs[p.id].reduce((s, [a, b, c, d]) => s + ((c * 60 + d) - (a * 60 + b)) * 60, 0), hours: 0 }));
+window.fetch = async (input) => {
+  const path = String(input);
+  if (path === '/api/auth/me') return params.get('auth') ? Response.json({ error: 'auth' }, { status: 401 }) : Response.json(me);
+  if (path === '/api/team') return Response.json(people);
+  if (path.startsWith('/api/reports/day?')) return Response.json(spans);
+  if (path.startsWith('/api/reports/hours?')) return Response.json(role === 'worker' ? hours.filter(h => h.user_id === 'u1') : hours);
+  if (path.startsWith('/api/timeline?')) return Response.json(new URLSearchParams(path.split('?')[1]).get('user') === 'u1' ? blocks : []);
+  if (path === '/api/sessions/current') return Response.json(null);
+  return Response.json([]);
+};
+await import('/src/main.tsx');
+</script>
+</body>
+</html>
+<script type="module">
+// ?probe=1 lists elements wider than the viewport, for layout debugging.
+if (new URLSearchParams(location.search).get('probe')) setTimeout(() => {
+  const W = document.documentElement.clientWidth;
+  const bad = [...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > W + 1 && !e.closest('.table-scroll')).map(e => `${e.tagName}.${e.className} ${Math.round(e.getBoundingClientRect().right)}`);
+  document.title = 'PROBE ' + W + ' ' + bad.slice(0, 12).join(' | ');
+}, 2500);
+</script>

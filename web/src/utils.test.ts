@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { activity, applicationTotals, duration, localDate, locationText, screenshotPlaceholder, utcDate, weekRange } from './utils.ts'
+import { activity, applicationTotals, duration, localDate, locationText, ribbon, screenshotPlaceholder, utcDate, weekRange } from './utils.ts'
 
 test('time-only and deleted blocks are not mislabeled as unavailable screenshots', () => {
   assert.equal(screenshotPlaceholder({ screenshot_status: 'not_captured', duration_seconds: 30 }), 'No screenshot captured (30s time block).')
@@ -52,4 +52,21 @@ test('local dates follow the requested zone, not UTC', () => {
   assert.equal(localDate(instant, 'Asia/Kolkata'), '2026-10-22')
   assert.equal(localDate(instant, 'America/New_York'), '2026-10-21')
   assert.equal(localDate(instant, 'UTC'), '2026-10-21')
+})
+test('ribbon merges short gaps and clips blocks to the local day', () => {
+  const blocks = [
+    { start_at: '2026-10-21T09:00:00Z', end_at: '2026-10-21T09:00:30Z' },
+    { start_at: '2026-10-21T09:00:30Z', end_at: '2026-10-21T09:01:00Z' },
+    { start_at: '2026-10-21T12:00:00Z', end_at: '2026-10-21T12:10:00Z' },
+    { start_at: '2026-10-20T23:55:00Z', end_at: '2026-10-21T00:05:00Z' },
+  ]
+  const segments = ribbon(blocks, '2026-10-21', 'UTC')
+  assert.equal(segments.length, 3)
+  assert.equal(segments[0].left, 0)
+  assert.ok(Math.abs(segments[1].left - (540 / 1440) * 100) < 0.01)
+  assert.ok(Math.abs(segments[2].width - (10 / 1440) * 100) < 0.01)
+  // 18:25 UTC is 23:55 in India, so the same block lands at the end of the IST day.
+  const ist = ribbon([{ start_at: '2026-10-21T18:25:00Z', end_at: '2026-10-21T18:35:00Z' }], '2026-10-21', 'Asia/Kolkata')
+  assert.ok(Math.abs(ist[0].left - (1435 / 1440) * 100) < 0.01)
+  assert.ok(Math.abs(ist[0].left + ist[0].width - 100) < 0.01)
 })

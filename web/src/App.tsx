@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, ApiError, post } from './api'
-import type { Block, Hours, Invite, OpenSession, User, Worker } from './api'
-import { activity, applicationTotals, duration, localDate, locationText, screenshotPlaceholder, utcDate, weekRange, zone } from './utils'
+import type { Block, DaySpan, Hours, Invite, OpenSession, User, Worker } from './api'
+import { activity, applicationTotals, duration, localDate, locationText, minuteOfDay, ribbon, screenshotPlaceholder, utcDate, weekRange, zone } from './utils'
 import AgentLogs from './AgentLogs'
 import { canManage, MemberAdmin, PasswordForm, ResetPassword } from './Admin'
 
@@ -16,6 +16,14 @@ const message = (error: unknown) =>
   error instanceof Error
     ? error.message
     : 'Unable to connect. Please try again.'
+
+const initials = (person: Pick<User, 'name' | 'email'>) =>
+  (person.name || person.email).split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()
+const minuteNow = () => minuteOfDay(new Date())
+
+function Logo() {
+  return <i className="logo" aria-hidden="true" />
+}
 
 function Screenshot({ url, alt }: { url: string; alt: string }) {
   const [failed, setFailed] = useState(false)
@@ -67,23 +75,25 @@ function Auth({ onLogin }: { onLogin: (user: User) => void }) {
     <main className="auth-layout">
       <section className="auth-story">
         <a className="brand" href="/">
-          ◷ WorkTrack
+          <Logo /> WorkTrack
         </a>
-        <div>
-          <h1>
-            A clear view of
-            <br />
-            the working day.
-          </h1>
+        <div className="auth-copy">
+          <h1>Time on the clock, and nothing off it.</h1>
           <p>
-            Time, activity, and screenshots.
-            <br />
-            One shared record for your team.
+            Workers press Start. Time, activity, a screenshot every ten
+            minutes and its location are recorded until they press Stop.
           </p>
         </div>
-        <p className="privacy">
-          Tracking belongs on the clock. Not in the background.
-        </p>
+        <div className="sample-card" aria-hidden="true">
+          {[['Mon', [[8, 30], [44, 38]]], ['Tue', [[12, 72]]], ['Wed', [[6, 28], [40, 20]]]].map(([day, segments]) => (
+            <div className="sample-line" key={day as string}>
+              <span>{day as string}</span>
+              <div className="track">
+                {(segments as number[][]).map(([left, width]) => <i className="seg" key={left} style={{ left: `${left}%`, width: `${width}%` }} />)}
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
       <section className="auth-form">
         {resetting && token ? (
@@ -96,12 +106,12 @@ function Auth({ onLogin }: { onLogin: (user: User) => void }) {
           />
         ) : (
         <form onSubmit={submit}>
-          <h2>{joining ? 'Join your team' : 'Welcome back'}</h2>
+          <h2>{joining ? 'Join your team' : 'Sign in'}</h2>
           {notice && <p role="status" className="muted">{notice}</p>}
           <p className="muted">
             {joining
               ? 'Create your account with your invitation.'
-              : 'Sign in to your WorkTrack workspace.'}
+              : 'Use the email your invitation was sent to.'}
           </p>
           {joining && (
             <label>
@@ -229,6 +239,8 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
   const [date, setDate] = useState(localDate())
   const [blocks, setBlocks] = useState<Block[]>([])
   const [hours, setHours] = useState<Hours[]>([])
+  const [spans, setSpans] = useState<DaySpan[]>([])
+  const [workingFirst, setWorkingFirst] = useState(true)
   const [openSession, setOpenSession] = useState<OpenSession | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(true)
@@ -242,18 +254,20 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
   const load = useCallback(async () => {
     const current = ++generation.current
     try {
-      const [members, timeline, report, session] = await Promise.all([
+      const [members, timeline, report, session, day] = await Promise.all([
         manager ? api<Worker[]>('/team') : Promise.resolve([]),
         api<Block[]>(
           `/timeline?${new URLSearchParams({ user: selected, date, tz: zone })}`,
         ),
         api<Hours[]>(`/reports/hours?${new URLSearchParams({ ...weekRange(date), tz: zone })}`),
         api<OpenSession | null>('/sessions/current'),
+        manager ? api<DaySpan[]>(`/reports/day?${new URLSearchParams({ date, tz: zone })}`) : Promise.resolve([]),
       ])
       if (generation.current !== current) return
       setTeam(members || [])
       setBlocks(timeline || [])
       setHours(report || [])
+      setSpans(day || [])
       setOpenSession(session)
       setError('')
       setUpdated(new Date())
@@ -281,10 +295,6 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
   useEffect(() => {
     if (expanded) dialog.current?.showModal()
   }, [expanded])
-  const selectedName =
-    selected === user.id
-      ? 'Your timeline'
-      : `${team.find((person) => person.id === selected)?.name || 'Worker'}’s timeline`
   const daySeconds = hours
     .filter((row) => row.date.slice(0, 10) === date)
     .reduce((sum, row) => sum + row.seconds, 0)
@@ -345,17 +355,51 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
       setActionBusy(false)
     }
   }
+  const selectedPerson = team.find((person) => person.id === selected)
+  const selectedLabel = selected === user.id ? (manager ? `${user.name || 'You'}` : 'Your day') : selectedPerson?.name || selectedPerson?.email || 'Worker'
+  const blockActive = blocks.reduce((sum, block) => sum + block.active_seconds, 0)
+  const dayLabel = new Date(`${date}T12:00:00Z`).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+  const shiftDate = (days: number) => {
+    const day = new Date(`${date}T12:00:00Z`)
+    day.setUTCDate(day.getUTCDate() + days)
+    setDate(utcDate(day))
+  }
+  const isToday = date === localDate()
+  const nowPercent = isToday ? (minuteNow() / 1440) * 100 : null
+  const people = manager
+    ? [...team].sort((a, b) => (workingFirst ? Number(b.working) - Number(a.working) : 0) || (a.name || a.email).localeCompare(b.name || b.email))
+    : [user as Worker]
+  const personSeconds = (id: string) => hours.filter((row) => row.user_id === id && row.date.slice(0, 10) === date).reduce((sum, row) => sum + row.seconds, 0)
+  const statusLine = (person: Worker) => {
+    if (person.disabled) return 'Account disabled'
+    if (person.working) return 'Working now'
+    return personSeconds(person.id) > 0 ? 'Not tracking now' : 'No time this day'
+  }
+  const hourGroups = blocks.reduce<{ hour: string; items: Block[] }[]>((groups, block) => {
+    const hour = `${time(block.start_at).slice(0, 2)}:00`
+    const group = groups[groups.length - 1]
+    if (group?.hour === hour) group.items.push(block)
+    else groups.push({ hour, items: [block] })
+    return groups
+  }, [])
+  const appMax = applications[0]?.milliseconds || 1
+  const weekDays = Array.from({ length: 7 }, (_, index) => {
+    const day = new Date(`${range.from}T00:00:00Z`)
+    day.setUTCDate(day.getUTCDate() + index)
+    return utcDate(day)
+  })
   return (
     <div className="app">
       <header className="topbar">
         <a className="brand" href="/">
-          ◷ WorkTrack
+          <Logo /> WorkTrack
         </a>
         <div className="account">
           <span>
             {user.name}
             <small>{user.role}</small>
           </span>
+          <span className="avatar" aria-hidden="true">{initials(user)}</span>
           <button onClick={logout} disabled={actionBusy}>
             Sign out
           </button>
@@ -364,26 +408,21 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
       <main className="workspace">
         <div className="page-heading">
           <div>
-            <h1>{manager ? 'Team overview' : 'Your working day'}</h1>
-            <p className="muted">
-              A transparent record of time and activity. All dates and times in
-              {' '}{zone}.
-            </p>
+            <h1>{manager ? (isToday ? 'Team today' : 'Team on this day') : isToday ? 'Your day' : 'Your day on this date'}</h1>
+            <p className="muted">{dayLabel}, times in {zone}</p>
           </div>
-          <div className="sync">
-            <span className={error ? 'status-dot' : 'live-dot'} />
-            {updated
-              ? `Updated ${updated.toLocaleTimeString()}`
-              : 'Connecting…'}
-            <button
-              onClick={() => {
-                setBusy(true)
-                void load()
-              }}
-              disabled={busy}
-            >
-              Refresh
-            </button>
+          <div className="datenav">
+            <span className="sync">
+              <span className={error ? 'status-dot' : 'live-dot'} />
+              {updated ? `Updated ${updated.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}` : 'Connecting…'}
+            </span>
+            <button onClick={() => { setBusy(true); void load() }} disabled={busy}>Refresh</button>
+            <button aria-label="Previous day" onClick={() => shiftDate(-1)}>‹</button>
+            <label className="date-label">
+              <span className="sr-only">Date ({zone})</span>
+              <input type="date" value={date} required onChange={(e) => { if (e.target.value) setDate(e.target.value) }} />
+            </label>
+            <button aria-label="Next day" onClick={() => shiftDate(1)} disabled={isToday}>›</button>
           </div>
         </div>
         {error && (
@@ -392,7 +431,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
           </div>
         )}
         {openSession && (
-          <section className="download-card" aria-labelledby="recovery-heading">
+          <section className="card notice-card" aria-labelledby="recovery-heading">
             <div>
               <h2 id="recovery-heading">Tracking session recovery</h2>
               <p>
@@ -401,7 +440,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
                 the original computer if possible. Only recover here if that
                 computer or its app data was lost.
               </p>
-              <p>
+              <p className="muted">
                 {openSession.recoverable
                   ? 'No heartbeat received for at least two minutes. Recovery is available.'
                   : 'Stop tracking on all computers and wait two minutes before recovering.'}
@@ -415,260 +454,205 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
             </button>
           </section>
         )}
-        <section className="download-card" aria-labelledby="download-heading">
+        <section className="totals" aria-label="Work summary">
           <div>
-            <h2 id="download-heading">Get WorkTrack for Windows</h2>
-            <p className="muted">Windows 64-bit · v0.1.5</p>
-            <ol>
-              <li>If upgrading, stop tracking and wait until queued records have synced. Do not uninstall or remove app data.</li>
-              <li>Download and install WorkTrack.</li>
-              <li>Sign in with your existing account.</li>
-              <li>Select Start tracking.</li>
-            </ol>
-            <p className="muted">
-              This installer is updater-enabled and supports signed updates.
-              Future production updates require publishing the update feed and
-              install only when you choose Update now.
-            </p>
-            <p className="muted">
-              Windows may show a publisher warning during installation. This is
-              separate from signed update verification.
-            </p>
-            <p className="muted">
-              <a href="/downloads/0.1.5/SHA256SUMS">View SHA-256 checksums</a>
-            </p>
-          </div>
-          <a
-            className="button primary"
-            href="/downloads/0.1.5/WorkTrack_0.1.5_x64-setup.exe"
-            download
-          >
-            Download for Windows 64-bit (v0.1.5)
-          </a>
-        </section>
-        <section className="overview" aria-label="Work summary">
-          <div>
-            <span>
-              {manager ? 'Team hours on selected day' : 'Hours on selected day'}
-            </span>
             <strong>{busy ? '…' : duration(daySeconds)}</strong>
-            <small>{date}</small>
+            <span>{manager ? 'Team hours this day' : 'Hours this day'}</span>
           </div>
           <div>
-            <span>{manager ? 'Team hours this week' : 'Hours this week'}</span>
             <strong>{busy ? '…' : duration(weekSeconds)}</strong>
-            <small>
-              {range.from} to {range.to}
-            </small>
+            <span>{manager ? 'Team hours this week' : 'Hours this week'}</span>
           </div>
           {manager && (
             <div>
-              <span>Working now</span>
               <strong>
                 {team.filter((person) => person.working).length}
-                <em> / {team.length}</em>
+                <em> of {team.length}</em>
               </strong>
-              <small>Status refreshes every 30 seconds</small>
+              <span>Working now</span>
             </div>
           )}
         </section>
-        <div className={manager ? 'dashboard-grid' : ''}>
-          {manager && (
-            <aside className="team-panel">
-              <div className="section-heading">
-                <h2>People</h2>
-                <span className="count">{team.length}</span>
-              </div>
-              <div className="people">
-                {team.map((person) => (
-                  <button
-                    key={person.id}
-                    className={`person ${selected === person.id ? 'selected' : ''}`}
-                    onClick={() => setSelected(person.id)}
-                    aria-pressed={selected === person.id}
-                  >
-                    <span className="avatar">
-                      {(person.name || person.email).slice(0, 2).toUpperCase()}
-                    </span>
-                    <span>
-                      <b>{person.name || person.email}</b>
-                      <small>
-                        <i
-                          className={
-                            person.working ? 'status-dot active' : 'status-dot'
-                          }
-                        />
-                        {person.disabled ? 'Disabled' : person.working ? 'Working now' : 'Not tracking'}
-                      </small>
-                      {person.last_seen_at && (
-                        <small>
-                          Seen {new Date(person.last_seen_at).toLocaleString()}
-                        </small>
-                      )}
-                    </span>
-                  </button>
-                ))}
-                {!busy && !team.length && (
-                  <p className="empty">
-                    No workers yet. Create an invite below to add your team.
-                  </p>
-                )}
-              </div>
-              <InviteForm />
-              {(() => {
-                const person = team.find((p) => p.id === selected)
-                return person && canManage(user, person) ? (
-                  <MemberAdmin key={person.id} person={person} onChange={() => void load()} />
-                ) : null
-              })()}
-            </aside>
-          )}
-          <section className="timeline-panel" aria-busy={busy}>
-            <div className="section-heading timeline-heading">
-              <div>
-                <h2>{selectedName}</h2>
-                <p className="muted">
-                  {busy
-                    ? 'Loading…'
-                    : `${blocks.length} ${blocks.length === 1 ? 'block' : 'blocks'} · ${duration(ownBlocks)} tracked`}
-                </p>
-              </div>
-              <label className="date-label">
-                Date ({zone})
-                <input
-                  type="date"
-                  value={date}
-                  required
-                  onChange={(e) => {
-                    if (e.target.value) setDate(e.target.value)
-                  }}
-                />
+        {manager && (
+          <section className="card" aria-labelledby="ribbon-heading">
+            <div className="card-h">
+              <h2 id="ribbon-heading">Who worked when</h2>
+              <p className="muted">Violet is tracked time, green is running now. Ticks mark screenshots.</p>
+              <label className="inline-check">
+                <input type="checkbox" checked={workingFirst} onChange={(e) => setWorkingFirst(e.target.checked)} />
+                Working now first
               </label>
             </div>
-            <p className="muted">Time uploads about every 30 seconds. Screenshots are taken every 10 running minutes, so most time blocks have no scheduled screenshot.</p>
-            {!busy && !blocks.length ? (
-              <div className="empty timeline-empty">
-                <span className="empty-icon">◷</span>
-                <h3>No time recorded</h3>
-                <p>
-                  There are no uploaded work blocks for this date.
-                  <br />
-                  Choose another day or wait for the desktop app to sync.
-                </p>
+            <div className="ribbons" role="list">
+              <div className="hours" aria-hidden="true">
+                <span />
+                <div className="scale">{['00', '03', '06', '09', '12', '15', '18', '21', '24'].map((h) => <span key={h}>{h}</span>)}</div>
+                <span>Total</span>
               </div>
-            ) : (
-              <div className="gallery">
-                {blocks.map((block) => (
-                  <article className="block" key={block.id}>
-                    <button
-                      className="screenshot"
-                      onClick={() => setExpanded(block)}
-                      aria-label={`View work block at ${time(block.start_at)}`}
-                    >
-                      {block.screenshot_url ? (
-                        <Screenshot
-                          key={block.screenshot_url}
-                          url={block.screenshot_url}
-                          alt={`Work screenshot at ${time(block.start_at)}`}
-                        />
-                      ) : (
-                        <span>{screenshotPlaceholder(block)}</span>
-                      )}
-                    </button>
-                    <div className="block-info">
-                      <b>
-                        {time(block.start_at)} - {time(block.end_at)}
-                      </b>
-                      <span>{duration(block.duration_seconds)}</span>
-                    </div>
-                    <div className="activity">
-                      <meter
-                        min={0}
-                        max={100}
-                        value={activity(
-                          block.active_seconds,
-                          block.duration_seconds,
-                        )}
-                        aria-label="Activity percentage"
-                      />
+              {people.map((person) => {
+                const own = spans.filter((span) => span.user_id === person.id)
+                const segments = ribbon(own, date)
+                return (
+                  <button
+                    key={person.id}
+                    role="listitem"
+                    className={`rrow ${selected === person.id ? 'sel' : ''}`}
+                    aria-pressed={selected === person.id}
+                    aria-label={`${person.name || person.email}, ${statusLine(person)}, ${duration(personSeconds(person.id))} tracked. Show their day.`}
+                    onClick={() => setSelected(person.id)}
+                  >
+                    <span className="who">
+                      <span className={`avatar ${person.working ? 'on' : ''}`} aria-hidden="true">{initials(person)}</span>
                       <span>
-                        {activity(block.active_seconds, block.duration_seconds)}
-                        % activity
+                        <b>{person.name || person.email}</b>
+                        <small>{statusLine(person)}</small>
                       </span>
-                    </div>
-                    {block.location && <p className="muted">{locationText(block.location)}</p>}
-                    {selected === user.id && (
-                      <div className="block-actions">
-                        {block.screenshot_url && (
-                          <button
-                            className="delete"
-                            onClick={() => void remove(block, true)}
-                            disabled={actionBusy}
-                          >
-                            Delete screenshot
-                          </button>
-                        )}
-                        <button
-                          className="delete"
-                          onClick={() => void remove(block)}
-                          disabled={actionBusy}
-                        >
-                          Delete time block
-                        </button>
-                      </div>
-                    )}
-                  </article>
-                ))}
-              </div>
-            )}
+                    </span>
+                    <span className="track" aria-hidden="true">
+                      {segments.map((segment, index) => {
+                        const live = person.working && isToday && index === segments.length - 1 && nowPercent !== null && segment.left + segment.width >= nowPercent - 1
+                        return <i key={index} className={`seg ${live ? 'now' : ''}`} style={{ left: `${segment.left}%`, width: `${segment.width}%` }} />
+                      })}
+                      {ribbon(own.filter((span) => span.screenshot).map((span) => ({ start_at: span.end_at, end_at: span.end_at })), date).map((tick, index) => (
+                        <i key={`s${index}`} className="shot" style={{ left: `${tick.left}%` }} />
+                      ))}
+                      {nowPercent !== null && <i className="nowline" style={{ left: `${nowPercent}%` }} />}
+                    </span>
+                    <span className={`tot ${personSeconds(person.id) ? '' : 'zero'}`}>{busy ? '…' : duration(personSeconds(person.id))}</span>
+                  </button>
+                )
+              })}
+              {!busy && !team.length && <p className="empty">No workers yet. Create an invite below to add your team.</p>}
+            </div>
           </section>
-        </div>
-        <section className="reports" aria-labelledby="applications-heading">
-          <h2 id="applications-heading">Applications on selected day</h2>
-          <p className="muted">Selected worker, {date} ({zone}). Estimated foreground time from work blocks starting on this date, including idle time. Not proof of productivity.</p>
-          {applications.length ? <div className="table-scroll"><table>
-            <caption className="sr-only">Foreground application usage in minutes</caption>
-            <thead><tr><th scope="col">Application</th><th scope="col">Minutes</th></tr></thead>
-            <tbody>{applications.map(app => <tr key={app.app}><th scope="row">{app.app}</th><td>{(app.milliseconds / 60000).toFixed(2)}</td></tr>)}</tbody>
-          </table></div> : <p className="muted">No application usage recorded. Install the latest desktop app and start tracking to collect it.</p>}
-        </section>
-        <section className="reports">
-          <div className="section-heading">
-            <div>
-              <h2>Weekly timesheet</h2>
+        )}
+        <div className="split">
+          <section className="card" aria-busy={busy} aria-labelledby="day-heading">
+            <div className="card-h">
+              <h2 id="day-heading">{manager ? `${selectedLabel}, ${date}` : 'Screenshots and time'}</h2>
               <p className="muted">
-                {range.from} to {range.to} · recorded time only
+                {busy ? 'Loading…' : `${duration(ownBlocks)} tracked, ${activity(blockActive, ownBlocks)}% input activity`}
               </p>
             </div>
-            <a
-              className="button"
-              href={`/api/reports/hours.csv?${new URLSearchParams({ ...range, tz: zone })}`}
-              download
-            >
-              Export CSV
-            </a>
+            <p className="muted pad">Time uploads about every 30 seconds. Screenshots are taken every 10 running minutes, so most time blocks have no scheduled screenshot.</p>
+            {!busy && !blocks.length ? (
+              <div className="empty timeline-empty">
+                <h3>No time recorded</h3>
+                <p>There are no uploaded work blocks for this date. Choose another day or wait for the desktop app to sync.</p>
+              </div>
+            ) : (
+              hourGroups.map((group) => (
+                <div className="hourgrp" key={group.hour}>
+                  <h3>{group.hour}</h3>
+                  <div className="shots">
+                    {group.items.map((block) => {
+                      const pct = activity(block.active_seconds, block.duration_seconds)
+                      return (
+                        <article className="tile" key={block.id}>
+                          <button
+                            className={`screenshot ${block.screenshot_url ? '' : 'none'}`}
+                            onClick={() => setExpanded(block)}
+                            aria-label={`View work block at ${time(block.start_at)}`}
+                          >
+                            {block.screenshot_url ? (
+                              <Screenshot key={block.screenshot_url} url={block.screenshot_url} alt={`Work screenshot at ${time(block.start_at)}`} />
+                            ) : (
+                              <span>{screenshotPlaceholder(block)}</span>
+                            )}
+                          </button>
+                          <div className="meta">
+                            <b>{time(block.start_at)}</b>
+                            <span className="act">
+                              <span className="bar" aria-hidden="true"><i style={{ width: `${pct}%` }} /></span>
+                              <span>{pct}%<span className="sr-only"> input activity</span></span>
+                            </span>
+                          </div>
+                          <p className="sub">{duration(block.duration_seconds)} to {time(block.end_at)}</p>
+                          {block.location && <p className="sub">{locationText(block.location)}</p>}
+                          {selected === user.id && (
+                            <div className="block-actions">
+                              {block.screenshot_url && (
+                                <button className="delete" onClick={() => void remove(block, true)} disabled={actionBusy}>
+                                  Delete screenshot
+                                </button>
+                              )}
+                              <button className="delete" onClick={() => void remove(block)} disabled={actionBusy}>
+                                Delete time block
+                              </button>
+                            </div>
+                          )}
+                        </article>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))
+            )}
+          </section>
+          <div className="side">
+            <section className="card" aria-labelledby="applications-heading">
+              <div className="card-h">
+                <h2 id="applications-heading">Applications</h2>
+                <p className="muted">Estimated foreground time</p>
+              </div>
+              {applications.length ? (
+                <ul className="apps">
+                  {applications.map((app) => (
+                    <li className="app-row" key={app.app}>
+                      <span>{app.app}</span>
+                      <span>{(app.milliseconds / 60000).toFixed(2)} min</span>
+                      <span className="fill" aria-hidden="true"><i style={{ width: `${(app.milliseconds / appMax) * 100}%` }} /></span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted pad">No application usage recorded. Install the latest desktop app and start tracking to collect it.</p>
+              )}
+              <p className="muted pad">Selected person, {date} ({zone}). Includes idle time. Input activity is not proof of productivity.</p>
+            </section>
+            <section className="card download" aria-labelledby="download-heading">
+              <div>
+                <h2 id="download-heading">WorkTrack for Windows</h2>
+                <p className="muted">Version 0.1.5, 64-bit</p>
+              </div>
+              <a className="button" href="/downloads/0.1.5/WorkTrack_0.1.5_x64-setup.exe" download>Download</a>
+              <details>
+                <summary>Install steps</summary>
+                <ol>
+                  <li>If upgrading, stop tracking and wait until queued records have synced. Do not uninstall or remove app data.</li>
+                  <li>Download and install WorkTrack. Windows may show a publisher warning.</li>
+                  <li>Sign in, allow Windows location, then select Start tracking.</li>
+                </ol>
+                <p className="muted"><a href="/downloads/0.1.5/SHA256SUMS">View SHA-256 checksums</a></p>
+              </details>
+            </section>
+            {manager && (
+              <section className="card manage">
+                <InviteForm />
+                {selectedPerson && canManage(user, selectedPerson) && (
+                  <MemberAdmin key={selectedPerson.id} person={selectedPerson} onChange={() => void load()} />
+                )}
+              </section>
+            )}
+          </div>
+        </div>
+        <section className="card" aria-labelledby="week-heading">
+          <div className="card-h">
+            <h2 id="week-heading">This week</h2>
+            <p className="muted">{range.from} to {range.to}, recorded time only</p>
+            <a className="button" href={`/api/reports/hours.csv?${new URLSearchParams({ ...range, tz: zone })}`} download>Export CSV</a>
           </div>
           <div className="table-scroll">
             <table>
-              <caption className="sr-only">
-                Daily and weekly tracked hours per worker
-              </caption>
+              <caption className="sr-only">Daily and weekly tracked hours per worker</caption>
               <thead>
                 <tr>
                   <th scope="col">Person</th>
-                  {Array.from({ length: 7 }, (_, index) => {
-                    const day = new Date(`${range.from}T00:00:00Z`)
-                    day.setUTCDate(day.getUTCDate() + index)
-                    return (
-                      <th scope="col" key={index}>
-                        {day.toLocaleDateString(undefined, {
-                          weekday: 'short',
-                          day: 'numeric',
-                          timeZone: 'UTC',
-                        })}
-                      </th>
-                    )
-                  })}
+                  {weekDays.map((day) => (
+                    <th scope="col" key={day} className={day === date ? 'cell-sel' : ''}>
+                      {new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', timeZone: 'UTC' })}
+                    </th>
+                  ))}
                   <th scope="col">Total</th>
                 </tr>
               </thead>
@@ -676,46 +660,24 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
                 {(manager ? team : [user]).map((person) => (
                   <tr key={person.id}>
                     <th scope="row">{person.name || person.email}</th>
-                    {Array.from({ length: 7 }, (_, index) => {
-                      const day = new Date(`${range.from}T00:00:00Z`)
-                      day.setUTCDate(day.getUTCDate() + index)
-                      const seconds = hours
-                        .filter(
-                          (row) =>
-                            row.user_id === person.id &&
-                            row.date.slice(0, 10) === utcDate(day),
-                        )
-                        .reduce((sum, row) => sum + row.seconds, 0)
-                      return (
-                        <td key={index}>{busy ? '…' : duration(seconds)}</td>
-                      )
+                    {weekDays.map((day) => {
+                      const seconds = hours.filter((row) => row.user_id === person.id && row.date.slice(0, 10) === day).reduce((sum, row) => sum + row.seconds, 0)
+                      return <td key={day} className={`${day === date ? 'cell-sel' : ''} ${seconds ? '' : 'zero'}`}>{busy ? '…' : duration(seconds)}</td>
                     })}
-                    <td>
-                      <b>
-                        {busy
-                          ? '…'
-                          : duration(
-                              hours
-                                .filter((row) => row.user_id === person.id)
-                                .reduce((sum, row) => sum + row.seconds, 0),
-                            )}
-                      </b>
-                    </td>
+                    <td className="total">{busy ? '…' : duration(hours.filter((row) => row.user_id === person.id).reduce((sum, row) => sum + row.seconds, 0))}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          {!busy && !hours.length && (
-            <p className="empty">No recorded hours this week.</p>
-          )}
+          {!busy && !hours.length && <p className="empty">No recorded hours this week.</p>}
         </section>
         {user.role === 'owner' && <AgentLogs />}
-        <section className="reports">
+        <section className="card account-card">
           <PasswordForm />
         </section>
         <footer>
-          WorkTrack · Screenshots and activity are recorded only while the
+          Screenshots, activity and location are recorded only while the
           desktop timer is running.
         </footer>
       </main>
@@ -744,7 +706,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
         {expanded?.location && <p>{locationText(expanded.location)}</p>}
         {expanded && (
           <p>
-            {duration(expanded.duration_seconds)} tracked ·{' '}
+            {duration(expanded.duration_seconds)} tracked,{' '}
             {activity(expanded.active_seconds, expanded.duration_seconds)}%
             activity
           </p>

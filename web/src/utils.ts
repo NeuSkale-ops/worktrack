@@ -48,3 +48,28 @@ export function activity(active: number, seconds: number): number {
     ? Math.round(Math.min(1, Math.max(0, active / seconds)) * 100)
     : 0
 }
+/** Minutes since local midnight in `tz` for an instant. */
+export function minuteOfDay(instant: string | Date, tz = zone): number {
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(instant))
+  const get = (type: string) => Number(parts.find((part) => part.type === type)?.value || 0)
+  return get('hour') * 60 + get('minute') + get('second') / 60
+}
+export interface Span { start_at: string; end_at: string }
+/**
+ * Merge consecutive blocks into ribbon segments as day percentages for `date` in `tz`.
+ * Blocks separated by under two minutes join, so 30-second uploads read as one run.
+ */
+export function ribbon(spans: Span[], date: string, tz = zone): { left: number; width: number }[] {
+  const out: { left: number; width: number }[] = []
+  for (const span of [...spans].sort((a, b) => a.start_at.localeCompare(b.start_at))) {
+    const startDay = localDate(new Date(span.start_at), tz)
+    const endDay = localDate(new Date(new Date(span.end_at).getTime() - 1), tz)
+    if (endDay < date || startDay > date) continue
+    const start = startDay < date ? 0 : minuteOfDay(span.start_at, tz)
+    const end = endDay > date ? 1440 : minuteOfDay(new Date(new Date(span.end_at).getTime() - 1), tz) + 1 / 60
+    const last = out[out.length - 1]
+    if (last && start - (last.left + last.width) <= 2) last.width = Math.max(last.width, end - last.left)
+    else out.push({ left: start, width: end - start })
+  }
+  return out.map((segment) => ({ left: (segment.left / 1440) * 100, width: Math.max(0.2, (segment.width / 1440) * 100) }))
+}

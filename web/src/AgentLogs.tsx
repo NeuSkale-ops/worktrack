@@ -21,13 +21,13 @@ export default function AgentLogs() {
     }
   }
   return (
-    <section className="reports diagnostic-logs" aria-labelledby="agent-logs-heading">
+    <section className="card diagnostic-logs" aria-labelledby="agent-logs-heading">
       <details>
         <summary id="agent-logs-heading">Desktop diagnostic logs (owner only)</summary>
         <p className="muted">
-          Newest 100 events from the last seven days. Workers must enable
-          diagnostic uploads in the desktop app. Messages use fixed error codes,
-          not raw error text or screenshots.
+          Newest 100 events from the last seven days. Diagnostics are always
+          on for signed-in desktop apps. Messages use fixed error codes, not raw
+          error text or screenshots.
         </p>
         <button onClick={() => void load()} disabled={busy}>
           {busy ? 'Loading logs…' : 'Load recent logs'}

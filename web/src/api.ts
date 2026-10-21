@@ -36,6 +36,12 @@ export interface Block {
   location?: ScreenshotLocation | null
   application_usage?: ApplicationUsage[]
 }
+export interface DaySpan {
+  user_id: string
+  start_at: string
+  end_at: string
+  screenshot: boolean
+}
 export interface Hours {
   user_id: string
   name: string

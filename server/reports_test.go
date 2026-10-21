@@ -121,3 +121,76 @@ func TestHoursUTCBoundaries(t *testing.T) {
 		}
 	}
 }
+
+func TestDaySpansScopeAndScreenshotFlags(t *testing.T) {
+	dsn := os.Getenv("WT_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("set WT_TEST_DATABASE_URL to a disposable Postgres database")
+	}
+	ctx := context.Background()
+	db, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	a := &app{db: db}
+	if err = a.migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	worker, other, sid, sid2, raw := uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString(), token()
+	for _, id := range []string{worker, other} {
+		if _, err = db.Exec(ctx, "INSERT INTO users(id,email,name,role,password_hash) VALUES($1,$2,'Day','worker','unused')", id, id+"@example.test"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer func() {
+		for _, id := range []string{worker, other} {
+			for _, table := range []string{"blocks", "work_sessions", "credentials", "users"} {
+				column := "user_id"
+				if table == "users" {
+					column = "id"
+				}
+				_, _ = db.Exec(ctx, "DELETE FROM "+table+" WHERE "+column+"=$1", id)
+			}
+		}
+	}()
+	if _, err = db.Exec(ctx, "INSERT INTO credentials(token_hash,user_id,kind,expires_at) VALUES($1,$2,'device',now()+interval '1 day')", digest(raw), worker); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range [][2]string{{sid, worker}, {sid2, other}} {
+		if _, err = db.Exec(ctx, "INSERT INTO work_sessions(id,user_id,started_at,stopped_at) VALUES($1,$2,'2026-02-01','2026-02-02')", s[0], s[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, f := range []struct {
+		user, session, start, end, key string
+		deleted                        bool
+	}{
+		{worker, sid, "2026-02-01T09:00:00Z", "2026-02-01T09:10:00Z", "shot.jpg", false},
+		{worker, sid, "2026-02-01T09:10:00Z", "2026-02-01T09:10:30Z", "", false},
+		{worker, sid, "2026-02-01T10:00:00Z", "2026-02-01T10:10:00Z", "gone.jpg", true},
+		{other, sid2, "2026-02-01T09:00:00Z", "2026-02-01T09:10:00Z", "", false},
+	} {
+		if _, err = db.Exec(ctx, `INSERT INTO blocks(id,user_id,session_id,start_at,end_at,duration_seconds,active_seconds,screenshot_key,deleted_at) VALUES($1,$2,$3,$4::timestamptz,$5::timestamptz,extract(epoch FROM $5::timestamptz-$4::timestamptz)::int,0,$6,CASE WHEN $7 THEN now() END)`, uuid.NewString(), f.user, f.session, f.start, f.end, f.key, f.deleted); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := httptest.NewRequest("GET", "/api/reports/day?date=2026-02-01", nil)
+	r.Header.Set("Authorization", "Bearer "+raw)
+	w := httptest.NewRecorder()
+	a.routes().ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("day: %d %s", w.Code, w.Body.String())
+	}
+	var spans []daySpan
+	if err = json.Unmarshal(w.Body.Bytes(), &spans); err != nil {
+		t.Fatal(err)
+	}
+	// Worker sees only their own two live blocks; the deleted block and the other worker are hidden.
+	if len(spans) != 2 || spans[0].UserID != worker || !spans[0].Screenshot || spans[1].Screenshot {
+		t.Fatalf("unexpected spans: %+v", spans)
+	}
+	if strings.Contains(w.Body.String(), "shot.jpg") {
+		t.Fatal("day report must not expose screenshot keys")
+	}
+}
