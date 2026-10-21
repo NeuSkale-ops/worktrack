@@ -1,11 +1,13 @@
 # Signed Windows updates
 
-Status: signed candidate builds and manual installer distribution are verified.
-As checked on October 21, 2026 at 18:06 UTC, both production and staging `latest.json` endpoints return HTTP 404.
+Status: signed candidates, manual installer distribution, and isolated update hosting are verified.
+On October 21, 2026, the approved host setup installed both restricted receivers and read-only public mounts.
+Both production and staging `latest.json` endpoints still return HTTP 404 because no accepted manifest has been published.
 Signed workflow `39619325968` passed build and verification, but its publication job was skipped.
-A successful candidate build or GitHub release does not enable automatic updates.
+Workflow `39657475612` was dispatched for production candidate `0.1.6` with `publish=false`; no passing native upgrade result is claimed here.
+A successful candidate build, configured host, or GitHub release does not enable automatic updates.
 Real signed Windows upgrade acceptance and manifest publication remain required.
-The source is prepared as version `0.1.5`, with the owner-provided public key and ordinary updater artifact generation disabled.
+The source is prepared as version `0.1.6`, with the owner-provided public key and ordinary updater artifact generation disabled.
 Manual installer distribution is recorded in `DOWNLOADS.md` and does not publish an automatic-update manifest.
 The owner key pair passed a real Tauri signing and independent minisign verification check on October 21, 2026.
 This probe does not prove a signed Windows installer or an in-app upgrade.
@@ -22,12 +24,15 @@ Tauri updater signing is not Windows publisher signing, so it does not eliminate
 After approval, arrange secure offline backup before generating the real Tauri signing key.
 This repository does not generate keys or store their private contents.
 The operator stores secret values interactively with `envkit set KEY`, not secret values in shell arguments, `envkit get`, or `envkit export`.
-Required local secret names:
+Required signing secret names:
 
 - `TAURI_SIGNING_PRIVATE_KEY`: Tauri's encoded private key contents, never a runner-local path.
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: a nonempty password for that private key.
-- `WORKTRACK_UPDATER_SSH_KEY`: production's dedicated restricted SSH private key.
-- `WORKTRACK_UPDATER_STAGING_SSH_KEY`: a different dedicated staging SSH private key.
+
+The approved deployment identities are distinct local files `~/.ssh/worktrack_updater_production` and `~/.ssh/worktrack_updater_staging`, each mode `0600`.
+Their private contents were supplied to the corresponding protected environment's `WORKTRACK_UPDATER_SSH_KEY` secret, not committed or printed.
+These are restricted publication identities, not the administrative root key.
+Do not assume deployment keys exist in the WorkTrack envkit project: its names-only inspection found no `WORKTRACK_UPDATER_SSH_KEY` or `WORKTRACK_UPDATER_STAGING_SSH_KEY` entries before provisioning.
 
 Commit only the actual Tauri public key into `agent/src-tauri/tauri.conf.json` at `plugins.updater.pubkey`.
 Keep `requireSignedVersion: true`, the application identifier, current-user installation scope, and production endpoint unchanged.
@@ -49,7 +54,9 @@ This is a known limitation, not a claim that staging signatures are production-i
 
 ## Protected GitHub environments
 
-Create these environments before dispatching the workflow.
+All three environments now exist with selected-branch `main` restrictions, verified during the approved October 21, 2026 setup.
+Both deployment environments have their dedicated SSH secret and host/verified-known-host variables configured.
+Verify their metadata again before a release, without reading secret values.
 Do not put these credentials in repository-wide secrets.
 Restrict all three environments to the selected branch `main` only.
 For this solo project, the owner explicitly approved proceeding without required reviewers on October 21, 2026.
@@ -61,8 +68,8 @@ Verify the environment's `main` branch restriction before configuring release se
 | Environment | Environment secrets | Environment variables |
 | --- | --- | --- |
 | `updater-release` | `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | none |
-| `updater-staging` | `WORKTRACK_UPDATER_SSH_KEY`, populated from local `WORKTRACK_UPDATER_STAGING_SSH_KEY` | `WORKTRACK_UPDATER_HOST`, `WORKTRACK_UPDATER_KNOWN_HOSTS` |
-| `updater-production` | `WORKTRACK_UPDATER_SSH_KEY`, populated from local `WORKTRACK_UPDATER_SSH_KEY` | `WORKTRACK_UPDATER_HOST`, `WORKTRACK_UPDATER_KNOWN_HOSTS` |
+| `updater-staging` | `WORKTRACK_UPDATER_SSH_KEY`, from `~/.ssh/worktrack_updater_staging` | `WORKTRACK_UPDATER_HOST`, `WORKTRACK_UPDATER_KNOWN_HOSTS` |
+| `updater-production` | `WORKTRACK_UPDATER_SSH_KEY`, from `~/.ssh/worktrack_updater_production` | `WORKTRACK_UPDATER_HOST`, `WORKTRACK_UPDATER_KNOWN_HOSTS` |
 
 `WORKTRACK_UPDATER_HOST` is the SSH hostname/IP only, without user, port, or shell arguments.
 `WORKTRACK_UPDATER_KNOWN_HOSTS` contains the host key line verified through an independent trusted channel.
@@ -73,9 +80,25 @@ The workflow accepts no arbitrary download URL, SSH user, host command, or signi
 
 ## One-time root setup, operator only
 
-These are setup instructions, not commands executed by CI or by this implementation.
-Use the existing administrative access to the host only after approval.
+The operator reviewed and executed `scripts/setup_updater_host.sh` on the approved Linux host on October 21, 2026.
+It is never a CI deployment command. Keep an existing administrative session open during setup and restricted-key checks.
+For a newly approved host, supply only the reviewed receiver and three public-key files:
+
+```sh
+sudo bash scripts/setup_updater_host.sh \
+  scripts/updater_release.py /path/to/tauri-public-key.txt \
+  /path/to/production-ed25519.pub /path/to/staging-ed25519.pub
+```
+
+The Tauri input is the committed encoded `plugins.updater.pubkey` value, not a private signing key.
+The script checks Python 3.11+, installs `minisign` through trusted OS packages if missing, validates distinct plain Ed25519 public keys, and rejects unexpected existing managed files or accounts.
+It provisions the layout below and `/etc/ssh/sshd_config.d/70-worktrack-updates.conf`, validates both syntax and effective per-account sshd rules, then gracefully reloads `ssh.service`.
+It backs up an existing matching fragment and restores the previous fragment if validation or reload fails.
+Package installation and account/storage provisioning are not transactional, so inspect partial state before retrying an interrupted setup.
+It does not change global sshd configuration, reset passwords, touch runtime secrets, mount containers, or publish a manifest.
 Never give that root key, sudo, Docker membership, or access to the API environment/screenshot credentials to either deployment account.
+
+Required layout and restrictions, also used for operator review:
 
 1. Install Python 3.11+ and `minisign` from the host's trusted OS packages.
    Install the reviewed `scripts/updater_release.py` as `/usr/local/lib/worktrack-updater/updater_release.py`, owned by root, with its containing directory not writable by either deployment user.
@@ -122,13 +145,28 @@ The forced receiver ignores `SSH_ORIGINAL_COMMAND` and accepts only a bounded se
 It provides no shell, file-transfer subsystem, forwarding, or elevated command.
 Test both account restrictions and that the staging account cannot write production files before saving the deployment keys as protected environment secrets.
 
-6. After approved local configuration review, deploy the updated `Caddyfile.shared` and add `deploy/compose.updates.yaml` after the existing base and shared Compose files.
+6. After approved local configuration review, deploy the updated `Caddyfile.shared` and append `deploy/compose.updates.yaml` to the existing approved Compose file set.
+   On the current host that set is `/etc/worktrack/compose.runtime.json`, `/opt/worktrack/deploy/compose.downloads.yaml`, and `/opt/worktrack/deploy/compose.release.yaml`, with project `worktrack` and working directory `/etc/worktrack`.
+   Do not print runtime configuration contents or drop those existing overlays.
    This adds only read-only public-directory mounts to the web container.
    Do not mount the storage parents, staging scratch directories, SSH material, or the screenshot bucket.
    Preserve the existing outer Caddy HTTPS proxy and all its unrelated sites.
    Before and after the change, check WorkTrack login/API and another existing host site, not just the update route.
    Verify both update routes return 404 while no manifest exists, rather than dashboard HTML.
    Keep public directory listing disabled.
+
+## Verified host readiness, October 21, 2026
+
+- Python 3.12.3 and `minisign` are installed. Both fixed accounts, root-owned receiver/public key/authorized-key files, and separate storage trees were provisioned.
+- Each dedicated key authenticated with strict existing host-key verification. Sending requested command `id` with empty stdin reached the forced receiver and exited `1` with `Release refused: empty file`, rather than opening a shell.
+- Root-run account checks found neither deployment account could write the other channel, trusted public key, or receiver.
+- Sending the production baseline archive through the staging key exited `1` with an expected download-URL mismatch. This is channel-boundary rejection, not successful staging publication.
+- `worktrack-web-1` now has `/srv/worktrack-updates/public:/srv/updates:ro` and `/srv/worktrack-updates-staging/public:/srv/updates-staging:ro`, alongside its existing Caddy and installer-download mounts.
+- Only the web container was recreated, using its unchanged image. API, database, and shared proxy container IDs were unchanged.
+- WorkTrack `/` and `/healthz` returned `200`, the existing installer download returned `200`, and hidden update paths returned `404`.
+- Both `latest.json` feeds returned `404` after provisioning. Empty prepared feeds are intentional until an accepted signed release is promoted.
+
+These observations prove host readiness and basic isolation, not native Windows upgrade acceptance or a published update.
 
 ## Release and staging sequence
 
@@ -139,6 +177,19 @@ A build-only run creates a private GitHub candidate artifact but exposes nothing
 The package includes the tested NSIS installer, its Tauri signature, manifest with signature contents, and SHA-256 checksum.
 The Linux verification job independently verifies the minisign signature and trusted-comment version against the committed public key.
 A fresh install on Windows is a prerequisite, not proof of a real in-app update.
+
+### Native production publication gate
+
+For `channel=production`, `.github/workflows/updater-release.yml` now runs an `upgrade` job after independent signature verification, even when `publish=false`.
+It downloads the pinned `0.1.5` baseline and verifies its recorded SHA-256, then runs `scripts/updater_upgrade_acceptance.ps1` against the exact newer candidate through real installed WebView UI Automation.
+The disposable GitHub-hosted Windows runner maps the existing production hostname to an isolated loopback HTTPS fixture before launching the app.
+This exercises the embedded production endpoint without publishing a public feed or using production worker credentials.
+The job retains `worktrack-upgrade-evidence/upgrade-evidence.json` as artifact `windows-upgrade-evidence`, including failed or partial observations when available.
+Production publication requires successful `verify` and `upgrade` jobs, `publish=true`, a nonempty `upgrade_evidence` reference, and reviewed `main`.
+An evidence reference alone cannot bypass a failed native job. Staging publication does not run this production-only native job.
+No native pass is recorded here: inspect workflow `39657475612` and its evidence before claiming acceptance or publishing.
+A seeded fixture identity proves local continuity, not a real server login, active tracking, geolocation, or screenshot acceptance.
+The staging sequence below remains useful for broader connected-worker checks and the complete acceptance matrix.
 
 1. After approved key and environment setup, commit an unused staging version newer than the installed test version.
    Do not reuse the already distributed `0.1.2` through `0.1.5` production installer identities for changed production bytes.

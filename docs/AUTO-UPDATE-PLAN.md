@@ -1,7 +1,8 @@
 # Windows auto-update plan
 
-Status: implementation plan recorded October 21, 2026.
-Source implementation and signed installer builds exist, but production updates remain unpublished pending real Windows upgrade acceptance.
+Status: implementation and approved host provisioning recorded October 21, 2026.
+Signed installer builds and isolated update hosting exist, but both manifests remain unpublished pending real Windows upgrade acceptance.
+The production release workflow now enforces a native `upgrade` job; no passing native result is claimed here.
 See `deploy/UPDATES.md` and `docs/VALIDATION.md` for current setup and observed checks.
 
 ## Recommended behavior
@@ -13,9 +14,9 @@ Do not silently stop tracking or force installation.
 Network or update failures must not prevent normal tracking.
 
 Versions 0.1.0 and 0.1.1 have no updater.
-Workers must manually install the first updater-enabled release once, proposed as 0.1.2.
-Subsequent compatible releases can be offered inside that installed app.
-The proposed version is not a promise that an installer already exists.
+Workers must manually install an updater-enabled production release once; signed production installers through `0.1.5` have been distributed manually.
+Subsequent compatible releases can be offered inside that installed app only after a signed manifest is published.
+Source candidate `0.1.6` does not by itself create an automatic update.
 
 ## Safety boundary
 
@@ -43,8 +44,16 @@ A publisher certificate is a separate decision and is not required to implement 
 ## Hosting and release pipeline
 
 Use our existing Hetzner server and Caddy for public, read-only update files.
-The proposed manifest endpoint is `https://worktrack.178.156.213.40.sslip.io/updates/windows/x86_64/latest.json`.
-This route does not exist merely because it is documented here.
+The production manifest endpoint is `https://worktrack.178.156.213.40.sslip.io/updates/windows/x86_64/latest.json`; staging uses `/updates-staging/windows/x86_64/latest.json` on the same host.
+Approved provisioning on October 21, 2026 installed the root-owned receiver/public key, `minisign`, two isolated fixed service accounts, distinct restricted SSH identities, and separate storage trees.
+The reviewed operator-only `scripts/setup_updater_host.sh` accepts a receiver path and three public-key file paths, validates inputs and effective sshd restrictions, and rolls back its SSH fragment on validation or reload failure.
+It does not create public mounts, modify runtime configuration, or publish manifests.
+The web container now mounts only each channel's `public` subtree read-only through `deploy/compose.updates.yaml`; storage parents and signing material remain outside the container.
+All three GitHub environments exist with `main` branch restrictions. Dedicated SSH secrets and verified host variables are configured separately for staging and production.
+Both dedicated keys reached the forced receiver rather than a requested shell command; cross-account and trusted-file writes were denied in account-isolation checks.
+A production archive submitted through the staging identity was rejected for its download URL, not promoted.
+The web-only recreation preserved its image and the API, database, and shared proxy container IDs. WorkTrack health, dashboard, and existing installer download returned `200`; hidden update paths returned `404`.
+Both `latest.json` endpoints still return `404`, intentionally: prepared hosting is not a published feed.
 Use immutable, versioned installer paths and keep previous release files available.
 Do not expose the private screenshot R2 bucket or embed a GitHub access token in the agent.
 Our private GitHub release assets cannot serve as anonymous worker downloads.
@@ -67,13 +76,25 @@ Serve the manifest with revalidation rather than long-lived caching.
 If a release is faulty, stop offering it and publish a higher-version fix.
 Do not implement forced downgrades in V1.
 
+## Native workflow gate and remaining evidence
+
+The production channel in `.github/workflows/updater-release.yml` runs independent signature verification, then `scripts/updater_upgrade_acceptance.ps1` on a disposable GitHub-hosted Windows runner.
+It starts with the immutable `0.1.5` installer, pinned by SHA-256, and drives the actual installed WebView through UI Automation against an isolated HTTPS feed for the exact production hostname.
+The hostname maps to loopback before app launch, so the acceptance fixture neither publishes a public manifest nor contacts a real worker API.
+The runner uploads `windows-upgrade-evidence`, containing `worktrack-upgrade-evidence/upgrade-evidence.json` when available, even for partial or failed observations.
+Production publication depends on successful `verify` and `upgrade` jobs plus explicit `publish=true` and a nonempty `upgrade_evidence` reference.
+Staging publication remains independently isolated and does not run this production-only native job.
+Workflow `39657475612` was dispatched for candidate `0.1.6` with `publish=false`; a dispatch or running build is not a passing native upgrade.
+The fixture's seeded identity can prove local preservation, not real server login, active tracking, geolocation, or screenshot acceptance.
+Complete the unproven connected-worker gates below, and inspect retained native evidence before publication.
+
 ## Implementation order
 
-1. Add signing configuration, protected release secrets, and updater artifact generation.
-2. Add Rust update commands, the exclusive installation gate, and the React update prompt.
-3. Configure read-only Caddy distribution and the approved, atomic release publication job.
-4. Validate an actual signed Windows upgrade before enabling the production manifest.
-5. Publish the first updater-enabled installer and explain the one-time manual installation to workers.
+1. Signing configuration, protected release credentials, and updater artifacts are implemented.
+2. Rust update commands, the exclusive installation gate, and the React prompt are implemented.
+3. Approved isolated hosting and read-only Caddy mounts are provisioned; publication remains gated.
+4. Obtain passing native Windows upgrade evidence and complete the remaining connected-worker checks before enabling the production manifest.
+5. Publish an accepted signed release and explain the one-time manual installation to workers on versions without an updater.
 
 ## Acceptance gates
 
@@ -91,7 +112,8 @@ Do not implement forced downgrades in V1.
 
 A connected Windows environment is required for the full in-app upgrade and restart checks.
 GitHub Windows compilation, unit tests, and silent fresh installation are useful prerequisites but cannot replace those observations.
-These real in-app upgrade checks have not been completed. Signed candidate builds and fresh-install smoke tests are recorded in `deploy/DOWNLOADS.md`; they do not satisfy this gate.
+The native upgrade job has been added, but these real in-app upgrade checks have no recorded passing result here. Signed candidate builds and fresh-install smoke tests are recorded in `deploy/DOWNLOADS.md`; they do not satisfy this gate.
+Host readiness and basic account isolation were verified separately. They do not prove public artifact publication, native upgrade/data preservation, real worker login, or native tracking/location behavior.
 
 ## Official references
 
@@ -100,5 +122,5 @@ These real in-app upgrade checks have not been completed. Signed candidate build
 
 The repository now includes the updater plugin and the real public verification key.
 Ordinary unsigned CI explicitly clears its update key and endpoints and keeps `createUpdaterArtifacts` set to `false`.
-Signed production-channel installers have been distributed manually, but both update feeds returned HTTP 404 on October 21, 2026.
-A signed build, manual download, or GitHub release does not publish `latest.json` or prove an in-app upgrade.
+Signed production-channel installers have been distributed manually, but both prepared update feeds still returned HTTP 404 after the approved October 21, 2026 host provisioning.
+A signed build, manual download, configured receiver, or GitHub release does not publish `latest.json` or prove an in-app upgrade.
