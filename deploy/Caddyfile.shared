@@ -10,7 +10,16 @@ http://:8080 {
 		Referrer-Policy same-origin
 		-Server
 	}
-	# Missing updates must be 404, never the React index page.
+	# Missing installers and updates must be 404, never the React index page.
+	handle_path /downloads/* {
+		root * /srv/downloads
+		@download_hidden path_regexp download_hidden (^|/)\.[^/]*
+		respond @download_hidden 404
+		header Cache-Control "public, max-age=31536000, immutable"
+		@installer path *.exe
+		header @installer Content-Disposition "attachment"
+		file_server
+	}
 	handle_path /updates/* {
 		root * /srv/updates
 		@hidden path_regexp hidden (^|/)\.[^/]*

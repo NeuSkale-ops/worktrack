@@ -1,0 +1,7 @@
+# Apply after the protected runtime configuration on the shared host.
+# Versioned installer files are public and immutable. No signing secrets belong here.
+services:
+  web:
+    image: worktrack-web:downloads-0.1.2
+    volumes:
+      - /srv/worktrack-downloads:/srv/downloads:ro

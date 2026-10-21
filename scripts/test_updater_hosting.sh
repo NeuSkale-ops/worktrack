@@ -12,6 +12,9 @@ cleanup() {
 }
 trap cleanup EXIT
 mkdir -p "$fixtures/site/updates/windows/x86_64/releases/0.1.2"
+mkdir -p "$fixtures/site/downloads/0.1.2"
+printf 'production download fixture\000\377\n' > "$fixtures/site/downloads/0.1.2/WorkTrack_0.1.2_x64-setup.exe"
+printf 'hidden download\n' > "$fixtures/site/downloads/0.1.2/.private"
 printf '<html>dashboard fixture</html>\n' > "$fixtures/site/index.html"
 printf '{"version":"0.1.2"}\n' > "$fixtures/site/updates/windows/x86_64/latest.json"
 printf 'immutable installer fixture\000\377\n' > "$fixtures/site/updates/windows/x86_64/releases/0.1.2/worktrack-setup.exe"
@@ -37,6 +40,15 @@ grep -qi '^cache-control: no-cache, max-age=0, must-revalidate' "$fixtures/heade
 curl --silent --fail -D "$fixtures/headers" "$base/updates/windows/x86_64/releases/0.1.2/worktrack-setup.exe" > "$fixtures/installer"
 cmp "$fixtures/installer" "$fixtures/site/updates/windows/x86_64/releases/0.1.2/worktrack-setup.exe"
 grep -qi '^cache-control: public, max-age=31536000, immutable' "$fixtures/headers"
+curl --silent --fail -D "$fixtures/headers" "$base/downloads/0.1.2/WorkTrack_0.1.2_x64-setup.exe" > "$fixtures/download"
+cmp "$fixtures/download" "$fixtures/site/downloads/0.1.2/WorkTrack_0.1.2_x64-setup.exe"
+grep -qi '^content-disposition: attachment' "$fixtures/headers"
+grep -qi '^cache-control: public, max-age=31536000, immutable' "$fixtures/headers"
+for path in /downloads/missing.exe /downloads/0.1.2/.private /downloads/0.1.2/; do
+  test "$(curl --silent -o /dev/null -w '%{http_code}' "$base$path")" = 404
+done
+test "$(curl --silent -X PUT --data 'not allowed' -o /dev/null -w '%{http_code}' "$base/downloads/0.1.2/WorkTrack_0.1.2_x64-setup.exe")" = 405
+cmp "$fixtures/download" "$fixtures/site/downloads/0.1.2/WorkTrack_0.1.2_x64-setup.exe"
 for path in /updates/windows/x86_64/missing.json /updates/windows/x86_64/releases/missing.exe /updates/windows/x86_64/.latest.json.tmp; do
   test "$(curl --silent -o "$fixtures/missing" -w '%{http_code}' "$base$path")" = 404
   ! cmp -s "$fixtures/missing" "$fixtures/site/index.html"
@@ -48,4 +60,4 @@ curl --silent --fail "$base/dashboard/deep/link" > "$fixtures/dashboard"
 cmp "$fixtures/dashboard" "$fixtures/site/index.html"
 test "$(curl --silent -X PUT --data 'not allowed' -o /dev/null -w '%{http_code}' "$base/updates/windows/x86_64/latest.json")" = 405
 cmp "$fixtures/manifest" "$fixtures/site/updates/windows/x86_64/latest.json"
-printf 'PASS: real Caddy manifest/cache, immutable bytes, missing/hidden 404, SPA fallback and read-only methods\n'
+printf 'PASS: real Caddy update and worker download bytes/cache, attachment headers, missing/hidden 404, SPA fallback and read-only methods\n'
