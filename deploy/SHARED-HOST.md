@@ -2,8 +2,9 @@
 
 Host: `neuskale-app-ash` (`178.156.213.40`).
 Approved hostname: `worktrack.178.156.213.40.sslip.io`.
-API image source: `641cf6b`.
-Web image source: `31c783e`, deployed as `worktrack-web:downloads-0.1.2`.
+API and web image source: `f60d9604852dbdfeffcc077992ccf3786cf029ca`.
+Deployed images: `worktrack-api:f60d960` and `worktrack-web:f60d960`.
+Apply `compose.release.yaml` last to retain these images.
 
 ## Layout
 
@@ -44,11 +45,33 @@ The VM had about 1.5 GiB available RAM after deployment in a short snapshot, not
 
 ## Operation
 
-Run `docker compose -p worktrack -f /etc/worktrack/compose.runtime.json -f /opt/worktrack/deploy/compose.downloads.yaml ps` on the VM to inspect only this deployment.
-Use both files for future web updates to retain the deployed image and read-only installer mount.
+Run `docker compose -p worktrack -f /etc/worktrack/compose.runtime.json -f /opt/worktrack/deploy/compose.downloads.yaml -f /opt/worktrack/deploy/compose.release.yaml ps` on the VM to inspect only this deployment.
+Use all three files, in this order, for future operations to retain the release images and read-only installer mount.
+Deploy API changes first with `up -d --no-deps --no-build --pull never --wait api`, then deploy web with the same command ending in `web`.
 Do not print the runtime configuration because it contains storage and database credentials.
 No public database or API ports are published.
-No backup schedule or restore drill has been completed.
+No backup schedule is configured. An encrypted off-host database backup and isolated PostgreSQL 17 restore succeeded before the audit-fix deployment below.
 The user-selected short owner password remains a known security limitation.
 
-Backups and actual Windows capture/lock/suspend acceptance remain required before a worker pilot.
+Scheduled backups, object-storage recovery, and actual Windows capture/lock/suspend acceptance remain required before a worker pilot.
+
+## Audit-fix deployment, 2026-10-21
+
+API and web were replaced in that order at approximately 11:35 UTC, from source `f60d9604852dbdfeffcc077992ccf3786cf029ca`.
+Both AMD64 images were built off-host and their revision labels verified after loading.
+The new `blocks_report_time` index is valid. Both services are healthy, have zero restarts/OOM events, retain their original memory limits, and publish no host ports.
+The database and shared HTTPS proxy containers were not recreated. User, session, and block counts remained 2, 4, and 4.
+
+Public HTTPS checks passed for the new recovery UI bundle, authenticated current-session reads, JSON/CSV reports, device logout/revocation, unchanged installer checksum, and hidden/missing/directory download 404s.
+Authenticated reads used one explicitly labelled five-minute deployment-test credential, which was revoked and removed afterward. No passwords or tracking records were changed, and no production session was recovered.
+Existing OMS and portal sites remained HTTPS 200.
+
+The encrypted backup is stored outside git under `~/.local/share/worktrack-backups/20261021T113204Z-f60d960.dump.age` on the developer machine.
+Its separate mode-0600 recovery identity is alongside it as `20261021T113204Z-f60d960.agekey`, never on the production host. Move that identity to protected offline recovery storage and retain a tested recovery copy.
+The backup restored into an isolated disposable PostgreSQL 17 instance with matching row counts. Object bytes were not backed up by this database dump.
+
+Previous images are retained on the host as `worktrack-api:before-f60d960` and `worktrack-web:before-f60d960`.
+For application rollback, append `/opt/worktrack/deploy/compose.rollback-before-f60d960.yaml` after all three configuration files above and recreate `web` first, then `api`, with `up -d --no-deps --no-build --pull never --wait`.
+This rollback overlay is host-only. The added index is backward compatible and does not require a database restore. Do not delete volumes or restore over production as an application rollback shortcut.
+
+The published Windows installer remains v0.1.2 with its original immutable bytes. The desktop logout fix in source has not shipped to workers and needs a separately versioned signed Windows release. No update manifest was published.

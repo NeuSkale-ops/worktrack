@@ -32,15 +32,17 @@ It does not change the API, database, outer HTTPS proxy, signing secrets, or scr
 docker compose -p worktrack \
   -f /etc/worktrack/compose.runtime.json \
   -f /opt/worktrack/deploy/compose.downloads.yaml \
-  up -d --no-deps --wait web
+  -f /opt/worktrack/deploy/compose.release.yaml \
+  up -d --no-deps --no-build --pull never --wait web
 ```
 
-Use both files for subsequent web operations so the image and installer mount are retained.
+Use all three files, in this order, for subsequent web operations so the current release image and installer mount are retained.
+The current API/dashboard release is recorded in `SHARED-HOST.md`; the downloads overlay alone still names the older dashboard image.
 Never print the protected runtime configuration.
 Verify the public HTTPS installer checksum against the verified candidate before announcing availability.
 Verify missing download paths return 404, file responses are attachments, listing is disabled, API health is unchanged, and unrelated shared-host sites still work.
 
-To roll back, restore the backed-up Caddy configuration and run the previous protected-runtime-only web configuration.
+For application rollback, use the retained images and rollback overlay documented in `SHARED-HOST.md`.
 Preserve published installer bytes and do not overwrite versioned paths with a different build.
 
 ## Public acceptance

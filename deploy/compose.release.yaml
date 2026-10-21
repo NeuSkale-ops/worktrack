@@ -1,0 +1,7 @@
+# Shared-host release overlay. Apply last, after protected runtime and downloads.
+# Keep published installers and the host's existing Caddy configuration unchanged.
+services:
+  api:
+    image: worktrack-api:f60d960
+  web:
+    image: worktrack-web:f60d960

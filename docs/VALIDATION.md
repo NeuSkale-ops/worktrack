@@ -3,6 +3,24 @@
 Date: 2026-10-21.
 This records observed checks, not a production-readiness claim.
 
+## Audit-fix deployment follow-up
+
+API and dashboard source `f60d9604852dbdfeffcc077992ccf3786cf029ca` was deployed to the existing shared Hetzner host at approximately 11:35 UTC on 2026-10-21.
+The API was replaced and checked before the dashboard. The new report index is valid, both services are healthy with zero restarts/OOM events, and their resource limits and private networking remain enforced.
+Database and shared-proxy container identities were unchanged, as were counts of users, sessions, and blocks.
+The exact published v0.1.2 installer and checksum are unchanged.
+
+Before replacement, an encrypted off-host custom-format database dump was restored successfully into an isolated disposable PostgreSQL 17 instance, with matching row counts.
+Recovery identity and encrypted dump are stored outside git on the developer machine, as documented in `deploy/SHARED-HOST.md`. The recovery identity still needs protected offline storage.
+This proves database-dump restoration, not screenshot-object recovery or a scheduled backup service.
+
+Post-deployment HTTPS checks passed for the recovery UI bundle, current-session reads, JSON/CSV reports, device logout and revoked-token rejection, the existing installer bytes/cache policy, and missing/hidden/directory 404s.
+Authenticated reads used one labelled five-minute test credential that was revoked and removed after the checks. No account password, tracking record, or production session was changed.
+Both unrelated public applications remained HTTPS 200.
+Old API/web images and a host-only rollback overlay are retained.
+
+The source desktop logout fix has not shipped in the immutable v0.1.2 installer. A new versioned, signed Windows installer remains required, and no update feed was published.
+
 ## Updater source implementation follow-up
 
 The new source implements Windows-only update checks, explicit worker-approved installation, and a Rust-side exclusive installation reservation.
