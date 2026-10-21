@@ -3,6 +3,35 @@
 Date: 2026-10-21.
 This records observed checks, not a production-readiness claim.
 
+## Updater source implementation follow-up
+
+The new source implements Windows-only update checks, explicit worker-approved installation, and a Rust-side exclusive installation reservation.
+The existing released 0.1.0 and 0.1.1 installers are unchanged and cannot discover updates.
+The committed development configuration deliberately has no public signing key and cannot install updates.
+
+Local frontend TypeScript and production build passed after integration.
+The committed `agent/tests/updater.html` harness passed all 16 checks in Firefox against the real React app with mocked Tauri IPC.
+Observed cases included startup and six-hour scheduling, version/notes display, Later without installation, active-tracking and queued-data blocking, stale-offer removal, explicit installation arguments, progress, failure recovery, reserved sign-in controls, and neutral unavailable-build messaging.
+This validates frontend interactions, not native updater behavior or Windows installation.
+All 15 Rust tests passed, including six updater tests for active/paused sessions, pending queue and stop markers, unreadable SQLite tables, exclusive mutation admission, quit admission, and reservation release after failure.
+Strict all-target Clippy passed.
+Twelve release-plumbing tests passed for version validation, signature-version binding, archive restrictions, failed-public-download recovery, immutable artifacts, publication locking, interruption recovery, and rollback prevention.
+Four additional tests exercised the actual `minisign` CLI through the release verifier in an isolated Python 3.12 Alpine container.
+A public upstream Tauri test signature was accepted, while modified payload bytes with a recomputed checksum, a different valid public key, and forged trusted-comment/version metadata were rejected.
+These public fixtures contain no private signing key and do not prove installation of a real signed Windows artifact.
+The actual Caddy shared-host configuration passed local container HTTP checks for manifest JSON/cache policy, exact installer bytes, immutable caching, missing/hidden-file 404 responses, SPA fallback, and rejected PUT writes.
+These checks do not prove production HTTPS update delivery.
+
+A native macOS Tauri development process compiled and ran for about 75 seconds without an observed startup panic or early exit.
+The frontend HTTP endpoint was reachable, but the accessibility bridge could not resolve the native window for interaction.
+No native update IPC, Windows installation, restart, or data preservation behavior is claimed from that startup probe.
+The isolated probe was stopped without signing in or starting monitoring.
+
+No production signing key or protected GitHub release environment was available during implementation.
+No signed updater-enabled release, public update files, production manifest, restricted deployment accounts, or shared-host changes were created.
+The signed staging-to-newer-staging Windows journey, malicious-signature rejection through the installed app, and production delivery remain explicit release gates in `deploy/UPDATES.md`.
+The local checks validate implementation and file-serving boundaries, not completion of those externally blocked release gates.
+
 ## Windows 0.1.1 release follow-up
 
 Release `v0.1.1` was published from `25196d07ecb4bb08b7ccb83ec1d371de3f0eef64` with `WorkTrack_0.1.1_x64-setup.exe`.

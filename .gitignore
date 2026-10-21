@@ -13,3 +13,5 @@ coverage/
 *.p12
 *.sqlite
 *.sqlite3
+__pycache__/
+*.pyc

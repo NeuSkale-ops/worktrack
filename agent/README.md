@@ -1,7 +1,9 @@
 # WorkTrack desktop agent V1
 
 Windows-first Tauri 2 application with React and TypeScript.
-No projects, autostart, updater, hidden tracking, keyboard hooks, or keylogging.
+No projects, autostart, hidden tracking, keyboard hooks, or keylogging.
+The source includes an opt-in signed updater for release-configured builds.
+Ordinary development and unsigned CI builds do not have a trusted update key and cannot install updates.
 
 ## Worker sign-in and updates
 
@@ -13,7 +15,10 @@ There is no update check, update notification, or automatic installation in vers
 Publishing a GitHub release alone does not update installed agents.
 Stop tracking, wait until queued records reach zero, quit the agent, and run the new per-user installer manually.
 Do not uninstall or remove application data as an update shortcut.
-Automatic updates would require a separate signed updater and distribution endpoint.
+See `docs/AUTO-UPDATE-PLAN.md` for the update safety requirements and `deploy/UPDATES.md` for release setup.
+Adding this feature to source does not retrofit an updater into already-installed versions.
+Workers must manually install the first signed-updater-enabled release once.
+Updater signatures authenticate downloaded updates but are not Windows publisher signatures and do not remove SmartScreen warnings.
 
 Existing credentials and queued records for the pinned origin retain the same application identifier and storage paths.
 Pending records from a different server are never redirected into this workspace.
