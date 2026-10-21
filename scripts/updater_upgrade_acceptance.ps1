@@ -39,8 +39,8 @@ $Candidate = (Resolve-Path -LiteralPath $Candidate).Path
 $Baseline = (Resolve-Path -LiteralPath $Baseline).Path
 $helper = Join-Path $PSScriptRoot 'updater_acceptance_feed.py'
 if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) { throw 'Coordinator HTTPS feed helper is missing.' }
-$python = (Get-Command python -CommandType Application -ErrorAction Stop).Source
-$opensslCommand = Get-Command openssl -CommandType Application -ErrorAction SilentlyContinue
+$python = (Get-Command python -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+$opensslCommand = Get-Command openssl -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($null -ne $opensslCommand) { $openssl = $opensslCommand.Source }
 else {
     $openssl = Join-Path $env:ProgramFiles 'Git\usr\bin\openssl.exe'
