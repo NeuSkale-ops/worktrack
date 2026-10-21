@@ -162,7 +162,8 @@ jobs:
           python -c 'import json,os,tarfile; archive=tarfile.open("updater-candidate.tar"); assert json.load(archive.extractfile("latest.json"))["version"] == os.environ["RELEASE_VERSION"], "Candidate version differs from requested release"'
   upgrade:
     needs: verify
-    if: inputs.channel == 'production'
+    if: >-
+      !cancelled() && needs.verify.result == 'success' && inputs.channel == 'production'
     runs-on: windows-latest
     timeout-minutes: 35
     steps:
