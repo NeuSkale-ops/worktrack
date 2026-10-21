@@ -36,6 +36,13 @@ Verify missing download paths return 404, file responses are attachments, listin
 To roll back, restore the backed-up Caddy configuration and run the previous protected-runtime-only web configuration.
 Preserve published installer bytes and do not overwrite versioned paths with a different build.
 
+## Public acceptance
+
+Run `node scripts/download-acceptance.mjs` with `WT_DOWNLOAD_BASE`, independently verified `WT_DOWNLOAD_SHA256`, and existing-account `WT_ACCEPTANCE_EMAIL` and `WT_ACCEPTANCE_PASSWORD` supplied through a protected environment.
+The script checks the deployed bundle, real login and authenticated API, anonymous exact installer bytes, attachment/cache headers, published checksum, missing/hidden paths, and disabled directory listing.
+It creates and revokes only its own authentication session and does not create workers or change tracking records.
+Never include credential values in shell arguments or logs.
+
 ## Auto-update scope
 
 The production-configured v0.1.2 installer includes the production updater endpoint and verification public key.
