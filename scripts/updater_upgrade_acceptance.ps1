@@ -535,14 +535,31 @@ print(json.dumps({"action": action, "integrity": "ok", "settings_preserved": Tru
     $null = Wait-UiText ('Version\s+' + [regex]::Escape($ExpectedVersion) + '\s+is available\.')
     Invoke-Update
     $deadline = [DateTime]::UtcNow.AddMinutes(5)
+    $lastSampleHash = $null
+    $lastReadError = ''
     do {
         Start-Sleep -Milliseconds 500
-        if ((Test-Path -LiteralPath $exe) -and (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash -ne $script:oldExeHash) { break }
-        if ([DateTime]::UtcNow -ge $deadline) { throw "Real plugin did not replace installed baseline. UI: $(Get-UiText)" }
+        try {
+            # NSIS locks and replaces this path. A changed or partially written
+            # file is not acceptance evidence until its version and hash settle.
+            $sampleVersion = (Get-Item -LiteralPath $exe -ErrorAction Stop).VersionInfo.ProductVersion
+            $sampleHash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256 -ErrorAction Stop).Hash
+            if ($sampleVersion -match ('^' + [regex]::Escape($ExpectedVersion) + '(?:\.|\+|$)') -and $sampleHash -ne $script:oldExeHash) {
+                if ($sampleHash -eq $lastSampleHash) {
+                    $newExeHash = $sampleHash
+                    $newProductVersion = $sampleVersion
+                    break
+                }
+                $lastSampleHash = $sampleHash
+            } else { $lastSampleHash = $null }
+        } catch {
+            # Retry bounded transient sharing/read errors, never treat them as an
+            # unchanged or successfully installed executable.
+            $lastSampleHash = $null
+            $lastReadError = $_.Exception.Message
+        }
+        if ([DateTime]::UtcNow -ge $deadline) { throw "Real plugin did not produce a stable $ExpectedVersion executable. Last read error: $lastReadError. UI: $(Get-UiText)" }
     } while ($true)
-    $newExeHash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash
-    $newProductVersion = (Get-Item -LiteralPath $exe).VersionInfo.ProductVersion
-    if ($newProductVersion -notmatch ('^' + [regex]::Escape($ExpectedVersion) + '(?:\.|\+|$)')) { throw "Wrong installed candidate ProductVersion: $newProductVersion" }
     # NSIS may restart automatically. Starting the same installed path also handles
     # the app's documented manual-restart outcome, without running the installer.
     $deadline = [DateTime]::UtcNow.AddSeconds(60)
