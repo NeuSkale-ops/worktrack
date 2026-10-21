@@ -142,6 +142,7 @@ $evidence = [ordered]@{
         'No real geolocation, active tracking, screenshots, or native location acceptance is claimed.',
         'Exact production hostname is mapped to loopback before application launch. The helper returns API 503 only if the API client reaches HTTP.',
         'The main API client uses bundled web PKI roots and may reject the disposable certificate before HTTP. API requests need not appear in local logs; the retained offline queue is the acceptance evidence. No TLS bypass is used.',
+        'The disposable public TLS certificate is trusted in LocalMachine\Root on the elevated GitHub-hosted runner only, avoiding CurrentUser Root consent UI. Its private key remains in CurrentUser\My. Exact certificate thumbprints are removed during cleanup.',
         'Future-stalled advertises one higher patch only to exercise the new binary download timeout; it is never installed.'
     )
 }
@@ -381,7 +382,15 @@ try {
     $pem = Join-Path $root 'feed.pem'
     $pfxPassword = [guid]::NewGuid().ToString('N')
     $null = Export-Certificate -Cert $cert -FilePath $cer
-    $null = Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\CurrentUser\Root'
+    # CurrentUser Root import requires consent UI and fails under -NonInteractive.
+    # This guarded disposable elevated runner may silently trust the public cert
+    # machine-wide. The private key stays in CurrentUser My and is never imported.
+    & "$env:SystemRoot\System32\certutil.exe" -addstore -f Root $cer | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Could not trust the disposable public certificate in LocalMachine Root.' }
+    if (-not (Test-Path "Cert:\LocalMachine\Root\$($cert.Thumbprint)")) { throw 'Disposable root certificate is missing after import.' }
+    $evidence.tlsRootStore = 'LocalMachine\Root'
+    $evidence.tlsPrivateKeyStore = 'CurrentUser\My'
+    $evidence.tlsCertificateThumbprint = $cert.Thumbprint
     $null = Export-PfxCertificate -Cert $cert -FilePath $pfx -Password (ConvertTo-SecureString $pfxPassword -AsPlainText -Force)
     # Export both private key and certificate to one PEM for Python SSLContext.
     $env:WORKTRACK_ACCEPTANCE_PFX_PASSWORD = $pfxPassword
@@ -642,13 +651,14 @@ print(json.dumps({"action": action, "integrity": "ok", "settings_preserved": Tru
         } catch { $cleanup += "Restore hosts: $($_.Exception.Message)" }
     }
     if ($null -ne $cert) {
-        foreach ($store in @('Root', 'My')) {
+        foreach ($store in @('LocalMachine\Root', 'CurrentUser\My')) {
             try {
-                $path = "Cert:\CurrentUser\$store\$($cert.Thumbprint)"
+                $path = "Cert:\$store\$($cert.Thumbprint)"
                 if (Test-Path $path) {
-                    if ($store -eq 'My') { Remove-Item $path -DeleteKey -Force }
+                    if ($store -eq 'CurrentUser\My') { Remove-Item $path -DeleteKey -Force }
                     else { Remove-Item $path -Force }
                 }
+                if (Test-Path $path) { throw 'Disposable certificate remained after exact-thumbprint removal.' }
             } catch { $cleanup += "Remove $store fixture certificate: $($_.Exception.Message)" }
         }
     }
