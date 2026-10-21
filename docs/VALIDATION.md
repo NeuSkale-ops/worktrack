@@ -3,6 +3,20 @@
 Date: 2026-10-21.
 This records observed checks, not a production-readiness claim.
 
+## Windows 0.1.1 release follow-up
+
+Release `v0.1.1` was published from `25196d07ecb4bb08b7ccb83ec1d371de3f0eef64` with `WorkTrack_0.1.1_x64-setup.exe`.
+The Rust backend pins the deployed workspace origin and the rendered sign-in form contains only email/password, not a server URL input.
+Nine local Rust tests, frontend build and strict Clippy passed.
+Native Windows run `39564341709` passed compilation, nine tests, NSIS packaging and artifact upload.
+Separate installer run `39567029465` completed silent per-user installation and five-second process survival at 08:08:47 UTC.
+Installer SHA-256: `adc9a32444ba8a27399f6ae2840f04348281f92b6d6e8e845b6bd28b6b5585f9`.
+GitHub reported the same digest on the uploaded release asset.
+The application identifier and storage paths are unchanged, and pending records from a different origin are not migrated into the pinned workspace.
+Neither 0.1.0 nor 0.1.1 implements automatic update checks or notifications.
+Workers must stop, sync, quit and run the new installer manually.
+Actual Windows login/capture and an in-place upgrade with existing worker data are not claimed verified by the fresh-install smoke.
+
 ## Live deployment follow-up
 
 WorkTrack was deployed to the existing approved `neuskale-app-ash` VM on 2026-10-21.
