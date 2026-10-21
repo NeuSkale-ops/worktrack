@@ -44,6 +44,8 @@ docker run -d --name "$api" --network "$id" --network-alias api --read-only --ca
   --security-opt no-new-privileges:true --tmpfs /tmp:mode=1777 \
   -e DATABASE_URL='postgres://worktrack:disposable-acceptance-password@db:5432/worktrack?sslmode=disable' \
   -e APP_ORIGIN="$origin" -e DEV_MODE=false \
+  -e R2_ENDPOINT=https://r2-fixture.invalid -e R2_BUCKET=acceptance-screenshots \
+  -e R2_ACCESS_KEY_ID=fixture-r2-key -e R2_SECRET_ACCESS_KEY=fixture-r2-secret \
   -e BOOTSTRAP_EMAIL=container-owner@example.test \
   -e BOOTSTRAP_PASSWORD=disposable-acceptance-password \
   worktrack-api:acceptance >/dev/null
@@ -56,7 +58,7 @@ docker exec "$web" cat /data/caddy/pki/authorities/local/root.crt > "$scratch/ro
 # Trust only this fixture CA for this process, not globally and not with TLS validation disabled.
 NODE_EXTRA_CA_CERTS="$scratch/root.crt" APP_ORIGIN="$origin" \
   WT_TEST_BASE="$origin" WT_TEST_OWNER_EMAIL=container-owner@example.test \
-  WT_TEST_OWNER_PASSWORD=disposable-acceptance-password node scripts/integration.mjs
+  WT_TEST_OWNER_PASSWORD=disposable-acceptance-password WT_TEST_R2_CONFIG=true node scripts/integration.mjs
 NODE_EXTRA_CA_CERTS="$scratch/root.crt" APP_ORIGIN="$origin" \
   WT_TEST_BASE="$origin" WT_TEST_OWNER_EMAIL=container-owner@example.test \
   WT_TEST_OWNER_PASSWORD=disposable-acceptance-password node scripts/team-acceptance.mjs

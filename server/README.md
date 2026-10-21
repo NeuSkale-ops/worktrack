@@ -24,7 +24,9 @@ These limits are process-local and reset on restart, so keep one API replica or 
 
 ## Private object storage
 
-Configure `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY` for Hetzner S3.
+Configure `R2_ENDPOINT`, `R2_REGION` (default `auto`), `R2_BUCKET`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY` for Cloudflare R2.
+Store these settings with `envkit set KEY`, never in source control or chat.
+The AWS SDK is only the S3-compatible transport and reads these R2 keys explicitly.
 Use a private bucket, a bucket-scoped service key, and a 90-day object-expiry lifecycle rule.
 The server signs five-minute JPEG PUT URLs with an exact Content-Length between one byte and 5 MiB.
 The agent uploads directly to S3, then submits the activity block with its reserved key.

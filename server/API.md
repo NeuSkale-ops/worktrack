@@ -47,6 +47,8 @@ Use the hours report, not a timeline sum, for daily payroll totals.
 
 DATABASE_URL, APP_ORIGIN (default http://localhost:5173), LISTEN_ADDR (default :8080), DEV_MODE (default false).
 BOOTSTRAP_EMAIL, BOOTSTRAP_PASSWORD, BOOTSTRAP_NAME create the first owner only when users is empty.
-S3_ENDPOINT, S3_REGION (default eu-central), S3_BUCKET, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY configure private Hetzner storage.
+R2_ENDPOINT, R2_REGION (default auto), R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY configure private Cloudflare R2 storage.
+The R2-prefixed access keys are passed explicitly to the S3-compatible SDK.
+Legacy S3_/AWS_ environment names are not read for this storage configuration.
 Without S3 configuration upload URL requests return 503.
 Run `go run .` from server/. SQL migrations run automatically under a PostgreSQL advisory lock.

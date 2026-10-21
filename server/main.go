@@ -22,6 +22,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -77,15 +78,19 @@ func main() {
 		slog.Error("bootstrap", "error", err)
 		os.Exit(1)
 	}
-	if endpoint := os.Getenv("S3_ENDPOINT"); endpoint != "" && os.Getenv("S3_BUCKET") != "" {
-		cfg, e := config.LoadDefaultConfig(ctx, config.WithRegion(env("S3_REGION", "eu-central")))
+	if endpoint := os.Getenv("R2_ENDPOINT"); endpoint != "" && os.Getenv("R2_BUCKET") != "" {
+		cfg, e := config.LoadDefaultConfig(ctx,
+			config.WithRegion(env("R2_REGION", "auto")),
+			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+				os.Getenv("R2_ACCESS_KEY_ID"), os.Getenv("R2_SECRET_ACCESS_KEY"), "")),
+		)
 		if e != nil {
 			slog.Error("storage", "error", e)
 			os.Exit(1)
 		}
 		a.s3 = s3.NewFromConfig(cfg, func(o *s3.Options) { o.BaseEndpoint = aws.String(endpoint); o.UsePathStyle = true })
 		a.signer = s3.NewPresignClient(a.s3)
-		a.bucket = os.Getenv("S3_BUCKET")
+		a.bucket = os.Getenv("R2_BUCKET")
 	}
 	go a.cleanupUploads(ctx)
 	srv := &http.Server{Addr: env("LISTEN_ADDR", ":8080"), Handler: a.routes(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}

@@ -38,7 +38,9 @@ Monitor unhealthy status and application errors separately.
    This URL uses the private Docker network, not a public database listener.
 8. Set the three bootstrap variables for initial owner creation.
    Remove them after the initial owner can log in, then recreate the API container.
-9. Configure a private screenshot bucket and least-privilege credentials using the S3 variables in the example.
+9. Configure a private Cloudflare R2 screenshot bucket and bucket-scoped credentials using `R2_ENDPOINT`, `R2_REGION` (default `auto`), `R2_BUCKET`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY` in the example.
+   Set each value with `envkit set KEY`.
+   Storage uses R2 while the application and database stay on Hetzner.
    Deny public access and configure bucket CORS for the exact HTTPS application origin if direct browser uploads are needed.
    Screenshots contain sensitive employee information.
    Configure access policy, retention, consent, and deletion rules before collecting real data.

@@ -50,6 +50,15 @@ const start = new Date(Math.floor((Date.now() - 120_000) / 1000) * 1000);
 const end = new Date(start.getTime() + 60_000);
 await request('/api/sessions/start', { method: 'POST', token, body: { id: sessionID, started_at: start.toISOString() } });
 await request('/api/heartbeat', { method: 'POST', token, body: {} });
+if (process.env.WT_TEST_R2_CONFIG === 'true') {
+  const upload = await request('/api/uploads/screenshot-url', { method: 'POST', token, body: { block_id: randomUUID(), content_type: 'image/jpeg', size_bytes: 128 } });
+  const signed = new URL(upload.upload_url);
+  assert.equal(signed.hostname, 'r2-fixture.invalid');
+  assert(signed.pathname.startsWith('/acceptance-screenshots/'));
+  assert(signed.searchParams.get('X-Amz-Credential').startsWith('fixture-r2-key/'));
+  assert(signed.searchParams.get('X-Amz-Credential').includes('/auto/s3/'));
+  console.log('PASS: production R2-prefixed settings produce bucket-scoped signed URL with explicit R2 key and auto region (no live upload)');
+}
 const block = { id: randomUUID(), session_id: sessionID, start_at: start.toISOString(), end_at: end.toISOString(), active_seconds: 30 };
 await request('/api/blocks', { method: 'POST', token, body: { blocks: [block] } });
 await request('/api/blocks', { method: 'POST', token, body: { blocks: [block] } });
