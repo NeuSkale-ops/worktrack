@@ -1,6 +1,6 @@
 # Worker installer downloads
 
-The signed-in dashboard offers the production-configured Windows x64 installer at `/downloads/0.1.4/WorkTrack_0.1.4_x64-setup.exe`.
+The signed-in dashboard offers the production-configured Windows x64 installer at `/downloads/0.1.5/WorkTrack_0.1.5_x64-setup.exe`.
 Existing workers use their existing email and password after installation.
 A new invitation is not required.
 Tracking starts only when the worker clicks Start tracking.
@@ -15,14 +15,14 @@ No credentials or worker data are stored in the download directory.
 ## Standalone deployment
 
 The default `compose.yaml` mounts `/srv/worktrack-downloads` read-only, and its Caddy configuration serves `/downloads/*` as files rather than the React app.
-Place the verified installer and `SHA256SUMS` under `/srv/worktrack-downloads/0.1.4/` with mode 0755 directories and 0644 files.
+Place the verified installer and `SHA256SUMS` under `/srv/worktrack-downloads/0.1.5/` with mode 0755 directories and 0644 files.
 Use the standalone Compose commands in `README.md`. The shared-host image overlay below is not required.
 `deploy/test-web.sh` checks exact fixture bytes, attachment/cache headers, and 404 responses for missing, hidden, and directory paths against the standalone image.
 
 ## Shared host deployment
 
 Build the AMD64 web image away from the shared VM and load it using the reviewed release tag in `compose.release.yaml`.
-Place the verified installer in `/srv/worktrack-downloads/0.1.4/WorkTrack_0.1.4_x64-setup.exe` with public read permissions.
+Place the verified installer in `/srv/worktrack-downloads/0.1.5/WorkTrack_0.1.5_x64-setup.exe` with public read permissions.
 Keep the existing image and Caddy configuration available for rollback.
 Deploy the reviewed `Caddyfile.shared` and `compose.downloads.yaml` into `/opt/worktrack/deploy`.
 The downloads overlay adds a read-only installer directory mount; the final release overlay selects the current web image.
@@ -105,6 +105,21 @@ After sign-in, accept the updated monitoring disclosure. Foreground executable m
 For location, explicitly enable **Share location with screenshots for this launch**, allow Windows permission, and check Windows location services/desktop-app access. Location requests occur only at screenshot boundaries (every ten running minutes), never continuously or immediately on Start. Screenshots show coordinates, accuracy and fix time, or sharing-off/unavailable. No IP-location guesses or external map provider are used by WorkTrack.
 
 A location-capable connected Windows PC is still required to validate real fixes/accuracy, capture/lock/suspend behavior, and in-place identity/data-preserving upgrade acceptance. Publisher warnings remain possible. This preview is manual-install only; automatic-update publication remains gated.
+
+## Combined hotfix v0.1.5, October 21, 2026
+
+Reviewed source `12dbe5bf44832259401f099c807092f81ad191fe`, protected workflow `39619325968`, and GitHub preview release `v0.1.5` combine the desktop UI lock-order/status-poll fix with explicit screenshot statuses in the API/dashboard.
+The exact signed installer passed native tests, fresh install/startup and five responsive-main-window probes, independent Ubuntu verification, and local verification against the committed public key, exact trusted version and production URL.
+
+Public installer: `/downloads/0.1.5/WorkTrack_0.1.5_x64-setup.exe`, 3,928,439 bytes.
+SHA-256: `0ed92d211340e34d9228b5d3d434e6463ac8507102f3a2ac85ad633479935638`.
+Detached signature and `SHA256SUMS` are adjacent. The immutable directory was published atomically, then the dashboard switched to it. Anonymous HTTPS bytes/checksum/headers, authenticated dashboard entry, missing/hidden/listing 404s, and a real 375px owner view of existing worker time-only blocks all passed. Temporary acceptance credentials were revoked.
+
+Two reported "screenshots" were actually 30-second time-only blocks from a one-minute session. No worker image was attached or lost. The dashboard now distinguishes no capture, deletion and temporary unavailability. A synthetic 16x16 JPEG storage probe passed upload, signed download, exact checksum and decoding using live API storage settings, then was removed without changing worker data.
+Screenshots still occur every ten running minutes, not on Start/Stop. Keep the desktop unlocked and tracking for a full interval to test a real capture.
+
+Stop, sync to zero and quit before upgrading. Never uninstall or remove app data. If the old UI remains frozen, force-closing can lose an unflushed partial interval; already durable records remain queued. Do not assume an open server session means time is uploading, and never backfill unobserved time.
+Real-PC capture/location and in-place upgrade preservation remain acceptance gaps. Automatic updates remain unpublished, and updater signatures are not Authenticode.
 
 ## Auto-update scope
 

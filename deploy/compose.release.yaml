@@ -2,6 +2,6 @@
 # Keep published installers and the host's existing Caddy configuration unchanged.
 services:
   api:
-    image: worktrack-api:9fb9e13
+    image: worktrack-api:12dbe5b
   web:
-    image: worktrack-web:9fb9e13
+    image: worktrack-web:12dbe5b

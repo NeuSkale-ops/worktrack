@@ -18,6 +18,18 @@ The production-image HTTPS container journey passed real diagnostic ingestion/de
 At this source checkpoint, the feature had not yet been deployed or included in a new signed Windows installer. The subsequent deployment below ships it without changing the immutable v0.1.2 download.
 Pending diagnostics are intentionally lost on exit, overflow, or sign-in changes, and pre-sign-in/startup/crash errors are not remotely captured.
 
+## Desktop deadlock and screenshot-state hotfix v0.1.5
+
+Source `12dbe5bf44832259401f099c807092f81ad191fe` fixes the collector/UI lock inversion, moves status snapshots off the UI thread, coalesces pending status polls, and distinguishes time-only/deleted/unavailable screenshot states.
+All 26 Rust tests and strict Clippy passed, including a regression asserting that tray notification can reacquire Runtime and unchanged states are not reposted while failed updates remain retryable. All Go tests passed with race detection against disposable PostgreSQL, including each screenshot response state and permissions/deletion. Both frontend builds, ten web tests and all twelve updater Python tests passed.
+Chromium passed 27 desktop mock-IPC checks and 15 owner/nine manager/nine worker dashboard checks at 375px, including real synthetic JPEG decoding and time-only dialog labels. Production-image HTTPS acceptance and the existing 25-worker journey passed.
+Protected workflow `39619325968` passed native Windows tests, signed installer build, exact fresh install/startup plus responsive-main-window checks and independent Ubuntu signature verification. Local verification used the committed public key and exact trusted version/production URL. Installer: 3,928,439 bytes, SHA-256 `0ed92d211340e34d9228b5d3d434e6463ac8507102f3a2ac85ad633479935638`.
+
+Live DB diagnosis found two 30-second worker time blocks from a one-minute session, with no screenshot keys. No image was missing. A live-storage-settings probe uploaded/downloaded/checksummed/decoded a separate 16x16 JPEG and removed it without touching worker images or records.
+An encrypted backup was restored successfully with 2 users/6 sessions/6 blocks. API deployed 14:48 UTC and web 15:09 UTC on October 21, 2026, with no schema/capture-cadence change. Live API returned `not_captured` for both existing worker records, and a real 375px owner browser verified labels, scheduling explanation, matching modal and v0.1.5 download link. Anonymous download integrity/headers and old installer checksums passed; temporary credentials were revoked.
+Both containers remain healthy with unchanged limits and no restarts/OOM events. Database/shared proxy were not recreated. GitHub preview `v0.1.5` targets exact build source; no automatic-update manifest was published.
+Real-PC ten-minute capture/location and old-to-new identity/data-preserving upgrade acceptance remain unverified. An open session is not proof of uploaded time. See deployment/download docs for rollback and frozen-process data-loss caveats.
+
 ## Screenshot location/application implementation and deployment
 
 Source `9fb9e13be99e72cf586dc8eae5c177da546a09e9` adds optional screenshot-linked Windows geolocation and foreground executable usage during tracking.

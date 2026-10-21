@@ -2,8 +2,8 @@
 
 Host: `neuskale-app-ash` (`178.156.213.40`).
 Approved hostname: `worktrack.178.156.213.40.sslip.io`.
-API and web image source: `9fb9e13be99e72cf586dc8eae5c177da546a09e9`.
-Deployed images: `worktrack-api:9fb9e13` and `worktrack-web:9fb9e13`.
+API and web image source: `12dbe5bf44832259401f099c807092f81ad191fe`.
+Deployed images: `worktrack-api:12dbe5b` and `worktrack-web:12dbe5b`.
 Apply `compose.release.yaml` last to retain these images.
 
 ## Layout
@@ -113,3 +113,14 @@ Retained pre-release images are `worktrack-api:fb46c07` and `worktrack-web:fb46c
 The schema additions are backward compatible and do not require a database restore. However, do not roll the API back after v0.1.4 workers start uploading: older APIs reject the new block fields. Their queues would remain durable but stop syncing until a compatible API is restored within the seven-day offline window.
 Prefer a forward API fix or retain the compatible API while rolling back only web. Never overwrite immutable installer bytes, direct workers to a downgrade, remove app data, or restore over production as an application rollback shortcut.
 Real connected-Windows location/capture and in-place upgrade preservation still require worker acceptance; see `DOWNLOADS.md`.
+
+## Combined desktop/screenshot-status hotfix, 2026-10-21
+
+Source `12dbe5bf44832259401f099c807092f81ad191fe` was built for AMD64 off-host. API deployed at 14:48 UTC, web at 15:09 UTC after signed v0.1.5 passed native tests, exact-installer fresh install/responsive-window checks and independent signature verification. No schema or screenshot-cadence change was made.
+Both containers are healthy with matching revision labels, zero restarts/OOM events and unchanged resource/port limits. Database and shared proxy were not recreated.
+
+Backup `~/.local/share/worktrack-backups/20261021T144506Z-12dbe5b.dump.age` was restored into isolated PostgreSQL 17: 2 users, 6 sessions, 6 blocks. It uses existing protected `20261021T113204Z-f60d960.agekey`; retain an offline recovery copy. Screenshot objects are not backed up by this dump.
+No worker tracking/session state was changed by acceptance. Two existing worker blocks were confirmed `not_captured`, not missing images. A separate synthetic JPEG was uploaded/downloaded/decoded with live storage settings and deleted. Public download and real 375px owner dashboard checks passed with test credentials revoked. Prior installer checksums remain unchanged; automatic-update feed remains 404.
+
+Append `/opt/worktrack/deploy/compose.rollback-before-12dbe5b.yaml` last to select retained `worktrack-api:9fb9e13`/`worktrack-web:9fb9e13`. Recreate web then API with `--no-deps --no-build --pull never --wait` if rollback is needed. That API remains compatible with v0.1.5 block payloads, though screenshot-state UI improvements are lost. Never roll back farther to pre-v0.1.4 APIs that reject app/location fields, overwrite installer bytes, or restore a database for this application-only rollback.
+The old desktop can remain frozen with an open server session and no uploads. Do not infer recorded time or close/backfill sessions remotely without explicit worker recovery. Keep app data intact during manual upgrade.
