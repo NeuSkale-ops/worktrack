@@ -92,6 +92,12 @@ await request('/api/blocks', { method: 'POST', token, body: { blocks: [{ ...bloc
 console.log('PASS: foreground application usage persists with blocks, full paths and excess duration rejected, legacy location omitted');
 const report = await request(`/api/reports/hours?from=${date}&to=${date}`, { browser: true });
 assert.equal(report.find(row => row.user_id === worker.user.id).seconds, 60);
+// Local-day reports: the same 60s block lands on its Asia/Kolkata calendar date.
+const istDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(start);
+const istReport = await request(`/api/reports/hours?from=${istDate}&to=${istDate}&tz=Asia/Kolkata`, { browser: true });
+assert.equal(istReport.find(row => row.user_id === worker.user.id)?.seconds, 60, 'tz report must count the block on its local date');
+await request(`/api/reports/hours?from=${date}&to=${date}&tz=Not/AZone`, { browser: true, status: 400 });
+console.log('PASS: tz=Asia/Kolkata report through production image (embedded tzdata) and invalid zone rejected');
 const csv = await request(`/api/reports/hours.csv?from=${date}&to=${date}`, { browser: true });
 assert(csv.includes('Integration worker'));
 await request(`/api/blocks/${block.id}/screenshot`, { method: 'DELETE', token });
@@ -102,4 +108,27 @@ const afterTimeDelete = await request(`/api/timeline?user=${worker.user.id}&date
 assert.equal(afterTimeDelete.length, 0, 'Explicit time deletion must remove the block');
 await request('/api/auth/logout', { method: 'POST', token, body: {} });
 await request('/api/auth/me', { token, status: 401 });
+// Account lifecycle through the public API.
+const workerEmail = `worker-${suffix}@example.test`;
+const device = (await request('/api/auth/login', { method: 'POST', body: { email: workerEmail, password, device_name: 'Lifecycle device' } })).device_token;
+const revoked = await request(`/api/users/${worker.user.id}/revoke-devices`, { method: 'POST', browser: true, body: {} });
+assert.equal(revoked.revoked, 1);
+await request('/api/auth/me', { token: device, status: 401 });
+const reset = await request(`/api/users/${worker.user.id}/password-reset`, { method: 'POST', browser: true, body: {}, status: 201 });
+assert(reset.url.startsWith(`${base}/reset?token=`));
+await request('/api/auth/reset-password', { method: 'POST', browser: true, body: { token: reset.token, password: 'acceptance-reset-password' } });
+await request('/api/auth/reset-password', { method: 'POST', browser: true, body: { token: reset.token, password: 'acceptance-reset-password2' }, status: 400 });
+await request('/api/auth/login', { method: 'POST', body: { email: workerEmail, password, device_name: 'old' }, status: 401 });
+const renewed = (await request('/api/auth/login', { method: 'POST', body: { email: workerEmail, password: 'acceptance-reset-password', device_name: 'new' } })).device_token;
+await request(`/api/users/${worker.user.id}/disable`, { method: 'POST', browser: true, body: {} });
+await request('/api/auth/me', { token: renewed, status: 401 });
+await request('/api/auth/login', { method: 'POST', body: { email: workerEmail, password: 'acceptance-reset-password', device_name: 'x' }, status: 401 });
+assert.equal((await request('/api/team', { browser: true })).find(p => p.id === worker.user.id).disabled, true);
+await request(`/api/users/${owner.user.id}/disable`, { method: 'POST', browser: true, body: {}, status: 403 });
+await request(`/api/users/${worker.user.id}/enable`, { method: 'POST', browser: true, body: {} });
+await request('/api/auth/login', { method: 'POST', body: { email: workerEmail, password: 'acceptance-reset-password', device_name: 'back' } });
+const rejectedLog = { id: randomUUID(), occurred_at: new Date().toISOString(), code: 'sync_rejected', status: 409 };
+const back = (await request('/api/auth/login', { method: 'POST', body: { email: workerEmail, password: 'acceptance-reset-password', device_name: 'logs' } })).device_token;
+await request('/api/agent/logs', { method: 'POST', token: back, body: { version: '0.1.6', events: [rejectedLog] } });
+console.log('PASS: device revocation, single-use reset link, disable/enable lockout, owner self-protection and sync_rejected log code (migration 003)');
 console.log('PASS: real HTTP + PostgreSQL auth, invites, roles, tracking, idempotency, totals, CSV, screenshot/time deletion and token revocation');

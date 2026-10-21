@@ -44,6 +44,7 @@ docker run -d --name "$api" --network "$id" --network-alias api --read-only --ca
   --security-opt no-new-privileges:true --tmpfs /tmp:mode=1777 \
   -e DATABASE_URL='postgres://worktrack:disposable-acceptance-password@db:5432/worktrack?sslmode=disable' \
   -e APP_ORIGIN="$origin" -e DEV_MODE=false \
+  -e TRUSTED_PROXIES=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 \
   -e R2_ENDPOINT=https://r2-fixture.invalid -e R2_BUCKET=acceptance-screenshots \
   -e R2_ACCESS_KEY_ID=fixture-r2-key -e R2_SECRET_ACCESS_KEY=fixture-r2-secret \
   -e BOOTSTRAP_EMAIL=container-owner@example.test \
