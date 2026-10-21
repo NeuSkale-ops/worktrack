@@ -64,6 +64,9 @@ On restart an interrupted session is closed at its last durable checkpoint and t
 Delivery follows `server/API.md`: device login, client UUID session start, block batches, presign plus raw JPEG PUT, session stop, and independent 30-second heartbeats while running.
 Records are delivered FIFO with exponential retry capped at five minutes.
 A successful object upload is saved as an immutable screenshot key before posting the block, so a lost block response does not cause a second presign request for an already-finalized block.
+The original JPEG remains in the bounded SQLite queue until the block acknowledgement is committed.
+If the server returns the specific `upload_expired` code, only the staged key is cleared and the same block UUID and retained JPEG are uploaded again on retry.
+Other failures do not trigger reupload or silently discard data.
 No bearer token is sent to object storage.
 
 The payload budget is 256 MiB, with 64 KiB reserved for Stop records.

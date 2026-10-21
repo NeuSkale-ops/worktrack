@@ -289,11 +289,12 @@ fn sync_one(shared: &Shared) -> Result<bool, String> {
     let http = client()?;
     let mut payload: serde_json::Value =
         serde_json::from_str(&item.json).map_err(|e| e.to_string())?;
-    if let Some(bytes) = item.image {
-        let block_id = payload["blocks"][0]["id"]
-            .as_str()
-            .ok_or("Invalid queued block")?;
-        let response = http
+    if payload["blocks"][0]["screenshot_key"].as_str().is_none() {
+        if let Some(bytes) = item.image.as_ref() {
+            let block_id = payload["blocks"][0]["id"]
+                .as_str()
+                .ok_or("Invalid queued block")?;
+            let response = http
             .post(format!("{server}/api/uploads/screenshot-url"))
             .bearer_auth(&token)
             .json(
@@ -301,36 +302,37 @@ fn sync_one(shared: &Shared) -> Result<bool, String> {
             )
             .send()
             .map_err(|e| e.to_string())?;
-        if !response.status().is_success() {
-            return Err(format!("Screenshot URL rejected ({})", response.status()));
+            if !response.status().is_success() {
+                return Err(format!("Screenshot URL rejected ({})", response.status()));
+            }
+            let upload: serde_json::Value = response.json().map_err(|e| e.to_string())?;
+            let url = upload["upload_url"].as_str().ok_or("Missing upload URL")?;
+            let parsed = reqwest::Url::parse(url).map_err(|e| e.to_string())?;
+            if parsed.scheme() != "https"
+                && !(parsed.scheme() == "http"
+                    && matches!(parsed.host_str(), Some("localhost" | "127.0.0.1")))
+            {
+                return Err("Unsafe screenshot upload URL".into());
+            }
+            let response = http
+                .put(url)
+                .header("Content-Type", "image/jpeg")
+                .body(bytes.clone())
+                .send()
+                .map_err(|e| e.to_string())?;
+            if !response.status().is_success() {
+                return Err(format!(
+                    "Screenshot upload rejected ({})",
+                    response.status()
+                ));
+            }
+            payload["blocks"][0]["screenshot_key"] = upload["object_key"].clone();
+            shared
+                .lock()
+                .map_err(|e| e.to_string())?
+                .queue
+                .finalize_upload(item.id, &payload)?;
         }
-        let upload: serde_json::Value = response.json().map_err(|e| e.to_string())?;
-        let url = upload["upload_url"].as_str().ok_or("Missing upload URL")?;
-        let parsed = reqwest::Url::parse(url).map_err(|e| e.to_string())?;
-        if parsed.scheme() != "https"
-            && !(parsed.scheme() == "http"
-                && matches!(parsed.host_str(), Some("localhost" | "127.0.0.1")))
-        {
-            return Err("Unsafe screenshot upload URL".into());
-        }
-        let response = http
-            .put(url)
-            .header("Content-Type", "image/jpeg")
-            .body(bytes)
-            .send()
-            .map_err(|e| e.to_string())?;
-        if !response.status().is_success() {
-            return Err(format!(
-                "Screenshot upload rejected ({})",
-                response.status()
-            ));
-        }
-        payload["blocks"][0]["screenshot_key"] = upload["object_key"].clone();
-        shared
-            .lock()
-            .map_err(|e| e.to_string())?
-            .queue
-            .finalize_upload(item.id, &payload)?;
     }
     let response = http
         .post(format!("{server}{}", item.path))
@@ -339,9 +341,28 @@ fn sync_one(shared: &Shared) -> Result<bool, String> {
         .send()
         .map_err(|_| "Offline: queued data will retry automatically".to_string())?;
     if !response.status().is_success() {
+        let status = response.status();
+        let error: serde_json::Value = response.json().unwrap_or_default();
+        if status == reqwest::StatusCode::BAD_REQUEST
+            && error["code"] == "upload_expired"
+            && item.image.is_some()
+        {
+            if let Some(block) = payload["blocks"][0].as_object_mut() {
+                block.remove("screenshot_key");
+            }
+            shared
+                .lock()
+                .map_err(|e| e.to_string())?
+                .queue
+                .finalize_upload(item.id, &payload)?;
+            return Err(
+                "Screenshot reservation expired. Retained image will be uploaded again on retry."
+                    .into(),
+            );
+        }
         return Err(format!(
             "Sync rejected ({}). Records retained. Sign-in may need renewal.",
-            response.status()
+            status
         ));
     }
     let mut r = shared.lock().map_err(|e| e.to_string())?;
@@ -585,20 +606,26 @@ mod tests {
     }
     #[test]
     fn failed_block_post_retries_without_uploading_again() {
+        upload_retry_case(false);
+    }
+    #[test]
+    fn expired_reservation_reuploads_retained_image() {
+        upload_retry_case(true);
+    }
+    fn upload_retry_case(expired: bool) {
         use std::io::{Read, Write};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let server = format!("http://{}", listener.local_addr().unwrap());
         let upload_url = format!("{server}/object");
+        let block_id = uuid::Uuid::new_v4().to_string();
+        let expected_id = block_id.clone();
         let worker = std::thread::spawn(move || {
-            for (index, expected) in [
-                "/api/uploads/screenshot-url",
-                "/object",
-                "/api/blocks",
-                "/api/blocks",
-            ]
-            .iter()
-            .enumerate()
-            {
+            let mut paths = vec!["/api/uploads/screenshot-url", "/object", "/api/blocks"];
+            if expired {
+                paths.extend(["/api/uploads/screenshot-url", "/object"]);
+            }
+            paths.push("/api/blocks");
+            for (index, expected) in paths.iter().enumerate() {
                 let (mut stream, _) = listener.accept().unwrap();
                 stream
                     .set_read_timeout(Some(Duration::from_secs(5)))
@@ -626,22 +653,31 @@ mod tests {
                 }
                 let text = String::from_utf8_lossy(&request);
                 assert!(text.lines().next().unwrap().contains(expected));
-                if index == 0 {
+                if *expected == "/api/uploads/screenshot-url" {
                     assert!(text.contains("\"size_bytes\":3"));
+                    assert!(text.contains(&expected_id));
                 }
-                if index == 1 {
+                if *expected == "/object" {
                     assert!(!text.to_ascii_lowercase().contains("authorization:"));
+                    assert!(request.ends_with(&[1, 2, 3]));
                 }
-                if index >= 2 {
+                if *expected == "/api/blocks" {
                     assert!(text.contains("\"screenshot_key\":\"stable\""));
+                    assert!(text.contains(&expected_id));
                 }
-                let body = if index == 0 {
+                let body = if *expected == "/api/uploads/screenshot-url" {
                     json!({"upload_url":upload_url,"object_key":"stable"}).to_string()
+                } else if index == 2 && expired {
+                    json!({"code":"upload_expired","error":"reservation expired"}).to_string()
                 } else {
                     "{}".into()
                 };
                 let status = if index == 2 {
-                    "500 Internal Server Error"
+                    if expired {
+                        "400 Bad Request"
+                    } else {
+                        "500 Internal Server Error"
+                    }
                 } else {
                     "200 OK"
                 };
@@ -654,21 +690,19 @@ mod tests {
         r.queue
             .push(
                 "/api/blocks",
-                &json!({"blocks":[{"id":uuid::Uuid::new_v4().to_string()}]}),
+                &json!({"blocks":[{"id":block_id}]}),
                 Some(&[1, 2, 3]),
             )
             .unwrap();
         let shared = Arc::new(Mutex::new(r));
         assert!(sync_one(&shared).is_err());
-        assert!(shared
-            .lock()
-            .unwrap()
-            .queue
-            .first()
-            .unwrap()
-            .unwrap()
-            .image
-            .is_none());
+        let retained = shared.lock().unwrap().queue.first().unwrap().unwrap();
+        assert_eq!(retained.image.as_deref(), Some([1, 2, 3].as_slice()));
+        let payload: serde_json::Value = serde_json::from_str(&retained.json).unwrap();
+        assert_eq!(
+            payload["blocks"][0]["screenshot_key"].as_str().is_none(),
+            expired
+        );
         assert!(sync_one(&shared).unwrap());
         assert_eq!(shared.lock().unwrap().queue.count(), 0);
         worker.join().unwrap();

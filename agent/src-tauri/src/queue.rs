@@ -26,7 +26,7 @@ impl Queue {
     pub fn finalize_upload(&self, id: i64, payload: &Value) -> Result<(), String> {
         self.0
             .execute(
-                "UPDATE queue SET json=?1,image=NULL WHERE id=?2",
+                "UPDATE queue SET json=?1 WHERE id=?2",
                 params![payload.to_string(), id],
             )
             .map(|_| ())
@@ -154,7 +154,7 @@ mod tests {
         }
         let q = Queue::open(&path).unwrap();
         let item = q.first().unwrap().unwrap();
-        assert!(item.image.is_none());
+        assert_eq!(item.image.as_deref(), Some([1, 2, 3].as_slice()));
         assert!(item.json.contains("stable"));
         q.ack(item.id).unwrap();
         assert_eq!(q.first().unwrap().unwrap().path, "/stop");
