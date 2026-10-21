@@ -140,7 +140,8 @@ $evidence = [ordered]@{
         'Pinned baseline SHA and candidate updater signatures are verified by the coordinator before this script.',
         'Seeded non-production identity proves local sign-in continuity, not a real server login.',
         'No real geolocation, active tracking, screenshots, or native location acceptance is claimed.',
-        'Exact production hostname is mapped to loopback before application launch. Local API responses are always 503.',
+        'Exact production hostname is mapped to loopback before application launch. The helper returns API 503 only if the API client reaches HTTP.',
+        'The main API client uses bundled web PKI roots and may reject the disposable certificate before HTTP. API requests need not appear in local logs; the retained offline queue is the acceptance evidence. No TLS bypass is used.',
         'Future-stalled advertises one higher patch only to exercise the new binary download timeout; it is never installed.'
     )
 }
@@ -485,8 +486,13 @@ print(json.dumps({"action": action, "integrity": "ok", "settings_preserved": Tru
     Assert-OldBinary
     Stop-App
     Invoke-Fixture 'check-queued'
-    Wait-FeedRequest '/api/sessions/stop' '' 0 503
-    Add-Result 'queued-update-disabled' @{ actualButtonEnabled = $false; baselineVersion = '0.1.5'; queuePreserved = $true; identityPreserved = $true; localApi503Observed = $true }
+    # Main API rustls uses bundled roots, unlike the updater's platform verifier.
+    # A certificate rejection before HTTP is a valid offline state, not a missing
+    # API fixture request. The real disabled button and exact retained row above
+    # prove the queue guard without bypassing application TLS validation.
+    $apiRequests = @(Get-FeedRecords | Where-Object { $_.path -eq '/api/sessions/stop' })
+    if (@($apiRequests | Where-Object { $_.status -ne 503 }).Count -ne 0) { throw 'The isolated API helper must never accept fixture records.' }
+    Add-Result 'queued-update-disabled' @{ actualButtonEnabled = $false; baselineVersion = '0.1.5'; queuePreserved = $true; identityPreserved = $true; localApiHttpObserved = ($apiRequests.Count -gt 0); apiState = 'Offline: loopback only; bundled API trust may reject disposable TLS before HTTP; helper returns 503 if reached' }
     Invoke-Fixture 'remove-queue'
     Start-App '0.1.5'
     $null = Wait-UiText '0 records waiting to sync'
