@@ -84,7 +84,7 @@ The hostname maps to loopback before app launch, so the acceptance fixture neith
 The runner uploads `windows-upgrade-evidence`, containing `worktrack-upgrade-evidence/upgrade-evidence.json` when available, even for partial or failed observations.
 Production publication depends on successful `verify` and `upgrade` jobs plus explicit `publish=true` and a nonempty `upgrade_evidence` reference.
 Staging publication remains independently isolated and does not run this production-only native job.
-Workflow `39657475612` was dispatched for candidate `0.1.6` with `publish=false`; a dispatch or running build is not a passing native upgrade.
+Workflow `39663283701` passed installed Windows upgrade acceptance using the exact signed 0.1.6 candidate from `39658013988`, with publication disabled. Real UIAutomation confirmed signature-failure recovery, preserved keyring/settings/SQLite, stopped tracking after upgrade/restart, missing-feed guidance, and stalled-download recovery after 602.14 seconds. The evidence JSON reports no cleanup errors. Real worker login, actual sync drain, active/concurrent tracking, location/capture and installer cancellation remain separate release gates; see `VALIDATION.md`.
 The fixture's seeded identity can prove local preservation, not real server login, active tracking, geolocation, or screenshot acceptance.
 Complete the unproven connected-worker gates below, and inspect retained native evidence before publication.
 

@@ -4,7 +4,7 @@ Status: signed candidates, manual installer distribution, and isolated update ho
 On October 21, 2026, the approved host setup installed both restricted receivers and read-only public mounts.
 Both production and staging `latest.json` endpoints still return HTTP 404 because no accepted manifest has been published.
 Signed workflow `39619325968` passed build and verification, but its publication job was skipped.
-Workflow `39657475612` was dispatched for production candidate `0.1.6` with `publish=false`; no passing native upgrade result is claimed here.
+Workflow `39663283701` passed real installed Windows 0.1.5-to-0.1.6 upgrade acceptance with the exact signed candidate from `39658013988` and `publish=false`. Sign-in/local data survived, tracking stayed stopped, and stalled-download recovery completed in 602.14 seconds. This offline-seeded test does not close the connected-worker release gates below.
 A successful candidate build, configured host, or GitHub release does not enable automatic updates.
 Real signed Windows upgrade acceptance and manifest publication remain required.
 The source is prepared as version `0.1.6`, with the owner-provided public key and ordinary updater artifact generation disabled.
@@ -187,7 +187,7 @@ This exercises the embedded production endpoint without publishing a public feed
 The job retains `worktrack-upgrade-evidence/upgrade-evidence.json` as artifact `windows-upgrade-evidence`, including failed or partial observations when available.
 Production publication requires successful `verify` and `upgrade` jobs, `publish=true`, a nonempty `upgrade_evidence` reference, and reviewed `main`.
 An evidence reference alone cannot bypass a failed native job. Staging publication does not run this production-only native job.
-No native pass is recorded here: inspect workflow `39657475612` and its evidence before claiming acceptance or publishing.
+Native evidence is recorded in workflow `39663283701`, artifact `windows-upgrade-evidence/upgrade-evidence.json` (`status=passed`, no cleanup errors). See `docs/VALIDATION.md` for requirement mapping. Real worker login, actual sync drain, active/concurrent tracking, location/capture and installer cancellation remain unobserved; do not treat the seeded offline pass as those checks.
 A seeded fixture identity proves local continuity, not a real server login, active tracking, geolocation, or screenshot acceptance.
 The staging sequence below remains useful for broader connected-worker checks and the complete acceptance matrix.
 
