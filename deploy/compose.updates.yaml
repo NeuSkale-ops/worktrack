@@ -1,0 +1,7 @@
+# Opt-in only after approved host provisioning. Never mount staging or SSH keys.
+# Combine after compose.yaml and compose.shared.yaml.
+services:
+  web:
+    volumes:
+      - /srv/worktrack-updates/public:/srv/updates:ro
+      - /srv/worktrack-updates-staging/public:/srv/updates-staging:ro

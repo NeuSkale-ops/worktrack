@@ -1,0 +1,153 @@
+name: Windows updater release
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Isolated staging first, production only after real upgrade evidence
+        type: choice
+        options: [staging, production]
+        default: staging
+      version:
+        description: Committed stable Tauri version (no v prefix)
+        required: true
+        type: string
+      notes:
+        description: Worker-facing release notes
+        required: true
+        type: string
+      publish:
+        description: Publish publicly after the separate production environment approval
+        default: false
+        type: boolean
+      upgrade_evidence:
+        description: Required for publication, reference to signed Windows upgrade and data-preservation evidence
+        required: false
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: windows-updater-release
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    environment: updater-release
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: agent/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate release configuration before signing access
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+          RELEASE_NOTES: ${{ inputs.notes }}
+        shell: pwsh
+        run: |
+          python scripts/updater_release.py config --config agent/src-tauri/tauri.conf.json --version $env:RELEASE_VERSION --channel $env:RELEASE_CHANNEL --output deploy/windows-release.generated.json
+          if ($LASTEXITCODE -ne 0) { throw 'Release configuration is not ready' }
+          [IO.File]::WriteAllText("$pwd/release-notes.txt", $env:RELEASE_NOTES)
+      - name: Install stable Rust
+        run: rustup toolchain install stable --profile minimal
+      - run: rustup default stable
+      - run: npm ci
+        working-directory: agent
+      - name: Test backend and release plumbing
+        shell: pwsh
+        run: |
+          python -m unittest discover -s scripts -p 'test_updater*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Release plumbing tests failed' }
+          cargo test --locked --manifest-path agent/src-tauri/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { throw 'Backend tests failed' }
+      # These are environment secrets, never repository secrets or push-job env.
+      - name: Build signed updater artifacts
+        working-directory: agent
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: pwsh
+        run: |
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY -or -not $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD) { throw 'Protected signing secrets are missing' }
+          npm run tauri -- build --bundles nsis --target x86_64-pc-windows-msvc --config ../deploy/windows-release.generated.json -- --locked
+          if ($LASTEXITCODE -ne 0) { throw 'Signed build failed' }
+      - name: Smoke-test exact signed installer
+        shell: pwsh
+        run: ./scripts/updater_install_smoke.ps1 -Bundle agent/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis
+      - name: Package candidate without publishing
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+        shell: pwsh
+        run: |
+          python scripts/updater_release.py package --config agent/src-tauri/tauri.conf.json --version $env:RELEASE_VERSION --channel $env:RELEASE_CHANNEL --bundle agent/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis --notes release-notes.txt --output updater-candidate.tar --public-key updater-public-key.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate packaging failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: updater-candidate
+          path: |
+            updater-candidate.tar
+            updater-public-key.txt
+          if-no-files-found: error
+          retention-days: 30
+  verify:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: updater-candidate
+      - name: Install public signature verifier
+        run: sudo apt-get update && sudo apt-get install --yes minisign
+      - name: Verify exact installer, trusted version, signature and checksum
+        env:
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+        run: python scripts/updater_release.py verify --archive updater-candidate.tar --public-key updater-public-key.txt --channel "$RELEASE_CHANNEL"
+  publish:
+    needs: verify
+    if: inputs.publish && (inputs.channel == 'staging' || inputs.upgrade_evidence != '') && github.ref == 'refs/heads/main'
+    environment: ${{ inputs.channel == 'production' && 'updater-production' || 'updater-staging' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: updater-candidate
+      - name: Publish with restricted SSH identity
+        env:
+          WORKTRACK_UPDATER_SSH_KEY: ${{ secrets.WORKTRACK_UPDATER_SSH_KEY }}
+          WORKTRACK_UPDATER_KNOWN_HOSTS: ${{ vars.WORKTRACK_UPDATER_KNOWN_HOSTS }}
+          WORKTRACK_UPDATER_HOST: ${{ vars.WORKTRACK_UPDATER_HOST }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+          UPGRADE_EVIDENCE: ${{ inputs.upgrade_evidence }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$WORKTRACK_UPDATER_HOST" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]+$ ]]
+          test -n "$WORKTRACK_UPDATER_SSH_KEY"
+          test -n "$WORKTRACK_UPDATER_KNOWN_HOSTS"
+          if [[ "$RELEASE_CHANNEL" == production ]]; then test -n "$UPGRADE_EVIDENCE"; fi
+          umask 077
+          key="$RUNNER_TEMP/updater-deploy-key"
+          hosts="$RUNNER_TEMP/updater-known-hosts"
+          trap 'rm -f "$key" "$hosts"' EXIT
+          printf '%s\n' "$WORKTRACK_UPDATER_SSH_KEY" > "$key"
+          printf '%s\n' "$WORKTRACK_UPDATER_KNOWN_HOSTS" > "$hosts"
+          user=worktrack-updates
+          if [[ "$RELEASE_CHANNEL" == staging ]]; then user=worktrack-updates-staging; fi
+          # The server forces the receiver command. No shell, scp, sudo or root.
+          ssh -T -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            -o "UserKnownHostsFile=$hosts" -o ConnectTimeout=15 -i "$key" \
+            "$user@$WORKTRACK_UPDATER_HOST" < updater-candidate.tar

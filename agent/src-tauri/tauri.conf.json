@@ -8,5 +8,13 @@
     "windows": [{ "label": "main", "title": "WorkTrack - visible time tracking", "width": 520, "height": 740, "resizable": true }],
     "security": { "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost" }
   },
-  "bundle": { "active": true, "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"], "targets": ["nsis"], "windows": { "nsis": { "installMode": "currentUser", "displayLanguageSelector": false } } }
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": ["https://worktrack.178.156.213.40.sslip.io/updates/windows/x86_64/latest.json"],
+      "requireSignedVersion": true,
+      "windows": { "installMode": "passive" }
+    }
+  },
+  "bundle": { "createUpdaterArtifacts": false, "active": true, "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"], "targets": ["nsis"], "windows": { "nsis": { "installMode": "currentUser", "displayLanguageSelector": false } } }
 }

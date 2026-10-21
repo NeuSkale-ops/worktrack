@@ -4,3 +4,4 @@
 backups/
 *.dump
 *.age
+windows-release.generated.json
