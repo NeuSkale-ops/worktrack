@@ -15,6 +15,9 @@ Fixes found in a code review: a refused record could block the desktop queue for
 - Dashboard: the browser time zone is sent as `tz`. There are member admin controls, a `/reset` page and a password change form. A real-browser run (Chromium, 375px, Asia/Kolkata) against the local API and PostgreSQL 17 checked the tz request, reset link creation, disable/enable, reset-page password set, worker sign-in, a self-service change, the absence of worker admin controls and no horizontal overflow. 11 web unit tests passed.
 
 Deploy order: API first, because older agents and dashboards stay compatible and the new `sync_rejected` code needs migration 003 before a new agent sends it. Then deploy the dashboard, then ship a new signed agent. Take and restore-test a backup first as usual. These changes have not been deployed or built into a signed installer.
+`scripts/container-acceptance.sh` passed with the production images: read-only, nonroot, HTTPS through Caddy with `TRUSTED_PROXIES` set. It now also covers the `tz=Asia/Kolkata` report (embedded tzdata in Alpine), rejection of an invalid zone, device revocation, a single-use reset link, the disable/enable lockout, the owner's protection against disabling themselves, and ingestion of the `sync_rejected` log. The existing 25-worker journey still passed.
+Upgrade check: the deployed API binary (`b95de0e`) wrote users, a device credential, a session and a block to a fresh PostgreSQL 17. The new binary then started on that database. It adopted `001` and applied `002` and `003`. Counts stayed the same (2 users, 1 block, 2 credentials), and the pre-upgrade device token still authenticated. Retrying the pre-upgrade block was idempotent, and a restart applied nothing again.
+Not exercised: the desktop agent on Windows (sync set-aside, the rejected count UI) and a live S3/R2 HEAD. The HEAD path was covered only by the fake S3 in the Go tests.
 
 ## Diagnostic logging source follow-up
 
