@@ -34,6 +34,7 @@ Agent requests use Authorization: Bearer <device_token>.
 | GET | /api/timeline?user=UUID&date=YYYY-MM-DD&tz=IANA | | array of {id,user_id,session_id,start_at,end_at,duration_seconds,active_seconds,screenshot_url,screenshot_status} |
 | GET | /api/reports/hours?from=YYYY-MM-DD&to=YYYY-MM-DD&tz=IANA | | array of {user_id,name,date,seconds,hours} |
 | GET | /api/reports/hours.csv?from=YYYY-MM-DD&to=YYYY-MM-DD&tz=IANA | | CSV |
+| GET | /api/reports/day?date=YYYY-MM-DD&tz=IANA | | array of {user_id,start_at,end_at,screenshot} for every visible person; no screenshot URLs. Workers see only their own blocks. |
 | GET | /api/health | | {ok:true} |
 
 User: {id,email,name,role}.
@@ -69,14 +70,14 @@ Timeline responses include the same array. The dashboard aggregates selected-wor
 `location` is null on ordinary time blocks. Screenshot entries may contain `{status,captured_at,latitude?,longitude?,accuracy_m?,observed_at?}`.
 Statuses are `available`, `disabled`, or `unavailable`; local pending states are never accepted by the API.
 Capture timestamps must be within five seconds of the screenshot block end. Available locations require finite latitude [-90,90], longitude [-180,180], positive accuracy up to 20,000,000 metres, and a fix timestamp between two seconds before and ten seconds after capture. Disabled/unavailable records cannot carry coordinates or fix metadata.
-Worker consent and Windows permission govern collection; absence of a location never prevents screenshot/time ingestion. These fields are client-reported and can be approximate or spoofed, not verified attendance evidence.
+Current desktop apps require Windows location permission before tracking starts. The API still accepts `disabled` from older clients, and absence of a location never prevents screenshot/time ingestion. These fields are client-reported and can be approximate or spoofed, not verified attendance evidence.
 
 Existing own-timeline and manager/owner team permissions apply. Duplicate blocks must retain matching metadata. Screenshot deletion physically clears location; time-block deletion clears location and application usage. Retrying an old deleted block cannot restore erased metadata. Work records remain until deletion; database backups have separate retention.
 Deploy this API before a client that sends these fields. Older API versions reject unknown block fields and cannot ingest new-client queues until the compatible API is restored.
 
 ## Desktop diagnostic logs
 
-Diagnostic upload is separately opt-in in the desktop app and independent of tracking delivery.
+Diagnostic upload is always on in signed-in desktop apps and independent of tracking delivery.
 The ingestion endpoint requires a device credential, not a browser cookie. Account identity comes only from that credential; user IDs, arbitrary messages, and unknown fields in the payload are rejected.
 The app version must contain three numeric dot-separated components, each with one to five digits.
 Each request is limited to 16 KiB and 1 to 20 events. Event IDs are UUIDs, timestamps are RFC3339 within the past seven days or at most two minutes ahead, and optional HTTP status must be 100 through 599.

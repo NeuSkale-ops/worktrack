@@ -63,7 +63,7 @@ cargo clippy --locked -- -D warnings
   Windows is not a real-time operating system: the 100 ms collector dispatches at the first available scheduler tick after the boundary, and capture/encoding adds latency.
 - Only the primary monitor is captured, downscaled to fit 1920 x 1080 and JPEG encoded at quality 65.
 - Foreground application executable names and estimated milliseconds per app are sampled only during unlocked tracking, including idle time. No window titles, full executable paths, document names, or browser URLs are collected. Executable names are limited to 64 characters. At most 32 names per block are retained, with overflow grouped as Other and inaccessible processes as Unknown. Hosted UWP/PWA/browser windows can share an executable name.
-- Optional location sharing defaults off each launch/sign-in and requires explicit worker consent plus Windows permission. A fresh Windows geolocation fix is requested only at screenshot boundaries, never continuously, with a five-second timeout. Coordinates, accuracy, fix time, and the screenshot block timestamp are queued together. Denied, stale, or unavailable fixes do not block time or screenshots. No IP-based location fallback is used.
+- Location is mandatory and has no off switch. After sign-in the app requests Windows location permission (`request_location`) and Start is refused until it is granted. The blocked state offers **Open location settings** (`ms-settings:privacy-location`) and **Try again**. A fresh Windows geolocation fix is requested only at screenshot boundaries, never continuously, with a five-second timeout. Coordinates, accuracy, fix time, and the screenshot block timestamp are queued together. A stale or unavailable fix during tracking is recorded as unavailable and does not stop time or screenshots. No IP-based location fallback is used.
 - Location requests run outside the tracking mutex and are cancelled/ignored after Stop, lock, or consent/account changes. Pending fixes expire to unavailable within ten seconds so upload cannot remain blocked. No fix is obtained later during offline replay. Queued location/app data uses the existing account-bound durable tracking queue, not diagnostic logs.
 - `GetLastInputInfo` exposes a last-input timestamp, not typed content.
   Active time is sampled when that input is less than one second old, and idle time is the remaining running time.
@@ -130,10 +130,10 @@ The WebView has no direct network access to the server, all authenticated reques
 Screenshots and activity in SQLite are not encrypted at rest.
 Protect the Windows user profile and use device encryption for sensitive deployments.
 
-## Opt-in diagnostic logs for testing
+## Diagnostic logs
 
-After signing in, enable **Send diagnostic logs for this launch** in the desktop window.
-Diagnostics default off and reset after every successful sign-in, sign-out, or restart. They may upload while tracking is stopped only while this separate consent is enabled.
+Diagnostics are mandatory. They turn on at sign-in and at startup when a saved sign-in exists, and turn off only at sign-out. The desktop window shows their status but has no off switch.
+They may upload while tracking is stopped.
 The owner can open **Desktop diagnostic logs (owner only)** below the dashboard timesheet and click **Load recent logs**.
 
 Only fixed failure codes, event UUIDs, UTC timestamps, optional numeric HTTP status, and the compiled app version are sent to `POST /api/agent/logs` using the existing device credential.
@@ -145,7 +145,7 @@ A separate background thread uploads at most 20 events every 30 seconds, with a 
 It never holds the tracking mutex during network work and never uses, clears, or blocks the durable tracking queue.
 Repeated consecutive code/status pairs are coalesced for one minute, including after acknowledgement.
 The memory-only buffer holds at most 100 events, discards the oldest on overflow, and loses pending events on exit or sign-in changes. Events older than seven days are discarded.
-Disabling diagnostics clears unsent events immediately. An already in-flight request may finish, but its acknowledgement cannot clear events from a new consent/account snapshot.
+Signing out clears unsent events immediately. An already in-flight request may finish, but its acknowledgement cannot clear events from a new account snapshot.
 Delivery failures appear in the diagnostic section, never as tracking failures or recursively generated log events.
 
 The API accepts at most six diagnostic requests per account per minute and 120 new events per account per hour. Diagnostic quota failures retry without affecting tracking.

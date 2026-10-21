@@ -3,6 +3,14 @@
 Date: 2026-10-21.
 This records observed checks, not a production-readiness claim.
 
+## Redesign and mandatory location/diagnostics (source only, not deployed)
+
+Commits `063bd96` (desktop) and `911c904` (dashboard and `GET /api/reports/day`) implement the approved mock in `docs/mockups/index.html`.
+Location and diagnostics are now mandatory in the desktop app. The opt-in commands are removed, diagnostics turn on at sign-in, and Start is refused until Windows location permission is granted.
+All 28 portable Rust tests and strict all-target Clippy passed on macOS. All Go tests passed with race detection against disposable PostgreSQL 17, including a new day-spans test for worker scoping, deleted blocks and absence of screenshot keys. Twelve dashboard unit/API tests passed, including the zone-aware ribbon helper. Both production frontend builds passed.
+Chromium via Playwright passed 27 desktop mock-IPC checks three times, and 20 owner, 14 manager (five consecutive runs) and 11 worker dashboard checks at 375px. A real 375px probe found no element wider than the viewport.
+Not yet exercised: native Windows location permission prompts, the `ms-settings:privacy-location` shortcut, a signed installer, or production deployment. The new Windows build must ship with an updated monitoring notice and policy review because location and diagnostics can no longer be refused inside the app.
+
 ## Review fixes (source only, not deployed)
 
 Fixes found in a code review: a refused record could block the desktop queue forever, schema changes could not reach existing databases, accounts could not be offboarded, reports used UTC days only, the login limiter put every client behind Caddy into one bucket, and blocks were accepted without checking that the screenshot object existed.

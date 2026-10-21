@@ -30,7 +30,7 @@ It checks registration of the six-hour interval, not six hours of real elapsed t
 
 The checks cover startup and manual discovery, StrictMode duplicate-check protection, installed versus available versions, release notes, Later without installation, reopening the offer, tracking and queue safety, failed-check stale-offer invalidation, no-update display, explicit versioned installation, reservation gating, known and unknown download sizes, installation progress, failure recovery, sign-in gating, and neutral unavailable-build messaging.
 
-The harness also checks default-off location consent, app-usage disclosure, explicit location opt-in IPC, and opting out during an update reservation. It does not access a real Windows location provider.
-The harness also checks default-off diagnostic consent, explicit opt-in IPC, independent delivery status, opting out during an update reservation, and blocked opt-in while reserved or signed out.
+The harness also checks that no location or diagnostic off switch exists, that the app requests Windows location after sign-in, that Start stays disabled until location is granted, the settings shortcut IPC, retry, and that the disclosure names both requirements. It does not access a real Windows location provider.
+`tests/preview.html?state=signedout|stopped|blocked|tracking|paused` renders single states for visual review.
 These are synthetic browser tests of frontend behavior, not proof of updater signatures, backend concurrency safety, Windows installation, restart, or data preservation.
 The signed Windows upgrade acceptance gates in `docs/AUTO-UPDATE-PLAN.md` still require a connected Windows environment.
