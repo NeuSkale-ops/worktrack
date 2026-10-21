@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WorkTrack redesign mock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@300;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Tokens
+   ink     #1D2440  text, top bar
+   paper   #E9EDF4  app background
+   card    #FFFFFF  surfaces
+   stamp   #4B37B8  time-clock violet: primary action, tracked time
+   live    #1E8A5A  working now
+   halt    #B23A3A  stop, delete
+   rule    #D3D9E4  hairlines
+   quiet   #5E6884  secondary text
+*/
+:root{--ink:#1D2440;--paper:#E9EDF4;--card:#fff;--stamp:#4B37B8;--stamp-soft:#E7E3FA;--live:#1E8A5A;--live-soft:#DDF1E7;--halt:#B23A3A;--rule:#D3D9E4;--quiet:#5E6884;
+  --num:'Barlow Semi Condensed',sans-serif;font-family:Barlow,'Segoe UI',sans-serif;color:var(--ink);background:#C9CFDB;font-size:14px;line-height:1.5}
+*{box-sizing:border-box}body{margin:0;padding:40px 32px 80px}
+h1,h2,h3,p{margin:0}
+.num{font-family:var(--num);font-variant-numeric:tabular-nums}
+button,.btn{font:600 14px Barlow,sans-serif;border-radius:6px;padding:9px 16px;border:1px solid var(--rule);background:#fff;color:var(--ink);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:8px}
+.btn-stamp{background:var(--stamp);border-color:var(--stamp);color:#fff}
+:focus-visible{outline:3px solid var(--stamp);outline-offset:2px}
+
+/* Review chrome (not part of design) */
+.review{max-width:1440px;margin:0 auto 18px;color:#2B3350}
+.review h1{font:600 26px var(--num)}
+.review p{color:#3E4766;max-width:72ch}
+.frame-label{max-width:1440px;margin:44px auto 12px;font:600 17px var(--num);color:#2B3350}
+.frame-label span{font:400 14px Barlow;color:#4A5372;margin-left:10px}
+
+/* ---------- WEB DASHBOARD ---------- */
+.browser{max-width:1440px;margin:auto;background:var(--paper);border-radius:10px;overflow:hidden;box-shadow:0 20px 50px -20px #1d244066}
+.top{display:flex;align-items:center;gap:28px;height:58px;padding:0 28px;background:var(--ink);color:#fff}
+.logo{display:flex;align-items:center;gap:10px;font:700 20px var(--num);letter-spacing:.2px}
+.logo i{width:22px;height:22px;border-radius:50%;border:2.5px solid #fff;position:relative}
+.logo i::after{content:"";position:absolute;left:8px;top:3px;width:2.5px;height:7px;background:#fff;border-radius:2px;box-shadow:3px 5px 0 -0.5px #fff}
+.top nav{display:flex;gap:4px;margin-left:12px}
+.top nav a{color:#B9C0D8;text-decoration:none;padding:6px 12px;border-radius:5px;font-weight:500}
+.top nav a[aria-current]{color:#fff;background:#ffffff1a}
+.top .me{margin-left:auto;display:flex;align-items:center;gap:12px;font-weight:500}
+.top .me small{color:#B9C0D8;font-weight:400}
+.top .me b{width:32px;height:32px;border-radius:50%;background:#3A4370;display:grid;place-items:center;font:600 13px Barlow}
+
+.ws{padding:26px 28px 34px;display:grid;gap:20px}
+.head{display:flex;align-items:end;gap:24px}
+.head h2{font:600 30px/1.1 var(--num);letter-spacing:-.3px}
+.head p{color:var(--quiet)}
+.datenav{margin-left:auto;display:flex;align-items:center;gap:6px}
+.datenav button{padding:7px 11px}
+.datenav .today{font:600 16px var(--num);padding:7px 14px;background:#fff;border:1px solid var(--rule);border-radius:6px}
+.sync{display:flex;align-items:center;gap:7px;color:var(--quiet);font-size:13px;margin-right:12px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--live);display:inline-block}
+
+.totals{display:flex;gap:44px;padding:4px 2px}
+.totals div{display:grid}
+.totals strong{font:500 40px/1.05 var(--num);font-variant-numeric:tabular-nums}
+.totals strong em{font-style:normal;color:var(--quiet);font-weight:300}
+.totals span{color:var(--quiet);font-size:13px}
+
+.card{background:var(--card);border:1px solid var(--rule);border-radius:8px}
+.card-h{display:flex;align-items:center;gap:14px;padding:16px 20px;border-bottom:1px solid var(--rule)}
+.card-h h3{font:600 18px var(--num)}
+.card-h p{color:var(--quiet);font-size:13px}
+.card-h .r{margin-left:auto;display:flex;gap:8px;align-items:center}
+
+/* Team ribbon: signature element */
+.ribbons{padding:6px 0 10px}
+.hours,.rrow{display:grid;grid-template-columns:230px 1fr 86px;align-items:center}
+.hours{padding:10px 20px 4px;color:var(--quiet);font:500 12px var(--num)}
+.hours .scale{display:flex;justify-content:space-between}
+.rrow{padding:7px 20px;border-left:3px solid transparent;cursor:pointer}
+.rrow:hover{background:#F5F6FA}
+.rrow.sel{background:var(--stamp-soft);border-left-color:var(--stamp)}
+.who{display:flex;align-items:center;gap:10px;min-width:0}
+.who b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who small{display:block;color:var(--quiet);font-size:12px}
+.av{width:30px;height:30px;border-radius:50%;background:#DCE1EC;display:grid;place-items:center;font:600 12px Barlow;flex:none;position:relative}
+.av.on::after{content:"";position:absolute;right:-1px;bottom:-1px;width:10px;height:10px;border-radius:50%;background:var(--live);border:2px solid #fff}
+.track{position:relative;height:26px;border-radius:4px;background:repeating-linear-gradient(90deg,#EEF0F5 0 calc(100%/24 - 1px),#E0E4EC calc(100%/24 - 1px) calc(100%/24))}
+.seg{position:absolute;top:3px;bottom:3px;background:var(--stamp);border-radius:3px}
+.seg.now{background:var(--live)}
+.seg.now::after{content:"";position:absolute;right:-3px;top:-5px;bottom:-5px;width:2px;background:var(--live)}
+.shot{position:absolute;top:-3px;width:2px;height:5px;background:var(--ink);opacity:.55}
+.nowline{position:absolute;top:-6px;bottom:-6px;width:0;border-left:1.5px dashed var(--halt)}
+.tot{text-align:right;font:600 17px var(--num);font-variant-numeric:tabular-nums}
+.tot.zero{color:#A3AAC0;font-weight:500}
+
+.split{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start}
+
+/* Selected person day */
+.legend{display:flex;gap:16px;color:var(--quiet);font-size:12px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.hourgrp{padding:14px 20px 4px}
+.hourgrp h4{margin:0 0 10px;font:600 15px var(--num);color:var(--quiet)}
+.shots{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+.tile{border-radius:6px;overflow:hidden;border:1px solid var(--rule);background:#fff}
+.img{aspect-ratio:16/10;background:linear-gradient(160deg,#2f3654 0 18%,#f3f5f9 18% 100%);position:relative}
+.img::before{content:"";position:absolute;left:10%;right:38%;top:30%;height:6%;background:#c9cfdd;box-shadow:0 14px 0 #dde1ea,0 28px 0 #dde1ea,0 42px 0 #dde1ea}
+.img.b{background:linear-gradient(90deg,#1f2a3c 0 22%,#f3f5f9 22%)}
+.img.c{background:linear-gradient(180deg,#fff 0 12%,#e8ecf3 12%)}
+.img.none{background:repeating-linear-gradient(135deg,#F3F4F8 0 8px,#ECEEF3 8px 16px);display:grid;place-items:center;color:var(--quiet);font-size:12px}
+.img.none::before{display:none}
+.meta{padding:7px 9px;display:flex;justify-content:space-between;align-items:center;font-size:12px}
+.meta b{font:600 14px var(--num)}
+.act{display:flex;align-items:center;gap:6px;color:var(--quiet)}
+.bar{width:38px;height:5px;border-radius:3px;background:#E3E6EE;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--live)}
+.pin{color:var(--quiet);font-size:11px;padding:0 9px 7px;margin-top:-3px}
+
+/* Apps */
+.apps{padding:14px 20px 18px;display:grid;gap:12px}
+.app{display:grid;grid-template-columns:1fr auto;gap:4px 10px;font-size:13px}
+.app span:last-child{font:600 14px var(--num);font-variant-numeric:tabular-nums}
+.app .fill{grid-column:1/-1;height:6px;background:#EEF0F5;border-radius:3px;overflow:hidden}
+.app .fill i{display:block;height:100%;background:var(--stamp);opacity:.85}
+.note{color:var(--quiet);font-size:12px;padding:0 20px 16px}
+
+.dl{display:flex;align-items:center;gap:16px;padding:16px 20px}
+.dl p{color:var(--quiet);font-size:13px}
+.dl .btn{margin-left:auto;white-space:nowrap}
+
+/* Timesheet */
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{padding:11px 16px;text-align:right;border-bottom:1px solid #E7EAF0;font-size:14px}
+thead th{font:600 13px var(--num);color:var(--quiet);background:#F7F8FB}
+th:first-child,td:first-child{text-align:left}
+td{font-family:var(--num);font-size:16px}
+td.wk{color:#A3AAC0}
+td.total{font-weight:700}
+tbody th{font-weight:500}
+.cell-today{background:#F4F2FD}
+
+/* Login */
+.login{display:grid;grid-template-columns:1.1fr 1fr;min-height:620px}
+.login .story{background:var(--ink);color:#fff;padding:44px 56px;display:flex;flex-direction:column;gap:40px}
+.login .story h2{font:300 56px/1.02 var(--num);letter-spacing:-.6px;max-width:12ch}
+.login .story p{color:#B9C0D8;font-size:16px;max-width:44ch}
+.card-stamp{margin-top:auto;background:#262E52;border-radius:8px;padding:18px 20px;display:grid;gap:10px}
+.card-stamp .line{display:grid;grid-template-columns:80px 1fr;align-items:center;gap:14px;font:500 15px var(--num);color:#D9DDF0}
+.card-stamp .track{background:repeating-linear-gradient(90deg,#2F3863 0 calc(100%/12 - 1px),#3A4370 calc(100%/12 - 1px) calc(100%/12))}
+.card-stamp .seg{background:#8D7BEA}
+.login form{align-self:center;justify-self:center;width:min(100%,360px);display:grid;gap:18px}
+.login form h3{font:600 30px var(--num)}
+.login form p{color:var(--quiet)}
+label{display:grid;gap:6px;font-weight:600;font-size:13px}
+input[type=email],input[type=password]{font:inherit;padding:11px 12px;border:1px solid #B8C0D2;border-radius:6px;min-height:44px}
+.login .btn-stamp{justify-content:center;min-height:46px;font-size:15px}
+.login small{color:var(--quiet);font-size:12px}
+
+/* ---------- DESKTOP APP ---------- */
+.desk{max-width:1440px;margin:auto;display:flex;gap:28px;flex-wrap:wrap;justify-content:center}
+.win{width:336px;background:#F4F6FA;border-radius:8px;overflow:hidden;box-shadow:0 20px 50px -20px #1d244066;border:1px solid #B7BED0;display:flex;flex-direction:column}
+.cap{height:32px;display:flex;align-items:center;padding-left:12px;font-size:12px;background:#fff;border-bottom:1px solid var(--rule);gap:8px}
+.cap .logo{font-size:13px;color:var(--ink);gap:7px}
+.cap .logo i{width:14px;height:14px;border-width:1.8px;border-color:var(--ink)}
+.cap .logo i::after{display:none}
+.cap .ctl{margin-left:auto;display:flex}
+.cap .ctl span{width:42px;height:32px;display:grid;place-items:center;color:#555;font-size:13px}
+.body{padding:18px 20px 16px;display:grid;gap:14px;flex:1;align-content:start}
+.state{display:flex;align-items:center;gap:8px;font:600 14px var(--num)}
+.state.on{color:var(--live)}
+.state.off{color:var(--quiet)}
+.state.paused{color:#9A6A12}
+.state .dot{background:currentColor}
+.state.on .dot{box-shadow:0 0 0 4px var(--live-soft)}
+.clock{font:300 64px/1 var(--num);font-variant-numeric:tabular-nums;letter-spacing:-1px}
+.clock.dim{color:#A3AAC0}
+.cycle{display:grid;gap:6px}
+.ticks{display:grid;grid-template-columns:repeat(10,1fr);gap:3px}
+.ticks i{height:8px;border-radius:2px;background:#DCE0EA}
+.ticks i.done{background:var(--stamp)}
+.ticks i.cur{background:linear-gradient(90deg,var(--stamp) 40%,#DCE0EA 40%)}
+.cycle p{display:flex;justify-content:space-between;font-size:12px;color:var(--quiet)}
+.cycle p b{font:600 13px var(--num);color:var(--ink)}
+.big{width:100%;justify-content:center;min-height:50px;font-size:16px;border-radius:8px}
+.big.stop{background:#fff;border:1.5px solid var(--halt);color:var(--halt)}
+.consent{display:grid;grid-template-columns:auto 1fr;gap:10px;font-weight:400;font-size:13px;background:#fff;border:1px solid var(--rule);border-radius:8px;padding:12px}
+.consent input{margin-top:3px;width:16px;height:16px;accent-color:var(--stamp)}
+.facts{background:#fff;border:1px solid var(--rule);border-radius:8px}
+.facts summary{padding:11px 14px;font-weight:600;cursor:pointer;list-style:none;display:flex;justify-content:space-between}
+.facts summary::after{content:"+";color:var(--quiet);font-weight:400}
+.facts[open] summary::after{content:"−"}
+.facts .cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:0 14px 12px;font-size:12px}
+.facts h5{margin:0 0 5px;font:600 13px var(--num)}
+.facts ul{margin:0;padding-left:16px;color:#3E4766;display:grid;gap:3px}
+.facts .more{padding:0 14px 12px;font-size:12px;color:var(--quiet)}
+.row{display:flex;align-items:center;gap:12px;padding:10px 14px;font-size:13px}
+.row + .row{border-top:1px solid #EBEEF3}
+.row div{flex:1}
+.row small{display:block;color:var(--quiet);font-size:12px}
+.req{width:18px;height:18px;border-radius:50%;flex:none;display:grid;place-items:center;color:#fff;font:700 11px Barlow}
+.req.ok{background:var(--live)}.req.ok::after{content:"✓"}
+.req.bad{background:var(--halt)}.req.bad::after{content:"!"}
+.blocked{background:#FBE9E9;border:1px solid #E7BDBD;border-radius:8px;padding:12px 14px;display:grid;gap:8px;font-size:13px;color:#6E2222}
+.blocked b{font:600 15px var(--num)}
+.blocked .btn{justify-self:start;padding:7px 12px;font-size:13px}
+.switch{width:36px;height:20px;border-radius:10px;background:#C5CBD9;position:relative;flex:none}
+.switch::after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:#fff;top:2px;left:2px}
+.switch.on{background:var(--stamp)}.switch.on::after{left:18px}
+.foot{display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-top:1px solid var(--rule);background:#fff;font-size:12px;color:var(--quiet)}
+.foot a{color:var(--stamp);font-weight:600;text-decoration:none}
+.banner{background:var(--stamp-soft);border:1px solid #CBC2F3;border-radius:8px;padding:12px 14px;display:grid;gap:8px;font-size:13px}
+.banner b{font:600 15px var(--num)}
+.banner .acts{display:flex;gap:8px}
+.banner .acts button{padding:7px 10px;font-size:13px;white-space:nowrap}
+.banner p{color:#3E3770}
+.paused-note{background:#FBF1DC;border:1px solid #EBD39E;color:#6E4C0C;border-radius:8px;padding:10px 12px;font-size:13px}
+.sync-line{display:flex;justify-content:space-between;font-size:12px;color:var(--quiet)}
+.win form{display:grid;gap:12px}
+.win h3{font:600 24px var(--num)}
+.win .lead{color:var(--quiet);font-size:13px}
+.cap-title{font-size:12px;color:var(--quiet);text-align:center;margin-top:8px}
+
+@media (prefers-reduced-motion:no-preference){.state.on .dot{animation:pulse 2s ease-in-out infinite}@keyframes pulse{50%{box-shadow:0 0 0 7px transparent}}}
+</style>
+</head>
+<body>
+
+<header class="review">
+  <h1>WorkTrack redesign mock, for review</h1>
+  <p>Static mock with sample data. No app code changed yet. Theme: the punch-clock time card. The signature element is the day ribbon: each person's 24 hours as one strip, with tracked time stamped in violet and a small tick at every screenshot.</p>
+</header>
+
+<!-- ============ 1. WEB: MANAGER DASHBOARD ============ -->
+<div class="frame-label">1. Web dashboard, manager view <span>Team ribbons replace the people list. Click a row to load that person below.</span></div>
+<div class="browser">
+  <div class="top">
+    <div class="logo"><i></i>WorkTrack</div>
+    <nav><a aria-current="page" href="#">Today</a><a href="#">Timesheets</a><a href="#">People</a><a href="#">Diagnostics</a></nav>
+    <div class="me"><span>Priya Raman<br><small>Owner</small></span><b>PR</b></div>
+  </div>
+  <div class="ws">
+    <div class="head">
+      <div><h2>Team today</h2><p>Wednesday 21 October 2026, times in UTC</p></div>
+      <div class="datenav">
+        <span class="sync"><span class="dot"></span>Updated 12 s ago</span>
+        <button aria-label="Previous day">‹</button><span class="today">21 Oct</span><button aria-label="Next day">›</button>
+      </div>
+    </div>
+
+    <div class="totals">
+      <div><strong>41h 20m</strong><span>Team hours today</span></div>
+      <div><strong>186h 05m</strong><span>Team hours this week</span></div>
+      <div><strong>14 <em>of 22</em></strong><span>Working now</span></div>
+    </div>
+
+    <section class="card">
+      <div class="card-h"><h3>Who worked when</h3><p>Violet is tracked time, green is running now. Ticks mark screenshots.</p>
+        <div class="r"><label style="display:flex;flex-direction:row;align-items:center;gap:8px;font-weight:500"><input type="checkbox" checked style="accent-color:var(--stamp)">Working now first</label></div></div>
+      <div class="ribbons">
+        <div class="hours"><span></span><div class="scale"><span>00</span><span>03</span><span>06</span><span>09</span><span>12</span><span>15</span><span>18</span><span>21</span><span>24</span></div><span style="text-align:right">Total</span></div>
+
+        <div class="rrow sel"><div class="who"><span class="av on">AK</span><div><b>Arjun Kumar</b><small>Working since 08:40</small></div></div>
+          <div class="track"><span class="seg" style="left:36%;width:13%"></span><span class="seg now" style="left:52%;width:10.5%"></span>
+            <span class="shot" style="left:38%"></span><span class="shot" style="left:42%"></span><span class="shot" style="left:46%"></span><span class="shot" style="left:55%"></span><span class="shot" style="left:59%"></span><span class="nowline" style="left:62.5%"></span></div>
+          <span class="tot">5h 32m</span></div>
+
+        <div class="rrow"><div class="who"><span class="av on">MF</span><div><b>Maria Fernandes</b><small>Working since 10:05</small></div></div>
+          <div class="track"><span class="seg now" style="left:42%;width:20.5%"></span><span class="shot" style="left:47%"></span><span class="shot" style="left:53%"></span><span class="shot" style="left:58%"></span><span class="nowline" style="left:62.5%"></span></div>
+          <span class="tot">4h 52m</span></div>
+
+        <div class="rrow"><div class="who"><span class="av on">DO</span><div><b>David Okafor</b><small>Working since 13:10</small></div></div>
+          <div class="track"><span class="seg" style="left:25%;width:8%"></span><span class="seg now" style="left:55%;width:7.5%"></span><span class="shot" style="left:28%"></span><span class="shot" style="left:58%"></span><span class="nowline" style="left:62.5%"></span></div>
+          <span class="tot">3h 41m</span></div>
+
+        <div class="rrow"><div class="who"><span class="av">SL</span><div><b>Sofia Lindqvist</b><small>Stopped at 12:30</small></div></div>
+          <div class="track"><span class="seg" style="left:29%;width:23%"></span><span class="shot" style="left:33%"></span><span class="shot" style="left:40%"></span><span class="shot" style="left:47%"></span><span class="nowline" style="left:62.5%"></span></div>
+          <span class="tot">5h 31m</span></div>
+
+        <div class="rrow"><div class="who"><span class="av">TN</span><div><b>Thanh Nguyen</b><small>Paused, screen locked</small></div></div>
+          <div class="track"><span class="seg" style="left:33%;width:9%"></span><span class="seg" style="left:46%;width:12%;opacity:.55"></span><span class="shot" style="left:37%"></span><span class="shot" style="left:50%"></span><span class="nowline" style="left:62.5%"></span></div>
+          <span class="tot">4h 26m</span></div>
+
+        <div class="rrow"><div class="who"><span class="av">BC</span><div><b>Ben Carter</b><small>No time today</small></div></div>
+          <div class="track"><span class="nowline" style="left:62.5%"></span></div>
+          <span class="tot zero">0h 00m</span></div>
+      </div>
+    </section>
+
+    <div class="split">
+      <section class="card">
+        <div class="card-h"><h3>Arjun Kumar, 21 Oct</h3><p>5h 32m tracked, 78% input activity</p>
+          <div class="r legend"><span><i style="background:var(--live)"></i>Activity</span><span><i style="background:repeating-linear-gradient(135deg,#ECEEF3 0 3px,#D3D9E4 3px 6px)"></i>No screenshot</span></div></div>
+        <div class="hourgrp"><h4>14:00</h4>
+          <div class="shots">
+            <div class="tile"><div class="img"></div><div class="meta"><b>14:00</b><span class="act"><span class="bar"><i style="width:82%"></i></span>82%</span></div></div>
+            <div class="tile"><div class="img b"></div><div class="meta"><b>14:10</b><span class="act"><span class="bar"><i style="width:91%"></i></span>91%</span></div></div>
+            <div class="tile"><div class="img c"></div><div class="meta"><b>14:20</b><span class="act"><span class="bar"><i style="width:64%"></i></span>64%</span></div><p class="pin">Bengaluru, ±40 m</p></div>
+            <div class="tile"><div class="img none">Deleted by worker</div><div class="meta"><b>14:30</b><span class="act"><span class="bar"><i style="width:70%"></i></span>70%</span></div></div>
+            <div class="tile"><div class="img"></div><div class="meta"><b>14:40</b><span class="act"><span class="bar"><i style="width:88%"></i></span>88%</span></div></div>
+            <div class="tile"><div class="img b"></div><div class="meta"><b>14:50</b><span class="act"><span class="bar"><i style="width:45%"></i></span>45%</span></div></div>
+          </div></div>
+        <div class="hourgrp" style="padding-bottom:18px"><h4>13:00</h4>
+          <div class="shots">
+            <div class="tile"><div class="img c"></div><div class="meta"><b>13:00</b><span class="act"><span class="bar"><i style="width:77%"></i></span>77%</span></div></div>
+            <div class="tile"><div class="img none">Time only</div><div class="meta"><b>13:10</b><span class="act"><span class="bar"><i style="width:52%"></i></span>52%</span></div></div>
+            <div class="tile"><div class="img none">Screenshot unavailable</div><div class="meta"><b>13:20</b><span class="act"><span class="bar"><i style="width:60%"></i></span>60%</span></div></div>
+            <div class="tile"><div class="img"></div><div class="meta"><b>13:30</b><span class="act"><span class="bar"><i style="width:93%"></i></span>93%</span></div></div>
+            <div class="tile"><div class="img b"></div><div class="meta"><b>13:40</b><span class="act"><span class="bar"><i style="width:81%"></i></span>81%</span></div></div>
+            <div class="tile"><div class="img"></div><div class="meta"><b>13:50</b><span class="act"><span class="bar"><i style="width:69%"></i></span>69%</span></div></div>
+          </div></div>
+      </section>
+
+      <div style="display:grid;gap:20px">
+        <section class="card">
+          <div class="card-h"><h3>Applications</h3><p>Estimated foreground time</p></div>
+          <div class="apps">
+            <div class="app"><span>Code.exe</span><span>2h 41m</span><div class="fill"><i style="width:100%"></i></div></div>
+            <div class="app"><span>chrome.exe</span><span>1h 18m</span><div class="fill"><i style="width:48%"></i></div></div>
+            <div class="app"><span>Teams.exe</span><span>52m</span><div class="fill"><i style="width:32%"></i></div></div>
+            <div class="app"><span>WindowsTerminal.exe</span><span>29m</span><div class="fill"><i style="width:18%"></i></div></div>
+            <div class="app"><span>Other</span><span>12m</span><div class="fill"><i style="width:7%"></i></div></div>
+          </div>
+          <p class="note">Includes idle time. Input activity is not proof of productivity.</p>
+        </section>
+        <section class="card dl">
+          <div><b>WorkTrack for Windows</b><p>Version 0.1.5, 64-bit</p></div>
+          <a class="btn" href="#">Download</a>
+        </section>
+      </div>
+    </div>
+
+    <section class="card">
+      <div class="card-h"><h3>This week</h3><p>19 to 25 October, recorded time only</p><div class="r"><a class="btn" href="#">Export CSV</a></div></div>
+      <table>
+        <thead><tr><th>Person</th><th>Mon 19</th><th>Tue 20</th><th class="cell-today">Wed 21</th><th>Thu 22</th><th>Fri 23</th><th>Sat 24</th><th>Sun 25</th><th>Total</th></tr></thead>
+        <tbody>
+          <tr><th>Arjun Kumar</th><td>8h 02m</td><td>7h 45m</td><td class="cell-today">5h 32m</td><td class="wk">–</td><td class="wk">–</td><td class="wk">–</td><td class="wk">–</td><td class="total">21h 19m</td></tr>
+          <tr><th>Maria Fernandes</th><td>7h 30m</td><td>8h 10m</td><td class="cell-today">4h 52m</td><td class="wk">–</td><td class="wk">–</td><td class="wk">–</td><td class="wk">–</td><td class="total">20h 32m</td></tr>
+          <tr><th>David Okafor</th><td>6h 55m</td><td>0h 00m</td><td class="cell-today">3h 41m</td><td class="wk">–</td><td class="wk">–</td><td class="wk">–</td><td class="wk">–</td><td class="total">10h 36m</td></tr>
+          <tr><th>Sofia Lindqvist</th><td>8h 14m</td><td>7h 58m</td><td class="cell-today">5h 31m</td><td class="wk">–</td><td class="wk">–</td><td class="wk">–</td><td class="wk">–</td><td class="total">21h 43m</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+</div>
+
+<!-- ============ 2. WEB: SIGN IN ============ -->
+<div class="frame-label">2. Web sign-in <span>The left panel is a sample time card, so the product explains itself before sign-in.</span></div>
+<div class="browser">
+  <div class="login">
+    <div class="story">
+      <div class="logo"><i></i>WorkTrack</div>
+      <div style="display:grid;gap:18px">
+        <h2>Time on the clock, and nothing off it.</h2>
+        <p>Workers press Start. Time, activity and a screenshot every ten minutes are recorded until they press Stop. Nothing runs in the background.</p>
+      </div>
+      <div class="card-stamp">
+        <div class="line"><span>Mon</span><div class="track"><span class="seg" style="left:8%;width:30%"></span><span class="seg" style="left:44%;width:38%"></span></div></div>
+        <div class="line"><span>Tue</span><div class="track"><span class="seg" style="left:12%;width:72%"></span></div></div>
+        <div class="line"><span>Wed</span><div class="track"><span class="seg" style="left:6%;width:28%"></span><span class="seg" style="left:40%;width:20%"></span></div></div>
+      </div>
+    </div>
+    <form onsubmit="return false">
+      <h3>Sign in</h3>
+      <p>Use the email your invitation was sent to.</p>
+      <label>Email<input type="email" value="arjun@company.com"></label>
+      <label>Password<input type="password" value="password12345"></label>
+      <button class="btn btn-stamp">Sign in</button>
+      <small>Have an invitation link? Open it to create your account.</small>
+    </form>
+  </div>
+</div>
+
+<!-- ============ 3. DESKTOP APP ============ -->
+<div class="frame-label">3. Windows app, five states <span>Same tokens as the web. Timer first. Location and diagnostics are required, shown as status only, with no off switch.</span></div>
+<div class="desk">
+
+  <!-- A: signed out -->
+  <div>
+  <div class="win">
+    <div class="cap"><span class="logo"><i></i>WorkTrack</span><span class="ctl"><span>–</span><span>□</span><span>✕</span></span></div>
+    <div class="body">
+      <form onsubmit="return false">
+        <h3>Sign in</h3>
+        <p class="lead">Use the account from your invitation email.</p>
+        <label>Email<input type="email" value="arjun@company.com"></label>
+        <label>Password<input type="password" value="••••••••••••"></label>
+        <button class="btn btn-stamp big">Sign in</button>
+      </form>
+      <details class="facts" open>
+        <summary>What WorkTrack records</summary>
+        <div class="cols">
+          <div><h5>Only while tracking</h5><ul><li>Elapsed time</li><li>Input activity level</li><li>App names and time in each</li><li>Screenshot every 10 minutes</li><li>Location at each screenshot</li></ul></div>
+          <div><h5>Never</h5><ul><li>Typed text or keys</li><li>Window titles or websites</li><li>Screen, input or location while stopped</li><li>Random captures</li></ul></div>
+        </div>
+        <p class="more">Diagnostic error codes are always sent, including while stopped. You, your managers and the owner can see these records. <a href="#" style="color:var(--stamp)">Read the full notice</a></p>
+      </details>
+    </div>
+    <div class="foot"><span>Version 0.1.5</span><span>Not signed in</span></div>
+  </div>
+  <p class="cap-title">A. Signed out</p></div>
+
+  <!-- B: stopped -->
+  <div>
+  <div class="win">
+    <div class="cap"><span class="logo"><i></i>WorkTrack</span><span class="ctl"><span>–</span><span>□</span><span>✕</span></span></div>
+    <div class="body">
+      <span class="state off"><span class="dot"></span>Not tracking</span>
+      <div class="clock dim">00:00:00</div>
+      <label class="consent"><input type="checkbox" checked><span>I understand what is recorded, including location with each screenshot and diagnostic logs, and agree to it. Close private content before starting.</span></label>
+      <button class="btn btn-stamp big">Start tracking</button>
+      <div class="sync-line"><span>All records synced</span><span>Today 4h 12m</span></div>
+      <details class="facts"><summary>What WorkTrack records</summary></details>
+      <div class="facts">
+        <div class="row"><span class="req ok"></span><div>Location with screenshots<small>Required. Windows location permission granted.</small></div></div>
+        <div class="row"><span class="req ok"></span><div>Diagnostic logs<small>Required. Error codes only, kept 7 days</small></div></div>
+      </div>
+    </div>
+    <div class="foot"><span>arjun@company.com</span><a href="#">Account</a></div>
+  </div>
+  <p class="cap-title">B. Signed in, stopped</p></div>
+
+  <!-- C: tracking -->
+  <div>
+  <div class="win">
+    <div class="cap"><span class="logo"><i></i>WorkTrack</span><span class="ctl"><span>–</span><span>□</span><span>✕</span></span></div>
+    <div class="body">
+      <span class="state on"><span class="dot"></span>Tracking</span>
+      <div class="clock">01:24:06</div>
+      <div class="cycle">
+        <div class="ticks"><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="cur"></i><i></i><i></i><i></i><i></i><i></i></div>
+        <p><span>Next screenshot in <b>5 min 36 s</b></span><span>8 taken this session</span></p>
+      </div>
+      <button class="btn big stop">Stop tracking</button>
+      <div class="sync-line"><span>2 records waiting to sync</span><span>Today 5h 36m</span></div>
+      <div class="facts">
+        <div class="row"><span class="req ok"></span><div>Location with screenshots<small>Last fix Bengaluru, ±40 m at 14:20</small></div></div>
+        <div class="row"><span class="req ok"></span><div>Diagnostic logs<small>Sending. 0 events waiting</small></div></div>
+      </div>
+    </div>
+    <div class="foot"><span>Closing this window stops tracking</span><a href="#">Hide to tray</a></div>
+  </div>
+  <p class="cap-title">C. Tracking</p></div>
+
+  <!-- D: paused + update -->
+  <div>
+  <div class="win">
+    <div class="cap"><span class="logo"><i></i>WorkTrack</span><span class="ctl"><span>–</span><span>□</span><span>✕</span></span></div>
+    <div class="body">
+      <div class="banner"><b>Version 0.1.6 is ready</b><p>Fixes screenshot timing after sleep. Stop tracking and let records sync, then update.</p><div class="acts"><button class="btn btn-stamp" disabled style="opacity:.5">Update now</button><button class="btn">Later</button><button class="btn" style="border:0;background:none;color:var(--stamp)">Release notes</button></div></div>
+      <span class="state paused"><span class="dot"></span>Paused, screen locked</span>
+      <div class="clock">03:02:47</div>
+      <p class="paused-note">Nothing is recorded while the screen is locked or the PC sleeps. Tracking resumes when you unlock.</p>
+      <button class="btn big stop">Stop tracking</button>
+      <div class="sync-line"><span>All records synced</span><span>Today 6h 40m</span></div>
+    </div>
+    <div class="foot"><span>Version 0.1.5</span><a href="#">Check for updates</a></div>
+  </div>
+  <p class="cap-title">D. Paused, update waiting</p></div>
+
+  <!-- E: blocked, location off -->
+  <div>
+  <div class="win">
+    <div class="cap"><span class="logo"><i></i>WorkTrack</span><span class="ctl"><span>–</span><span>□</span><span>✕</span></span></div>
+    <div class="body">
+      <span class="state off"><span class="dot"></span>Not tracking</span>
+      <div class="clock dim">00:00:00</div>
+      <div class="blocked"><b>Turn on Windows location to start</b><p>Location is required with every screenshot. Open Settings, then Privacy and security, then Location, and allow WorkTrack.</p><button class="btn">Open location settings</button></div>
+      <button class="btn btn-stamp big" disabled style="opacity:.45;cursor:not-allowed">Start tracking</button>
+      <div class="facts">
+        <div class="row"><span class="req bad"></span><div>Location with screenshots<small>Blocked by Windows. Tracking cannot start.</small></div></div>
+        <div class="row"><span class="req ok"></span><div>Diagnostic logs<small>Required. Error codes only, kept 7 days</small></div></div>
+      </div>
+    </div>
+    <div class="foot"><span>arjun@company.com</span><a href="#">Account</a></div>
+  </div>
+  <p class="cap-title">E. Location permission missing</p></div>
+</div>
+
+<div class="frame-label">Worker web view <span>Same layout with one ribbon (their own day), delete controls on each tile, and no team totals.</span></div>
+</body>
+</html>

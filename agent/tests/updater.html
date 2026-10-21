@@ -27,6 +27,7 @@ let available = offer;
 let checkError = null;
 let rejectInstall;
 let statusGate = null;
+let locationGrant = false;
 window.__TAURI_INTERNALS__ = {
   async invoke(command, args) {
     calls.push({ command, args });
@@ -37,14 +38,14 @@ window.__TAURI_INTERNALS__ = {
       return available;
     }
     if (command === 'install_update') return new Promise((resolve, reject) => { rejectInstall = reject; });
-    if (command === 'set_location') { state.location_enabled = args.enabled; return; }
-    if (command === 'set_diagnostics') { state.diagnostics_enabled = args.enabled; return; }
+    if (command === 'request_location') { state.location_enabled = locationGrant; return; }
+    if (command === 'open_location_settings') return;
     if (['start', 'stop', 'login', 'logout'].includes(command)) return;
     throw new Error(`Unexpected IPC command: ${command}`);
   },
 };
-const text = () => document.querySelector('main')?.innerText || '';
-const button = label => [...document.querySelectorAll('main button')].find(node => node.textContent === label);
+const text = () => document.querySelector('.win')?.innerText || '';
+const button = label => [...document.querySelectorAll('.win button')].find(node => node.textContent === label);
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 async function until(predicate, description) {
   const deadline = Date.now() + 15000;
@@ -69,7 +70,7 @@ async function refresh() {
 }
 try {
   await import('/src/main.tsx');
-  await check('startup discovers update and distinguishes installed/offered versions', () => text().includes('Installed version 0.1.1') && text().includes('Version 0.1.2') && text().includes('Test release notes'));
+  await check('startup discovers update and distinguishes installed/offered versions', () => text().includes('Version 0.1.1') && text().includes('Version 0.1.2') && text().includes('Test release notes'));
   await check('StrictMode performs one startup check', () => calls.filter(call => call.command === 'check_update').length === 1);
   await check('six-hour update interval is registered', () => intervals.some(entry => entry.delay === 21600000));
   await wait(100);
@@ -81,12 +82,19 @@ try {
   await check('slow status IPC permits only one pending poll', () => calls.filter(call => call.command === 'status').length === beforePoll + 1);
   releaseStatus(); statusGate = null;
   await wait(100);
-  await check('diagnostics default off with disclosure', () => !document.querySelector('#diagnostic-consent').checked && text().includes('No error text, screenshots'));
-  await check('location defaults off and app-usage disclosure is visible', () => !document.querySelector('#location-consent').checked && text().includes('foreground application names') && text().includes('No continuous location tracking'));
-  document.querySelector('#location-consent').click();
-  await check('location requires explicit opt-in IPC', () => state.location_enabled && !document.querySelector('#diagnostic-consent').disabled && calls.some(call => call.command === 'set_location' && call.args.enabled === true));
-  document.querySelector('#diagnostic-consent').click();
-  await check('diagnostics require explicit opt-in IPC', () => state.diagnostics_enabled && calls.some(call => call.command === 'set_diagnostics' && call.args.enabled === true));
+  await check('no opt-out controls exist for location or diagnostics', () => !document.querySelector('#location-consent') && !document.querySelector('#diagnostic-consent') && !calls.some(call => ['set_location', 'set_diagnostics'].includes(call.command)));
+  await check('signed-in app requests Windows location automatically', () => calls.some(call => call.command === 'request_location'));
+  await check('denied location blocks Start and explains the fix', () => text().includes('Turn on Windows location to start') && button('Start tracking')?.disabled && text().includes('Blocked by Windows'));
+  document.querySelector('.consent input').click();
+  await check('consent alone cannot start without location', () => button('Start tracking')?.disabled);
+  click('Open location settings');
+  await check('settings shortcut uses fixed IPC command', () => calls.some(call => call.command === 'open_location_settings'));
+  locationGrant = true;
+  await until(() => button('Try again') && !button('Try again').disabled, 'retry ready');
+  click('Try again');
+  await check('granted location unlocks Start', () => !button('Start tracking')?.disabled && text().includes('Windows location permission granted') && !text().includes('Turn on Windows location'));
+  await check('disclosure names mandatory location and diagnostics', () => document.querySelector('.win').textContent.includes('Location at each screenshot') && document.querySelector('.win').textContent.includes('Diagnostic logs are required') && text().includes('Diagnostic logs'));
+  state.diagnostics_enabled = true;
   state.diagnostics_queued = 2;
   state.diagnostics_error = 'Diagnostic upload failed. Retrying in the background.';
   await refresh();
@@ -105,7 +113,6 @@ try {
   state.queued = 0;
   await refresh();
   await until(() => button('Update now') && !button('Update now').disabled, 'queue drained');
-  document.querySelector('input[type=checkbox]').click();
   await until(() => !button('Start tracking').disabled, 'tracking consent');
   checkError = 'Offline';
   click('Check for updates');
@@ -123,13 +130,7 @@ try {
   state.update = { phase: 'downloading', downloaded: 50, total: 100, error: null };
   await refresh();
   await check('backend download progress renders', () => document.querySelector('progress')?.value === 50 && text().includes('50%'));
-  document.querySelector('#diagnostic-consent').click();
-  await check('diagnostic opt-out stays available during update reservation', () => !state.diagnostics_enabled && calls.some(call => call.command === 'set_diagnostics' && call.args.enabled === false));
-  await check('reservation blocks enabling diagnostics', () => document.querySelector('#diagnostic-consent').disabled);
-  await until(() => !document.querySelector('#location-consent').disabled, 'location opt-out ready');
-  document.querySelector('#location-consent').click();
-  await check('location opt-out survives update reservation', () => !state.location_enabled && calls.some(call => call.command === 'set_location' && call.args.enabled === false));
-  await check('reservation blocks location opt-in', () => document.querySelector('#location-consent').disabled);
+  await check('reservation disables location retry controls', () => !button('Try again') || button('Try again').disabled);
   state.update.total = null;
   await refresh();
   await check('unknown download size renders indeterminate progress', () => document.querySelector('progress') && !document.querySelector('progress').hasAttribute('value'));
@@ -144,7 +145,7 @@ try {
   state.update_reserved = true;
   await refresh();
   await check('backend reservation disables sign-in fields and button', () => button('Sign in')?.disabled && document.querySelector('input[name=email]')?.disabled);
-  await check('signed-out user cannot enable diagnostic uploads', () => document.querySelector('#diagnostic-consent').disabled);
+  await check('signed-out view shows the monitoring summary', () => text().includes('Only while tracking') && text().includes('Never'));
   state.update_reserved = false;
   state.update = { phase: 'unavailable', downloaded: 0, total: null, error: 'UPDATER_UNAVAILABLE: Signed Windows builds only.' };
   checkError = state.update.error;

@@ -71,23 +71,23 @@ impl Snapshot {
     }
 }
 #[tauri::command]
-pub fn set_location(app: AppHandle, state: State<Shared>, enabled: bool) -> Result<(), String> {
+// Location is mandatory: there is no command to turn it off. The UI requests
+// Windows permission after sign-in and Start stays blocked until it is granted.
+pub fn request_location(app: AppHandle, state: State<Shared>) -> Result<(), String> {
     let shared = state.inner().clone();
     let generation = {
         let mut r = shared.lock().map_err(|e| e.to_string())?;
-        if enabled {
-            updater::ensure_not_reserved(&r)?;
-            if r.token.is_none() {
-                return Err("Sign in before enabling screenshot location".into());
-            }
+        updater::ensure_not_reserved(&r)?;
+        if r.token.is_none() {
+            return Err("Sign in before allowing screenshot location".into());
+        }
+        if r.location.enabled || r.location.pending {
+            return Ok(());
         }
         r.location.reset();
-        r.location.pending = enabled;
+        r.location.pending = true;
         r.location.generation
     };
-    if !enabled {
-        return Ok(());
-    }
     app.run_on_main_thread(move || {
         let callback_shared = shared.clone();
         let result = request_access(move |allowed| {
@@ -107,6 +107,20 @@ pub fn set_location(app: AppHandle, state: State<Shared>, enabled: bool) -> Resu
             }
         }
     }).map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn open_location_settings() -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        // Fixed URI, no user input reaches the shell.
+        std::process::Command::new("explorer.exe")
+            .arg("ms-settings:privacy-location")
+            .spawn()
+            .map(|_| ())
+            .map_err(|_| "Could not open Windows location settings".to_string())
+    }
+    #[cfg(not(windows))]
+    Err("Location settings are available only on Windows".into())
 }
 #[cfg(windows)]
 fn request_access(done: impl FnOnce(bool) + Send + 'static) -> Result<(), ()> {

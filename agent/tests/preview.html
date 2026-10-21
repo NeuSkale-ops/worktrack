@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Desktop UI preview (mock IPC)</title></head>
+<body><div id="root"></div>
+<script type="module">
+// Dev-only visual preview: ?state=signedout|stopped|blocked|tracking|paused
+const name = new URLSearchParams(location.search).get('state') || 'stopped';
+const base = { authenticated: true, tracking: false, paused: false, elapsed: 0, next_capture: 600, queued: 0, rejected: 0, error: null, server: 'mock', update_reserved: false, diagnostics_enabled: true, diagnostics_queued: 0, diagnostics_error: null, location_enabled: true, location_pending: false, location_error: null, update: { phase: 'idle', downloaded: 0, total: null, error: null } };
+const states = {
+  signedout: { authenticated: false, diagnostics_enabled: false, location_enabled: false },
+  stopped: {},
+  blocked: { location_enabled: false },
+  tracking: { tracking: true, elapsed: 5046, next_capture: 336, queued: 2 },
+  paused: { tracking: true, paused: true, elapsed: 10967 },
+};
+const state = { ...base, ...states[name] };
+const offer = name === 'paused' ? { version: '0.1.6', current_version: '0.1.5', body: 'Fixes screenshot timing after sleep.', date: null } : null;
+window.__TAURI_INTERNALS__ = { async invoke(command) {
+  if (command === 'plugin:app|version') return '0.1.5';
+  if (command === 'status') return structuredClone(state);
+  if (command === 'check_update') return offer;
+} };
+await import('/src/main.tsx');
+</script>
+</body>
+</html>

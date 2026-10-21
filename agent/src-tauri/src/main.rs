@@ -115,23 +115,6 @@ fn snapshot_status(shared: &Shared) -> Result<Status, String> {
         location_error: r.location.error,
     })
 }
-fn configure_diagnostics(r: &mut Runtime, enabled: bool) -> Result<(), String> {
-    if enabled {
-        updater::ensure_not_reserved(r)?;
-        if r.token.is_none() {
-            return Err("Sign in before enabling diagnostic uploads".into());
-        }
-    }
-    if r.diagnostics.enabled != enabled {
-        r.diagnostics.configure(enabled);
-    }
-    Ok(())
-}
-#[tauri::command]
-fn set_diagnostics(state: State<Shared>, enabled: bool) -> Result<(), String> {
-    let mut r = state.lock().map_err(|e| e.to_string())?;
-    configure_diagnostics(&mut r, enabled)
-}
 #[tauri::command]
 async fn login(state: State<'_, Shared>, email: String, password: String) -> Result<(), String> {
     let state = state.inner().clone();
@@ -150,11 +133,19 @@ async fn login(state: State<'_, Shared>, email: String, password: String) -> Res
         credential(&server)?.set_password(&token).map_err(|_| "Could not save device token in OS credential storage")?;
         r.queue.set("email", &email.trim().to_lowercase())?;
         r.queue.set("server", &server)?;
-        r.diagnostics.configure(false);
+        // Diagnostics are mandatory for every signed-in account.
+        r.diagnostics.configure(true);
         r.location.reset();
         r.server = server; r.token = Some(token); r.error = None;
         Ok(())
     }).await.map_err(|e| e.to_string())?
+}
+fn require_location(r: &Runtime) -> Result<(), String> {
+    if r.location.enabled {
+        Ok(())
+    } else {
+        Err("Allow WorkTrack to use Windows location before starting. Location is required with every screenshot.".into())
+    }
 }
 #[tauri::command]
 fn start(state: State<Shared>, consent: bool) -> Result<(), String> {
@@ -169,6 +160,7 @@ fn start(state: State<Shared>, consent: bool) -> Result<(), String> {
     if r.session.is_some() {
         return Ok(());
     }
+    require_location(&r)?;
     if !platform::unlocked() {
         return Err("Unlock your normal Windows desktop first".into());
     }
@@ -603,6 +595,7 @@ fn main() {
             } else {
                 None
             };
+            let signed_in = token.is_some();
             let shared = Arc::new(Mutex::new(Runtime {
                 queue,
                 server,
@@ -618,7 +611,7 @@ fn main() {
                 update_reserved: false,
                 update: Default::default(),
                 pending_update: None,
-                diagnostics: Default::default(),
+                diagnostics: diagnostics::Diagnostics::signed_in(signed_in),
                 location: Default::default(),
                 applications: Default::default(),
                 shutting_down: false,
@@ -745,7 +738,7 @@ fn main() {
                 let _ = window.hide();
             }
         })
-        .invoke_handler(tauri::generate_handler![status, login, start, stop, logout, set_diagnostics, location::set_location, updater::check_update, updater::install_update])
+        .invoke_handler(tauri::generate_handler![status, login, start, stop, logout, location::request_location, location::open_location_settings, updater::check_update, updater::install_update])
         .build(tauri::generate_context!())
         .expect("WorkTrack failed to start")
         .run(|app, event| {
@@ -835,30 +828,25 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_consent_requires_sign_in_but_opt_out_survives_update_reservation() {
+    fn diagnostics_follow_sign_in_and_location_gates_start() {
+        assert!(!diagnostics::Diagnostics::signed_in(false).enabled);
+        assert!(diagnostics::Diagnostics::signed_in(true).enabled);
         let mut r = runtime();
-        assert!(configure_diagnostics(&mut r, true).is_err());
-        assert!(!r.diagnostics.enabled);
         r.token = Some("test".into());
-        configure_diagnostics(&mut r, true).unwrap();
-        r.diagnostics.record(LogCode::SyncFailed, None);
-        configure_diagnostics(&mut r, true).unwrap();
-        assert_eq!(r.diagnostics.count(), 1);
-        r.update_reserved = true;
-        configure_diagnostics(&mut r, false).unwrap();
-        assert!(!r.diagnostics.enabled);
-        assert_eq!(r.diagnostics.count(), 0);
-        assert!(configure_diagnostics(&mut r, true).is_err());
+        r.location.enabled = false;
+        assert!(require_location(&r).is_err());
+        r.location.enabled = true;
+        assert!(require_location(&r).is_ok());
     }
 
     #[test]
     fn collection_failures_create_codes_only_when_diagnostics_are_enabled() {
         let mut r = runtime();
-        configure_diagnostics(&mut r, false).unwrap();
+        r.diagnostics.configure(false);
         assert!(sample_tick(&mut r, 1.0, true, None, None, || panic!("capture")).is_err());
         assert_eq!(r.diagnostics.count(), 0);
         r.token = Some("test".into());
-        configure_diagnostics(&mut r, true).unwrap();
+        r.diagnostics.configure(true);
         assert!(sample_tick(&mut r, 1.0, true, None, None, || panic!("capture")).is_err());
         assert_eq!(r.diagnostics.count(), 1);
         r.elapsed = 599.0;

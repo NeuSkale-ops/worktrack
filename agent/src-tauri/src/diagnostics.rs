@@ -40,6 +40,13 @@ pub struct Diagnostics {
 }
 
 impl Diagnostics {
+    // Diagnostics are mandatory while signed in. Sign-out is the only off state.
+    pub fn signed_in(signed_in: bool) -> Self {
+        let mut logs = Self::default();
+        logs.configure(signed_in);
+        logs
+    }
+
     pub fn configure(&mut self, enabled: bool) {
         self.generation = self.generation.wrapping_add(1);
         self.enabled = enabled;

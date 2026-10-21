@@ -2,6 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
+import '@fontsource/barlow/400.css';
+import '@fontsource/barlow/500.css';
+import '@fontsource/barlow/600.css';
+import '@fontsource/barlow-semi-condensed/300.css';
+import '@fontsource/barlow-semi-condensed/600.css';
 import './style.css';
 
 type Update = { version: string; current_version: string; body: string | null; date: string | null };
@@ -55,7 +60,7 @@ function App() {
   }
   useEffect(() => { void refresh(); const id = setInterval(() => void refresh(), 1000); return () => clearInterval(id); }, []);
   async function run(command: string, args?: Record<string, unknown>) {
-    if (reserved.current && !(['set_diagnostics', 'set_location'].includes(command) && args?.enabled === false)) return;
+    if (reserved.current) return;
     setBusy(true); setError('');
     try { await invoke(command, args); if (command === 'login') setRenew(false); await refresh(); } catch (e) { setError(String(e)); } finally { setBusy(false); }
   }
@@ -66,6 +71,14 @@ function App() {
     catch (e) { setUpdateError(`Update could not be installed: ${String(e)}. Resolve the issue, then try Update now again.`); }
     finally { await refresh(); installPending.current = false; setInstalling(false); }
   }
+  // Location is required. Ask Windows once per sign-in; the worker can retry from the blocked state.
+  const locationAsked = useRef(false);
+  useEffect(() => {
+    if (!status?.authenticated) { locationAsked.current = false; return; }
+    if (locationAsked.current || status.location_enabled || status.location_pending || status.update_reserved) return;
+    locationAsked.current = true;
+    void invoke('request_location').then(refresh).catch(e => setError(String(e)));
+  }, [status?.authenticated, status?.location_enabled, status?.location_pending, status?.update_reserved]);
   const elapsed = status?.elapsed ?? 0;
   const installReserved = Boolean(status?.update_reserved) || installing;
   const update = status?.update;
@@ -73,63 +86,96 @@ function App() {
   const unavailableMessage = unavailable || (update?.phase === 'unavailable' ? update.error?.replace(/^UPDATER_UNAVAILABLE:\s*/, '') : '');
   const updateFailure = updateError || (update?.phase !== 'unavailable' ? update?.error : null);
   const unsafeInstall = !status || status.tracking || status.queued > 0;
-  return <main>
-    <header><span className="mark">W</span><div><h1>WorkTrack</h1><p>Your time. Clearly recorded.</p></div></header>
-    <section className="disclosure"><h2>What monitoring means</h2><p>Only while you choose Start, WorkTrack measures elapsed time, input activity, foreground application names and estimated time in each, and takes a compressed screenshot of your primary display at each exact 10-minute elapsed boundary. No random captures.</p><p>No typed text, keys, window titles, or websites are recorded. Locking or suspending pauses monitoring. Stop ends monitoring collection. Queued records and separately enabled diagnostics may still upload while stopped.</p><p>You, your managers, and the owner can view these work records. No application file paths are sent. Application usage stays with work records until the time block is deleted from the live database. Backups follow separate retention. Screenshots can contain private information. Close private content before starting. This app remains visible in the tray and never starts tracking automatically.</p></section>
-    {!status?.authenticated || renew ? <form onSubmit={e => { e.preventDefault(); const data = new FormData(e.currentTarget); void run('login', { email: data.get('email'), password: data.get('password') }); }}>
-      <p>Connected to your WorkTrack workspace. Sign in with the account created from your invitation.</p>
-      <label>Email<input name="email" type="email" autoComplete="username" required disabled={installReserved} /></label>
-      <label>Password<input name="password" type="password" autoComplete="current-password" required disabled={installReserved} /></label>
-      <button disabled={busy || installReserved}>Sign in</button>
-    </form> : <section className="timer">
-      <p className={status.tracking ? 'live' : ''}>{status.tracking ? status.paused ? 'PAUSED - SCREEN LOCKED / SUSPENDED' : 'TRACKING ON' : 'TRACKING OFF'}</p>
-      <output>{Math.floor(elapsed / 3600).toString().padStart(2, '0')}:{Math.floor(elapsed / 60 % 60).toString().padStart(2, '0')}:{Math.floor(elapsed % 60).toString().padStart(2, '0')}</output>
-      {status.tracking ? <p>Next screenshot in {Math.ceil(status.next_capture)} elapsed seconds</p> : <label className="consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} />I understand and agree to the monitoring described above.</label>}
-      <button className={status.tracking ? 'stop' : ''} disabled={busy || installReserved || (!status.tracking && !consent)} onClick={() => void run(status.tracking ? 'stop' : 'start', { consent })}>{status.tracking ? 'Stop tracking' : 'Start tracking'}</button>
-      <p>{status.queued} records waiting to sync</p>{status.rejected > 0 && <p role="status">{status.rejected} records refused by the server were set aside on this PC. Contact your manager.</p>}<button className="secondary" disabled={busy || installReserved || status.tracking} onClick={() => setRenew(true)}>Renew sign-in</button><button className="secondary" disabled={busy || installReserved || status.tracking || status.queued > 0} onClick={() => void run('logout')}>Sign out</button>
-    </section>}
-    {(error || status?.error) && <p role="alert" className="error">{error || status?.error}</p>}
-    <section className="disclosure" aria-labelledby="location-title">
-      <h2 id="location-title">Location with screenshots</h2>
-      <p>Optional coordinates, accuracy, and fix time are linked to each screenshot and visible to you, managers, and the owner. Windows may use Wi-Fi or GPS; accuracy varies. No continuous location tracking or IP-based guesses. Deleting a screenshot removes its location from the live database; backups follow separate retention.</p>
-      <label><input id="location-consent" type="checkbox" checked={Boolean(status?.location_enabled || status?.location_pending)} disabled={busy || !status?.authenticated || (installReserved && !status?.location_enabled && !status?.location_pending)} onChange={e => void run('set_location', { enabled: e.target.checked })} />Share location with screenshots for this launch</label>
-      <p>{status?.location_pending ? 'Waiting for Windows location permission. You can turn this off.' : status?.location_enabled ? 'Location requested only when a screenshot is taken. A denied or unavailable fix does not stop tracking.' : 'Off by default. Sign in and enable sharing to request Windows permission.'}</p>
-      {status?.location_error && <p role="status">{status.location_error}</p>}
-    </section>
-    <section className="disclosure" aria-labelledby="diagnostics-title">
-      <h2 id="diagnostics-title">Diagnostic logs for testing</h2>
-      <p>Optional error codes, HTTP status, app version, and timestamps are linked to your account and sent to the owner. No error text, screenshots, typed content, passwords, or tokens are included. Logs expire after seven days.</p>
-      <label><input id="diagnostic-consent" type="checkbox" checked={Boolean(status?.diagnostics_enabled)} disabled={busy || !status?.authenticated || (installReserved && !status?.diagnostics_enabled)} onChange={e => void run('set_diagnostics', { enabled: e.target.checked })} />Send diagnostic logs for this launch</label>
-      <p>Sign in first. Diagnostics can upload while tracking is off. Up to 100 pending events stay in memory and are lost on exit. Turning this off clears pending events; an upload already in progress may finish.</p>
-      {status?.diagnostics_enabled && <p role="status">{status.diagnostics_queued} diagnostic events waiting. {status.diagnostics_error || 'Uploads run separately from tracking.'}</p>}
-    </section>
-    <section className="updater" aria-labelledby="updates-title">
-      <h2 id="updates-title">App updates</h2>
-      <p>{version ? `Installed version ${version}. ` : ''}Checks at startup and every 6 hours. Updates install only when you choose Update now.</p>
-      <div role="status" aria-live="polite">
-        {updateBusy && <p>Checking for updates…</p>}
-        {!updateBusy && checked && !available && !updateFailure && !unavailableMessage && <p>You are up to date{version ? ` on version ${version}` : ''}.</p>}
-        {unavailableMessage && <p>App updates are not available in this build. {unavailableMessage} You can keep tracking normally.</p>}
-        {available && <p><strong>Version {available.version} is available.</strong>{deferred ? ' You can update later.' : ''}</p>}
-        {installReserved && <p>Update in progress. Tracking and sign-in are unavailable until installation finishes. The app may restart. Tracking will remain off.</p>}
+  const signedIn = Boolean(status?.authenticated) && !renew;
+  const locationReady = Boolean(status?.location_enabled);
+  const clock = [elapsed / 3600, elapsed / 60 % 60, elapsed % 60].map(n => Math.floor(n).toString().padStart(2, '0')).join(':');
+  const cycleDone = status?.tracking ? Math.min(10, Math.max(0, 10 - (status.next_capture / 60))) : 0;
+  const nextShot = Math.ceil(status?.next_capture ?? 0);
+  const stateClass = !status?.tracking ? 'off' : status.paused ? 'paused' : 'on';
+  const stateText = !status?.tracking ? 'Not tracking' : status.paused ? 'Paused, screen locked' : 'Tracking';
+  const syncText = status?.queued ? `${status.queued} records waiting to sync` : 'All records synced';
+  const notice = <details className="facts" open={!signedIn}>
+    <summary>What WorkTrack records</summary>
+    <div className="cols">
+      <div><h3>Only while tracking</h3><ul><li>Elapsed time</li><li>Input activity level</li><li>App names and time in each</li><li>Screenshot every 10 minutes</li><li>Location at each screenshot</li></ul></div>
+      <div><h3>Never</h3><ul><li>Typed text or keys</li><li>Window titles or websites</li><li>Screen, input or location while stopped</li><li>Random captures</li></ul></div>
+    </div>
+    <details className="full-notice"><summary>Read the full notice</summary>
+      <p>Only while you choose Start, WorkTrack measures elapsed time, input activity, foreground application names and estimated time in each, and takes a compressed screenshot of your primary display at each exact 10-minute elapsed boundary. No random captures.</p>
+      <p>Location is required. At each screenshot WorkTrack asks Windows for one location fix and stores coordinates, accuracy and fix time with that screenshot. Windows may use Wi-Fi or GPS and accuracy varies. There is no continuous location tracking and no IP-based guess. Tracking cannot start without Windows location permission.</p>
+      <p>Diagnostic logs are required while you are signed in. They contain fixed error codes, HTTP status, app version and timestamps, and may upload while tracking is stopped. They never contain error text, screenshots, typed content, passwords or tokens, and expire after seven days.</p>
+      <p>No typed text, keys, window titles or websites are recorded. Locking or suspending pauses monitoring. Stop ends screen, input and location collection. Queued records and diagnostics may still upload while stopped.</p>
+      <p>You, your managers and the owner can view these work records. No application file paths are sent. Deleting a screenshot removes its location from the live database. Backups follow separate retention. Screenshots can contain private information, so close private content before starting. This app stays visible in the tray and never starts tracking automatically.</p>
+    </details>
+  </details>;
+  const updateBanner = available && !deferred && <section className="banner" aria-labelledby="update-title">
+    <h2 id="update-title">Version {available.version} is ready</h2>
+    <p>Stop tracking and let records sync, then update. Your sign-in and records are kept.</p>
+    {unsafeInstall && <p>Update now is available once tracking is stopped and the sync queue is empty.</p>}
+    <details open><summary>Release notes</summary><p className="release-notes">{available.body || 'No release notes provided.'}</p></details>
+    <div className="acts"><button className="primary" disabled={busy || updateBusy || installReserved || unsafeInstall || update?.phase === 'installed'} onClick={() => void installUpdate()}>Update now</button><button disabled={installReserved} onClick={() => setDeferred(true)}>Later</button></div>
+  </section>;
+  return <div className="win">
+    <main className="body">
+      <div role="status" aria-live="polite" className="update-status">
+        {installReserved && <p className="note">Update in progress. Tracking and sign-in are unavailable until installation finishes. The app may restart. Tracking will remain off.</p>}
         {update?.phase === 'downloading' && <>
           <label htmlFor="update-progress">Downloading update: {update.total ? `${Math.min(100, Math.round(update.downloaded / update.total * 100))}%` : `${Math.round(update.downloaded / 1024)} KB received`}</label>
           <progress id="update-progress" max={update.total || undefined} value={update.total ? Math.min(update.downloaded, update.total) : undefined} />
         </>}
-        {update?.phase === 'installing' && <p>Installing update. Please keep WorkTrack open.</p>}
-        {update?.phase === 'installed' && <p>Update installed. Restart WorkTrack if it does not restart automatically.</p>}
+        {update?.phase === 'installing' && <p className="note">Installing update. Please keep WorkTrack open.</p>}
+        {update?.phase === 'installed' && <p className="note">Update installed. Restart WorkTrack if it does not restart automatically.</p>}
       </div>
-      {available && !deferred && <>
-        <h3>Release notes</h3><p className="release-notes">{available.body || 'No release notes provided.'}</p>
-        <p>Stop tracking and wait for all queued records to sync before updating. Your saved sign-in and records are kept.</p>
-        {unsafeInstall && <p>Update now is available once tracking is stopped and the sync queue is empty.</p>}
-        <div className="update-actions"><button disabled={busy || updateBusy || installReserved || unsafeInstall || update?.phase === 'installed'} onClick={() => void installUpdate()}>Update now</button><button className="secondary" disabled={installReserved} onClick={() => setDeferred(true)}>Later</button></div>
+      {updateBanner}
+      {!signedIn ? <>
+        <form className="signin" onSubmit={e => { e.preventDefault(); const data = new FormData(e.currentTarget); void run('login', { email: data.get('email'), password: data.get('password') }); }}>
+          <h1>Sign in</h1>
+          <p className="lead">Use the account from your invitation email.</p>
+          <label>Email<input name="email" type="email" autoComplete="username" required disabled={installReserved} /></label>
+          <label>Password<input name="password" type="password" autoComplete="current-password" required disabled={installReserved} /></label>
+          <button className="primary big" disabled={busy || installReserved}>Sign in</button>
+          {renew && <button type="button" disabled={busy} onClick={() => setRenew(false)}>Cancel</button>}
+        </form>
+        {(error || status?.error) && <p role="alert" className="error">{error || status?.error}</p>}
+        {notice}
+      </> : <>
+        <p className={`state ${stateClass}`}><span className="dot" />{stateText}</p>
+        <output className={`clock ${status?.tracking ? '' : 'dim'}`} aria-label="Elapsed tracked time">{clock}</output>
+        {status?.tracking && !status.paused && <div className="cycle">
+          <div className="ticks" role="img" aria-label={`${Math.floor(cycleDone)} of 10 minutes until the next screenshot`}>{Array.from({ length: 10 }, (_, i) => <i key={i} className={i < Math.floor(cycleDone) ? 'done' : ''} style={i === Math.floor(cycleDone) ? { background: `linear-gradient(90deg,var(--stamp) ${(cycleDone % 1) * 100}%,var(--track) 0)` } : undefined} />)}</div>
+          <p><span>Next screenshot in <b>{Math.floor(nextShot / 60)} min {nextShot % 60} s</b></span></p>
+        </div>}
+        {status?.tracking && status.paused && <p className="note paused-note">Nothing is recorded while the screen is locked or the PC sleeps. Tracking resumes when you unlock.</p>}
+        {!status?.tracking && !locationReady && <div className="blocked" role="status">
+          <h2>{status?.location_pending ? 'Waiting for Windows location permission' : 'Turn on Windows location to start'}</h2>
+          <p>Location is required with every screenshot. Open Settings, then Privacy and security, then Location, and allow desktop apps. Then select Try again.</p>
+          <div className="acts"><button disabled={busy || installReserved} onClick={() => void run('open_location_settings')}>Open location settings</button><button disabled={busy || installReserved || status?.location_pending} onClick={() => void run('request_location')}>Try again</button></div>
+        </div>}
+        {!status?.tracking && <label className="consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /><span>I understand what is recorded, including location with each screenshot and diagnostic logs, and agree to it. Close private content before starting.</span></label>}
+        <button className={status?.tracking ? 'big stop' : 'primary big'} disabled={busy || installReserved || (!status?.tracking && (!consent || !locationReady))} onClick={() => void run(status?.tracking ? 'stop' : 'start', { consent })}>{status?.tracking ? 'Stop tracking' : 'Start tracking'}</button>
+        <p className="sync-line"><span>{syncText}</span></p>
+        {Boolean(status?.rejected) && <p role="status" className="note">{status?.rejected} records refused by the server were set aside on this PC. Contact your manager.</p>}
+        {(error || status?.error) && <p role="alert" className="error">{error || status?.error}</p>}
+        <section className="facts rows" aria-label="Required monitoring">
+          <div className="row"><span className={`req ${locationReady ? 'ok' : 'bad'}`} aria-hidden="true" /><div>Location with screenshots<small>{status?.location_pending ? 'Waiting for Windows permission.' : locationReady ? (status?.location_error || 'Required. Windows location permission granted.') : 'Blocked by Windows. Tracking cannot start.'}</small></div></div>
+          <div className="row"><span className={`req ${status?.diagnostics_error ? 'warn' : 'ok'}`} aria-hidden="true" /><div>Diagnostic logs<small>Required. {status?.diagnostics_queued ?? 0} diagnostic events waiting. {status?.diagnostics_error || 'Error codes only, kept 7 days.'}</small></div></div>
+        </section>
+        {notice}
+        <div className="account-actions"><button disabled={busy || installReserved || status?.tracking} onClick={() => setRenew(true)}>Renew sign-in</button><button disabled={busy || installReserved || status?.tracking || (status?.queued ?? 0) > 0} onClick={() => void run('logout')}>Sign out</button></div>
       </>}
-      {available && deferred && <button className="secondary" disabled={installReserved} onClick={() => setDeferred(false)}>Show update</button>}
-      {updateFailure && <p className="error" role="alert">{updateFailure}</p>}
-      <button className="secondary check-update" disabled={updateBusy || installReserved} onClick={() => void checkUpdate()}>Check for updates</button>
-    </section>
-    <footer>Closing the window stops tracking. Use the tray to reopen.</footer>
-  </main>;
+      <section className="updates" aria-labelledby="updates-title">
+        <h2 id="updates-title" className="sr-only">App updates</h2>
+        <div role="status" aria-live="polite">
+          {updateBusy && <p>Checking for updates…</p>}
+          {!updateBusy && checked && !available && !updateFailure && !unavailableMessage && <p>You are up to date{version ? ` on version ${version}` : ''}.</p>}
+          {unavailableMessage && <p>App updates are not available in this build. {unavailableMessage} You can keep tracking normally.</p>}
+          {available && deferred && <p>Version {available.version} is available. You can update later.</p>}
+        </div>
+        {available && deferred && <button disabled={installReserved} onClick={() => setDeferred(false)}>Show update</button>}
+        {updateFailure && <p className="error" role="alert">{updateFailure}</p>}
+      </section>
+    </main>
+    <footer className="foot"><span>{version ? `Version ${version}` : 'WorkTrack'}{status?.tracking ? '. Closing this window stops tracking.' : ''}</span><button className="link" disabled={updateBusy || installReserved} onClick={() => void checkUpdate()}>Check for updates</button></footer>
+  </div>;
 }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);
