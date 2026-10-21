@@ -1,7 +1,8 @@
 # Windows auto-update plan
 
-Status: planning only, October 21, 2026.
-No updater has been implemented or enabled by this document.
+Status: implementation plan recorded October 21, 2026.
+Source implementation now exists, but production updates remain disabled pending signing setup and real Windows upgrade acceptance.
+See `deploy/UPDATES.md` and `docs/VALIDATION.md` for current setup and observed checks.
 
 ## Recommended behavior
 
@@ -97,5 +98,6 @@ These checks have not been run for an updater because the feature is not impleme
 - Tauri updater documentation: https://v2.tauri.app/plugin/updater/
 - Windows publisher signing: https://v2.tauri.app/distribute/sign/windows/
 
-The current repository has no updater plugin and explicitly sets `createUpdaterArtifacts` to `false` in `deploy/windows-ci.json`.
-This plan changes neither installed application behavior nor production hosting.
+The repository now includes the updater plugin, while ordinary unsigned CI explicitly keeps `createUpdaterArtifacts` set to `false`.
+The committed public verification key is empty, so no production update installation is enabled.
+Already-installed releases and production hosting are unchanged by the source implementation.

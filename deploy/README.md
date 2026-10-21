@@ -120,15 +120,19 @@ A separate `Windows installer smoke` workflow runs only after a successful same-
 It downloads that exact run's artifact with an ephemeral Actions read token, silently installs it per-user under the disposable runner's temporary directory, and checks the installed process survives five seconds before stopping only that process.
 It uses no configured repository secrets and grants no write permissions.
 This is a packaging/startup smoke test, not a test of tracking-off UI, desktop capture, lock, suspend, or an actual worker machine.
-No workflow has deployment credentials, SSH access, write permissions, release publishing, or automatic deployment steps.
+The ordinary CI and Windows smoke workflows have no deployment credentials, SSH access, write permissions, release publishing, or automatic deployment steps.
+The separate manually dispatched signed-updater workflow uses protected environments and a restricted publication identity only after operator setup and approval.
+See `UPDATES.md` for the release and host-provisioning gates.
 GitHub-hosted runner/artifact quotas and private-repository billing are external account constraints.
 Review those settings before enabling workflows on a paid account.
 
 Windows installers are unsigned initially and may display SmartScreen or publisher warnings.
 Windows code signing is separate from Tauri updater signing.
-The workflow explicitly disables updater artifact creation and must not enable an updater endpoint or updater plugin at runtime.
+The ordinary Windows workflow explicitly disables updater artifact creation.
+The source registers the updater but refuses checks/installations when its public key is absent, as in the current development configuration.
+Only the separately approved release pipeline enables updater artifacts after key setup.
 Tauri updater signatures can use a locally generated free key pair, but enabling updates requires embedding the correct public key, protecting the private signing key, hosting signed manifests/artifacts over HTTPS, and testing both valid updates and signature rejection.
-No updater is enabled by these templates.
+No production updater is enabled by these templates.
 Authenticode signing, reputation, and any certificate purchase need separate approval.
 
 ## External validation limits
