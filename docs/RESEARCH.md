@@ -1,6 +1,21 @@
 # WorkTrack - Research and Plan
 
-Status: research only, no code yet.
+Status: implementation has started.
+See README.md and component documentation for the current implementation.
+
+## Implementation decisions superseding earlier proposals
+
+- Build our own React dashboard, Go API and Tauri Windows agent on Hetzner.
+- Capture at fixed 600-second elapsed intervals while explicitly tracking, not randomly within clock windows.
+- Measure exact elapsed durations, including partial blocks, rather than multiplying block count by ten minutes.
+- Screenshot deletion must not automatically determine wages.
+- Do not ask workers to disable Windows security controls as standard onboarding.
+  Unsigned pilot installation is only acceptable where existing device policy allows it.
+- Domain-only browser tracking cannot be obtained reliably from window titles alone and is deferred.
+- Retention is not yet approved.
+  Configure a documented retention policy before uploading real worker screenshots.
+- Earlier pricing, estimated memory usage and alternative-tool findings are research notes, not validated deployment guarantees.
+
 Date: 2026-10-21.
 Working name: "WorkTrack" (placeholder).
 
