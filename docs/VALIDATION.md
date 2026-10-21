@@ -3,6 +3,21 @@
 Date: 2026-10-21.
 This records observed checks, not a production-readiness claim.
 
+## Diagnostic logging source follow-up
+
+The source now includes separately opted-in desktop diagnostics, device-authenticated ingestion, seven-day live-database retention, and an owner-only dashboard viewer.
+Payloads allow only fixed failure codes, UUIDs, timestamps, numeric HTTP status, and a numeric app version. Raw error strings and unknown fields are rejected rather than redacted heuristically.
+The memory-only 100-event buffer and independent sender do not use the durable tracking queue. Tests cover consent, deduplication, overflow/acknowledgement, expiry, retrying stable IDs, and consent changes during an in-flight upload, with the tracking mutex available during HTTP.
+
+All nine Go tests passed with race detection against disposable PostgreSQL 17, including diagnostic device/browser authorization, owner/manager/worker read restrictions, body validation, idempotency, request and persistent storage budgets, bounded reads, and retention.
+All 22 portable Rust tests and strict all-target Clippy passed. Both frontend production builds and seven dashboard API/utility tests passed.
+Chromium ran 22 desktop UI harness checks, including diagnostic opt-in/status/opt-out during an update reservation.
+The real dashboard passed eight owner and two checks each for manager/worker with mocked APIs at 375px width, including escaped names, explicit loading, empty results, and error recovery.
+The production-image HTTPS container journey passed real diagnostic ingestion/deduplication, owner-only reads, and free-form text rejection, plus the existing 25-worker tracking/report journey.
+
+This feature has not been deployed to the live host or included in a new signed Windows installer. The live source revision below and the immutable v0.1.2 download are unchanged.
+Pending diagnostics are intentionally lost on exit, overflow, or sign-in changes, and pre-sign-in/startup/crash errors are not remotely captured. No real Windows logging/capture journey or worker-data collection was performed.
+
 ## Audit-fix deployment follow-up
 
 API and dashboard source `f60d9604852dbdfeffcc077992ccf3786cf029ca` was deployed to the existing shared Hetzner host at approximately 11:35 UTC on 2026-10-21.

@@ -101,6 +101,7 @@ func TestAgentLogsHTTP(t *testing.T) {
 		func(e *agentEvent) { e.ID = "bad" },
 		func(e *agentEvent) { e.OccurredAt = time.Now().Add(-8 * 24 * time.Hour) },
 		func(e *agentEvent) { e.OccurredAt = time.Now().Add(3 * time.Minute) },
+		func(e *agentEvent) { n := 99; e.Status = &n },
 		func(e *agentEvent) { n := 600; e.Status = &n },
 	} {
 		events := batch(2)
@@ -151,6 +152,11 @@ func TestAgentLogsHTTP(t *testing.T) {
 	if err = db.QueryRow(ctx, "SELECT count(*) FROM agent_logs WHERE user_id=$1", ids["worker"]).Scan(&count); err != nil || count != 120 {
 		t.Fatalf("hourly budget rollback/idempotency: %d %v", count, err)
 	}
+	var allCodes []agentEvent
+	for code := range agentLogCodes {
+		allCodes = append(allCodes, agentEvent{ID: uuid.NewString(), OccurredAt: time.Now().UTC(), Code: code})
+	}
+	request("POST", tokens["owner"], payload(allCodes), 200)
 	if err = json.Unmarshal(request("GET", tokens["owner"], "", 200).Body.Bytes(), &logs); err != nil || len(logs) != 100 {
 		t.Fatalf("owner list must be bounded: %d %v", len(logs), err)
 	}

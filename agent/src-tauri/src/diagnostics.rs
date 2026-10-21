@@ -56,6 +56,7 @@ impl Diagnostics {
         if !self.enabled {
             return;
         }
+        let status = status.filter(|value| (100..=599).contains(value));
         let now = utc_now();
         if self.last.as_ref().is_some_and(|last| {
             last.code == code
@@ -167,6 +168,8 @@ mod tests {
         logs.record(Code::SyncFailed, Some(503));
         logs.record(Code::SyncFailed, Some(503));
         assert_eq!(logs.count(), 1);
+        logs.record(Code::HeartbeatFailed, Some(999));
+        assert!(logs.events.back().unwrap().status.is_none());
         let generation = logs.generation;
         logs.configure(false);
         assert!(logs.generation != generation);

@@ -43,6 +43,17 @@ await request('/api/auth/accept-invite', { method: 'POST', browser: true, body: 
 const worker = await request('/api/auth/login', { method: 'POST', body: { email: `worker-${suffix}@example.test`, password, device_name: 'Integration device' } });
 assert(worker.device_token);
 const token = worker.device_token;
+const diagnostic = { id: randomUUID(), occurred_at: new Date().toISOString(), code: 'sync_failed', status: 503 };
+const diagnosticBody = { version: '0.1.2', events: [diagnostic] };
+await request('/api/agent/logs', { method: 'POST', token, body: diagnosticBody });
+await request('/api/agent/logs', { method: 'POST', token, body: diagnosticBody });
+await request('/api/agent/logs', { token, status: 403 });
+const diagnostics = await request('/api/agent/logs', { browser: true });
+assert.equal(diagnostics.filter(row => row.id === diagnostic.id && row.user_id === worker.user.id).length, 1);
+assert.equal(diagnostics.find(row => row.id === diagnostic.id).message, 'Tracking data could not be synced.');
+assert.equal(diagnostics.find(row => row.id === diagnostic.id).status, 503);
+await request('/api/agent/logs', { method: 'POST', token, body: { ...diagnosticBody, events: [{ ...diagnostic, message: 'Bearer must-not-store' }] }, status: 400 });
+console.log('PASS: real diagnostic ingestion, retry deduplication, owner-only reads and free-form text rejection');
 await request('/api/invites', { method: 'POST', token, body: { email: 'forbidden@example.test', role: 'manager' }, status: 403 });
 await request(`/api/timeline?user=${owner.user.id}&date=${new Date().toISOString().slice(0, 10)}`, { token, status: 403 });
 const sessionID = randomUUID();

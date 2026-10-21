@@ -14,6 +14,8 @@ Agent requests use Authorization: Bearer <device_token>.
 | POST | /api/auth/accept-invite | {token,name,password} | {ok:true}, then login |
 | POST | /api/invites | {email,role:"worker"} | {token,url,expires_at} |
 | GET | /api/team | | array of {id,email,name,role,working,last_seen_at} |
+| POST | /api/agent/logs | {version,events:[{id,occurred_at,code,status?}]} | {ok:true}, device credential only |
+| GET | /api/agent/logs | | newest 100 diagnostic entries, owner only |
 | GET | /api/sessions/current | | own open session {id,started_at,recoverable}, or null |
 | POST | /api/sessions/recover | {id:UUID} | {ok:true}, explicitly closes own stale session |
 | POST | /api/sessions/start | {id?:UUID,started_at?:timestamp} | {id,started_at,stopped_at:null} |
@@ -46,6 +48,27 @@ Timeline dates select whole blocks by their UTC start date, preserving the origi
 Hours reports and CSV split blocks crossing midnight into exact seconds on each UTC calendar date.
 Consequently, summing a timeline day's full blocks can differ from that day's payroll total for cross-midnight work.
 Use the hours report, not a timeline sum, for daily payroll totals.
+
+## Desktop diagnostic logs
+
+Diagnostic upload is separately opt-in in the desktop app and independent of tracking delivery.
+The ingestion endpoint requires a device credential, not a browser cookie. Account identity comes only from that credential; user IDs, arbitrary messages, and unknown fields in the payload are rejected.
+The app version must contain three numeric dot-separated components, each with one to five digits.
+Each request is limited to 16 KiB and 1 to 20 events. Event IDs are UUIDs, timestamps are RFC3339 within the past seven days or at most two minutes ahead, and optional HTTP status must be 100 through 599.
+
+Allowed codes: `login_failed`, `sync_failed`, `capture_failed`, `activity_failed`, `queue_failed`, `heartbeat_failed`, `update_check_failed`, `update_install_failed`.
+The server derives fixed severity/messages from these codes. Never send raw error strings, request URLs, credentials, screenshots, keyboard content, or machine names.
+Duplicate `(authenticated user, event ID)` pairs are acknowledged without overwriting stored data.
+Requests are atomic. Invalid input returns 400; browser uploads or non-owner reads return 403; throttled requests return 429 with `Retry-After`.
+
+There are six requests per user per minute per API process, using the existing bounded limiter.
+A persistent transaction-protected limit allows at most 120 new events per user per rolling hour across API processes. Duplicate retries do not consume additional storage budget.
+Owner reads return `{id,user_id,name,occurred_at,version,code,status?,level,message}` entries, newest first, capped at 100. Managers and workers cannot read diagnostics.
+The timestamps/version/status are client-reported diagnostics, not proof of worker activity or software integrity.
+
+Entries older than seven days by occurrence time are excluded from reads and deleted at startup and hourly, with a ten-second cleanup timeout.
+This retention applies to the live database. Existing encrypted backups retain their snapshots according to the backup policy.
+No logging failure changes tracking records, screenshot retention, or wages.
 
 ## Environment
 

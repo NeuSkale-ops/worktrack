@@ -44,10 +44,20 @@ At most 200 unfinalized reservations per user are allowed.
 The client must not capture when stopped and must capture exactly every 600 elapsed running seconds.
 The server validates session ownership, bounded exact-second durations, non-overlap, and immutable UUID retries, but cannot prove that an untrusted desktop really captured an image at a particular moment.
 
+## Desktop diagnostics
+
+Separately opted-in agents send fixed event codes, timestamps, numeric HTTP status, and app version through device-authenticated `POST /api/agent/logs`.
+No arbitrary error text is accepted. The caller's account is taken from its credential, never from the body.
+Only owners can read `GET /api/agent/logs`; the dashboard loads the newest 100 entries on demand.
+Requests are capped at 16 KiB/20 events, six requests per minute per user, and a persistent 120 new events per rolling hour per user.
+Duplicate retries do not overwrite events or consume more storage budget.
+Logs expire after seven days by occurrence time. Startup/hourly cleanup runs even without screenshot storage, and owner reads always filter expired entries.
+Backups have their own retention policy. See `API.md` for the exact contract and `agent/README.md` for consent and delivery limits.
+
 ## Tests
 
 `go test -race ./...` runs HTTP security and validation, password hashing, and throttling tests.
-Set `WT_TEST_DATABASE_URL` to a disposable database to also run real PostgreSQL-backed HTTP authentication, tracking, idempotency, per-user permissions, presigning, and durable deletion retry tests.
+Set `WT_TEST_DATABASE_URL` to a disposable database to also run real PostgreSQL-backed HTTP authentication, tracking, idempotency, per-user permissions, presigning, durable deletion retry, and diagnostic authorization/validation/quota/retention tests.
 The integration test creates unique test users and deletes only their generated rows on completion.
 It uses a local fake S3 HTTP endpoint and never needs real object-store credentials.
 Run `go vet ./...` before shipping.

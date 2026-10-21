@@ -120,6 +120,28 @@ The WebView has no direct network access to the server, all authenticated reques
 Screenshots and activity in SQLite are not encrypted at rest.
 Protect the Windows user profile and use device encryption for sensitive deployments.
 
+## Opt-in diagnostic logs for testing
+
+After signing in, enable **Send diagnostic logs for this launch** in the desktop window.
+Diagnostics default off and reset after every successful sign-in, sign-out, or restart. They may upload while tracking is stopped only while this separate consent is enabled.
+The owner can open **Desktop diagnostic logs (owner only)** below the dashboard timesheet and click **Load recent logs**.
+
+Only fixed failure codes, event UUIDs, UTC timestamps, optional numeric HTTP status, and the compiled app version are sent to `POST /api/agent/logs` using the existing device credential.
+The backend links them to the authenticated account and supplies fixed severity/messages. Raw error text, URLs, passwords, tokens, screen contents, typed content, and computer names are not diagnostic payload fields.
+Events cover sign-in requests while already signed in, sync, screenshot capture, input sampling, local queue writes, heartbeats, and update checks/installations.
+Errors before the first sign-in and startup/crash failures cannot be uploaded through this consent/authentication path.
+
+A separate background thread uploads at most 20 events every 30 seconds, with a five-second request timeout and retry backoff up to five minutes.
+It never holds the tracking mutex during network work and never uses, clears, or blocks the durable tracking queue.
+Repeated consecutive code/status pairs are coalesced for one minute, including after acknowledgement.
+The memory-only buffer holds at most 100 events, discards the oldest on overflow, and loses pending events on exit or sign-in changes. Events older than seven days are discarded.
+Disabling diagnostics clears unsent events immediately. An already in-flight request may finish, but its acknowledgement cannot clear events from a new consent/account snapshot.
+Delivery failures appear in the diagnostic section, never as tracking failures or recursively generated log events.
+
+The API accepts at most six diagnostic requests per account per minute and 120 new events per account per hour. Diagnostic quota failures retry without affecting tracking.
+Owners see the newest 100 retained events. Logs older than seven days are hidden immediately and deleted hourly from the live database. Existing database backups follow their separate backup retention policy.
+This source feature is not present in the published immutable v0.1.2 installer. Deploy the updated API before shipping a newly versioned signed Windows installer.
+
 ## Release acceptance checklist
 
 Portable compilation and synthetic tests do not establish Windows acceptance.
