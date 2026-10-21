@@ -129,7 +129,7 @@ func (a *app) bootstrap(ctx context.Context) error {
 	if email == "" || password == "" {
 		return nil
 	}
-	if len(password) < 12 {
+	if len(password) < 12 && os.Getenv("ALLOW_WEAK_BOOTSTRAP_PASSWORD") != "true" {
 		return errors.New("bootstrap password must contain at least 12 characters")
 	}
 	tx, e := a.db.Begin(ctx)
@@ -145,6 +145,9 @@ func (a *app) bootstrap(ctx context.Context) error {
 		return e
 	}
 	if count == 0 {
+		if len(password) < 12 {
+			slog.Warn("initial owner password is below the recommended minimum; explicit bootstrap override enabled")
+		}
 		_, e = tx.Exec(ctx, "INSERT INTO users(id,email,name,role,password_hash) VALUES($1,$2,$3,'owner',$4)", uuid.NewString(), email, env("BOOTSTRAP_NAME", "Owner"), passwordHash(password))
 		if e != nil {
 			return e

@@ -47,6 +47,8 @@ Use the hours report, not a timeline sum, for daily payroll totals.
 
 DATABASE_URL, APP_ORIGIN (default http://localhost:5173), LISTEN_ADDR (default :8080), DEV_MODE (default false).
 BOOTSTRAP_EMAIL, BOOTSTRAP_PASSWORD, BOOTSTRAP_NAME create the first owner only when users is empty.
+ALLOW_WEAK_BOOTSTRAP_PASSWORD=true explicitly permits a nonempty initial owner password shorter than 12 characters.
+This insecure exception is disabled by default, does not change invite password validation, and must be removed with bootstrap credentials after first login.
 R2_ENDPOINT, R2_REGION (default auto), R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY configure private Cloudflare R2 storage.
 The R2-prefixed access keys are passed explicitly to the S3-compatible SDK.
 Legacy S3_/AWS_ environment names are not read for this storage configuration.
