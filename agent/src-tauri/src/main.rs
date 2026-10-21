@@ -36,6 +36,7 @@ struct Runtime {
     server: String,
     token: Option<String>,
     session: Option<String>,
+    pending_stop: Option<(String, chrono::DateTime<Utc>)>,
     elapsed: f64,
     active: f64,
     segment: f64,
@@ -123,8 +124,9 @@ async fn login(state: State<'_, Shared>, email: String, password: String) -> Res
         let mut r = state.lock().map_err(|e| e.to_string())?;
         updater::ensure_not_reserved(&r)?;
         if r.session.is_some() { return Err("Stop tracking before signing in".into()); }
-        if !queue_matches_server(&r.queue.get("server").unwrap_or_default(), r.queue.count()) { return Err("This installation has unsynced records for another server. Sync them using version 0.1.0 before upgrading. No records were moved or deleted.".into()); }
-        if r.queue.count() > 0 && r.queue.get("email").as_deref() != Some(email.trim().to_lowercase().as_str()) { return Err("Queued records belong to another account. Use that account to sync first.".into()); }
+        let pending = r.queue.count() + usize::from(r.pending_stop.is_some());
+        if !queue_matches_server(&r.queue.get("server").unwrap_or_default(), pending) { return Err("This installation has unsynced records for another server. Sync them using version 0.1.0 before upgrading. No records were moved or deleted.".into()); }
+        if pending > 0 && r.queue.get("email").as_deref() != Some(email.trim().to_lowercase().as_str()) { return Err("Queued records belong to another account. Use that account to sync first.".into()); }
         let response = client()?.post(format!("{server}/api/auth/login")).json(&json!({"email":&email,"password":password,"device_name":std::env::var("COMPUTERNAME").unwrap_or_else(|_| "WorkTrack desktop".into())})).send().map_err(|_| { r.diagnostics.record(LogCode::LoginFailed, None); "Cannot reach server".to_string() })?;
         if !response.status().is_success() { r.diagnostics.record(LogCode::LoginFailed, Some(response.status().as_u16())); return Err(format!("Login rejected ({})", response.status())); }
         let body: serde_json::Value = response.json().map_err(|_| "Invalid login response")?;
@@ -151,6 +153,9 @@ fn require_location(r: &Runtime) -> Result<(), String> {
 fn start(state: State<Shared>, consent: bool) -> Result<(), String> {
     let mut r = state.lock().map_err(|e| e.to_string())?;
     updater::ensure_not_reserved(&r)?;
+    if r.pending_stop.is_some() {
+        return Err("The previous stop is still being saved. Records are retained and will retry automatically.".into());
+    }
     if !cfg!(windows) {
         return Err("Tracking is supported only on Windows in V1".into());
     }
@@ -198,7 +203,11 @@ fn start(state: State<Shared>, consent: bool) -> Result<(), String> {
     Ok(())
 }
 fn flush_block(r: &mut Runtime, image: Option<&[u8]>) -> Result<(), String> {
-    if r.session.is_none() {
+    let session = r
+        .session
+        .as_ref()
+        .or_else(|| r.pending_stop.as_ref().map(|(id, _)| id));
+    if session.is_none() {
         return Ok(());
     }
     let seconds = (r.segment.floor() as i64).min(600);
@@ -213,7 +222,7 @@ fn flush_block(r: &mut Runtime, image: Option<&[u8]>) -> Result<(), String> {
     });
     let applications = r.applications.snapshot(seconds);
     r.queue.atomic(|q| {
-        q.push("/api/blocks", &json!({"blocks":[{"id":uuid::Uuid::new_v4().to_string(),"session_id":r.session,"start_at":r.segment_start,"end_at":end,"active_seconds":(r.active.floor() as i64).min(seconds),"location":location,"application_usage":applications}]}), image)?;
+        q.push("/api/blocks", &json!({"blocks":[{"id":uuid::Uuid::new_v4().to_string(),"session_id":session,"start_at":r.segment_start,"end_at":end,"active_seconds":(r.active.floor() as i64).min(seconds),"location":location,"application_usage":applications}]}), image)?;
         q.set("checkpoint", &end.to_rfc3339())
     }).inspect_err(|_| r.diagnostics.record(LogCode::QueueFailed, None))?;
     r.segment -= seconds as f64;
@@ -223,25 +232,26 @@ fn flush_block(r: &mut Runtime, image: Option<&[u8]>) -> Result<(), String> {
     Ok(())
 }
 fn stop_runtime(r: &mut Runtime) -> Result<(), String> {
-    let block_result = flush_block(r, None);
     if let Some(id) = r.session.take() {
-        // Collection is stopped before any fallible disk work.
-        r.queue
-            .atomic(|q| {
-                q.push(
-                    "/api/sessions/stop",
-                    &json!({"id":id,"stopped_at":utc_now()}),
-                    None,
-                )?;
-                q.set("active_session", "")
-            })
-            .inspect_err(|_| r.diagnostics.record(LogCode::QueueFailed, None))?;
+        // Stop collection immediately, but retain the final interval and its original stop time.
+        r.pending_stop = Some((id, utc_now()));
     }
-    if block_result.is_err() {
-        r.segment = 0.0;
-        r.active = 0.0;
-    }
-    block_result
+    let Some((id, stopped_at)) = r.pending_stop.clone() else {
+        return Ok(());
+    };
+    flush_block(r, None)?;
+    r.queue
+        .atomic(|q| {
+            q.push(
+                "/api/sessions/stop",
+                &json!({"id":id,"stopped_at":stopped_at}),
+                None,
+            )?;
+            q.set("active_session", "")
+        })
+        .inspect_err(|_| r.diagnostics.record(LogCode::QueueFailed, None))?;
+    r.pending_stop = None;
+    Ok(())
 }
 #[tauri::command]
 fn stop(state: State<Shared>) -> Result<(), String> {
@@ -273,7 +283,7 @@ async fn logout(state: State<'_, Shared>) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         let mut r = shared.lock().map_err(|e| e.to_string())?;
         updater::ensure_not_reserved(&r)?;
-        if r.session.is_some() || r.queue.first()?.is_some() {
+        if r.session.is_some() || r.pending_stop.is_some() || r.queue.first()?.is_some() {
             return Err("Stop and sync before signing out".into());
         }
         if let Some(token) = &r.token {
@@ -316,6 +326,9 @@ fn tick(r: &mut Runtime) -> Result<(), String> {
     let now = Instant::now();
     let dt = now.duration_since(r.last).as_secs_f64();
     r.last = now;
+    if r.pending_stop.is_some() {
+        return stop_runtime(r);
+    }
     if r.session.is_none() {
         return Ok(());
     }
@@ -601,6 +614,7 @@ fn main() {
                 server,
                 token,
                 session: None,
+                pending_stop: None,
                 elapsed: 0.0,
                 active: 0.0,
                 segment: 0.0,
@@ -639,6 +653,7 @@ fn main() {
                             if r.update_reserved { return; }
                             if let Err(e) = stop_runtime(&mut r) {
                                 r.error = Some(e);
+                                if event.id.as_ref() == "quit" { return; }
                             }
                             if event.id.as_ref() == "quit" {
                                 r.shutting_down = true;
@@ -744,7 +759,7 @@ fn main() {
         .run(|app, event| {
             if let tauri::RunEvent::ExitRequested { api, .. } = event {
                 if let Ok(mut r) = app.state::<Shared>().lock() {
-                    if r.update_reserved {
+                    if r.update_reserved || r.pending_stop.is_some() {
                         api.prevent_exit();
                     } else {
                         r.shutting_down = true;
@@ -873,6 +888,7 @@ mod tests {
             server: String::new(),
             token: None,
             session: Some(uuid::Uuid::new_v4().to_string()),
+            pending_stop: None,
             elapsed: 0.0,
             active: 0.0,
             segment: 0.0,
@@ -984,6 +1000,82 @@ mod tests {
         assert_eq!(r.queue.count(), 2);
         stop_runtime(&mut r).unwrap();
         assert_eq!(r.queue.count(), 2);
+    }
+    #[test]
+    fn failed_final_writes_stop_collection_and_retry_without_losing_time() {
+        for failed_path in ["/api/blocks", "/api/sessions/stop"] {
+            let mut r = runtime();
+            let id = r.session.clone().unwrap();
+            r.queue.set("active_session", &id).unwrap();
+            r.segment_start -= chrono::Duration::seconds(90);
+            r.segment = 12.8;
+            r.elapsed = 42.8;
+            r.active = 5.9;
+            r.applications.record(Some("editor.exe"), 12.8);
+            r.queue.0.execute_batch(&format!(
+                "CREATE TRIGGER fail_final_write BEFORE INSERT ON queue WHEN NEW.path='{failed_path}' BEGIN SELECT RAISE(FAIL, 'disk write failed'); END;"
+            )).unwrap();
+
+            assert!(stop_runtime(&mut r).is_err());
+            assert!(
+                r.session.is_none(),
+                "monitoring must stop even when disk writes fail"
+            );
+            assert!(r.pending_stop.is_some());
+            assert_eq!(r.queue.get("active_session").as_deref(), Some(id.as_str()));
+            if failed_path == "/api/blocks" {
+                assert_eq!(r.segment, 12.8);
+                assert_eq!(r.active, 5.9);
+                assert_eq!(r.queue.count(), 0);
+            } else {
+                assert_eq!(r.queue.count(), 1);
+            }
+            let stopped_at = utc_now() - chrono::Duration::seconds(60);
+            r.pending_stop.as_mut().unwrap().1 = stopped_at;
+            r.last = Instant::now() - Duration::from_secs(60);
+            assert!(tick(&mut r).is_err());
+            assert_eq!(r.elapsed, 42.8, "retry must not invent tracked time");
+            assert_eq!(r.pending_stop.as_ref().unwrap().1, stopped_at);
+            r.queue
+                .0
+                .execute_batch("DROP TRIGGER fail_final_write")
+                .unwrap();
+            tick(&mut r).unwrap();
+
+            assert!(r.pending_stop.is_none());
+            assert!(r.session.is_none());
+            assert_eq!(r.elapsed, 42.8);
+            assert_eq!(r.queue.get("active_session").as_deref(), Some(""));
+            assert_eq!(r.queue.count(), 2);
+            let block = r.queue.first().unwrap().unwrap();
+            let payload: serde_json::Value = serde_json::from_str(&block.json).unwrap();
+            assert_eq!(payload["blocks"][0]["session_id"], id);
+            assert_eq!(payload["blocks"][0]["active_seconds"], 5);
+            assert_eq!(
+                payload["blocks"][0]["application_usage"][0]["app"],
+                "editor.exe"
+            );
+            let start = chrono::DateTime::parse_from_rfc3339(
+                payload["blocks"][0]["start_at"].as_str().unwrap(),
+            )
+            .unwrap();
+            let end = chrono::DateTime::parse_from_rfc3339(
+                payload["blocks"][0]["end_at"].as_str().unwrap(),
+            )
+            .unwrap();
+            assert_eq!((end - start).num_seconds(), 12);
+            r.queue.ack(block.id).unwrap();
+            let stop = r.queue.first().unwrap().unwrap();
+            let payload: serde_json::Value = serde_json::from_str(&stop.json).unwrap();
+            assert_eq!(payload["id"], id);
+            assert_eq!(payload["stopped_at"], json!(stopped_at));
+            stop_runtime(&mut r).unwrap();
+            assert_eq!(
+                r.queue.count(),
+                1,
+                "retry must not duplicate blocks or stops"
+            );
+        }
     }
     #[test]
     fn refused_head_is_held_for_a_day_then_set_aside() {
