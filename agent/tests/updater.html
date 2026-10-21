@@ -19,6 +19,7 @@ const offer = { version: '0.1.2', current_version: '0.1.1', body: 'Test release 
 const state = {
   authenticated: true, tracking: false, paused: false, elapsed: 0,
   next_capture: 600, queued: 0, error: null, server: 'mock', update_reserved: false,
+  diagnostics_enabled: false, diagnostics_queued: 0, diagnostics_error: null,
   update: { phase: 'idle', downloaded: 0, total: null, error: null },
 };
 let available = offer;
@@ -34,6 +35,7 @@ window.__TAURI_INTERNALS__ = {
       return available;
     }
     if (command === 'install_update') return new Promise((resolve, reject) => { rejectInstall = reject; });
+    if (command === 'set_diagnostics') { state.diagnostics_enabled = args.enabled; return; }
     if (['start', 'stop', 'login', 'logout'].includes(command)) return;
     throw new Error(`Unexpected IPC command: ${command}`);
   },
@@ -67,6 +69,13 @@ try {
   await check('startup discovers update and distinguishes installed/offered versions', () => text().includes('Installed version 0.1.1') && text().includes('Version 0.1.2') && text().includes('Test release notes'));
   await check('StrictMode performs one startup check', () => calls.filter(call => call.command === 'check_update').length === 1);
   await check('six-hour update interval is registered', () => intervals.some(entry => entry.delay === 21600000));
+  await check('diagnostics default off with disclosure', () => !document.querySelector('#diagnostic-consent').checked && text().includes('No error text, screenshots'));
+  document.querySelector('#diagnostic-consent').click();
+  await check('diagnostics require explicit opt-in IPC', () => state.diagnostics_enabled && calls.some(call => call.command === 'set_diagnostics' && call.args.enabled === true));
+  state.diagnostics_queued = 2;
+  state.diagnostics_error = 'Diagnostic upload failed. Retrying in the background.';
+  await refresh();
+  await check('diagnostic delivery status is separate from tracking errors', () => text().includes('2 diagnostic events waiting') && text().includes('Diagnostic upload failed.') && !document.querySelector('main [role=alert]'));
   click('Later');
   await check('Later hides notes and never installs', () => Boolean(button('Show update')) && !text().includes('Release notes') && !calls.some(call => call.command === 'install_update'));
   click('Show update');
@@ -99,6 +108,9 @@ try {
   state.update = { phase: 'downloading', downloaded: 50, total: 100, error: null };
   await refresh();
   await check('backend download progress renders', () => document.querySelector('progress')?.value === 50 && text().includes('50%'));
+  document.querySelector('#diagnostic-consent').click();
+  await check('diagnostic opt-out stays available during update reservation', () => !state.diagnostics_enabled && calls.some(call => call.command === 'set_diagnostics' && call.args.enabled === false));
+  await check('reservation blocks enabling diagnostics', () => document.querySelector('#diagnostic-consent').disabled);
   state.update.total = null;
   await refresh();
   await check('unknown download size renders indeterminate progress', () => document.querySelector('progress') && !document.querySelector('progress').hasAttribute('value'));
@@ -113,6 +125,7 @@ try {
   state.update_reserved = true;
   await refresh();
   await check('backend reservation disables sign-in fields and button', () => button('Sign in')?.disabled && document.querySelector('input[name=email]')?.disabled);
+  await check('signed-out user cannot enable diagnostic uploads', () => document.querySelector('#diagnostic-consent').disabled);
   state.update_reserved = false;
   state.update = { phase: 'unavailable', downloaded: 0, total: null, error: 'UPDATER_UNAVAILABLE: Signed Windows builds only.' };
   checkError = state.update.error;

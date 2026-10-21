@@ -1,4 +1,4 @@
-use super::{Runtime, Shared};
+use super::{diagnostics::Code as LogCode, Runtime, Shared};
 use rusqlite::OptionalExtension;
 use serde::Serialize;
 use std::time::Duration;
@@ -163,6 +163,9 @@ pub async fn check_update(
             Ok(metadata)
         }
         Err(error) => {
+            if !error.starts_with("UPDATER_UNAVAILABLE:") {
+                r.diagnostics.record(LogCode::UpdateCheckFailed, None);
+            }
             r.update.phase = if error.starts_with("UPDATER_UNAVAILABLE:") {
                 "unavailable"
             } else {
@@ -237,6 +240,7 @@ async fn install(shared: Shared, version: String) -> Result<(), String> {
             Ok(())
         }
         Err(error) => {
+            r.diagnostics.record(LogCode::UpdateInstallFailed, None);
             r.update.phase = if error.starts_with("UPDATER_UNAVAILABLE:") {
                 "unavailable"
             } else {

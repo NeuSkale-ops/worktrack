@@ -1,8 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod diagnostics;
 mod platform;
 mod queue;
 mod updater;
 use chrono::Utc;
+use diagnostics::Code as LogCode;
 use queue::Queue;
 use serde::Serialize;
 use serde_json::json;
@@ -38,6 +40,7 @@ struct Runtime {
     update_reserved: bool,
     update: updater::UpdateStatus,
     pending_update: Option<tauri_plugin_updater::Update>,
+    diagnostics: diagnostics::Diagnostics,
     shutting_down: bool,
 }
 type Shared = Arc<Mutex<Runtime>>;
@@ -53,6 +56,9 @@ struct Status {
     server: String,
     update_reserved: bool,
     update: updater::UpdateStatus,
+    diagnostics_enabled: bool,
+    diagnostics_queued: usize,
+    diagnostics_error: Option<&'static str>,
 }
 fn utc_now() -> chrono::DateTime<Utc> {
     chrono::DateTime::from_timestamp(Utc::now().timestamp(), 0).expect("valid current timestamp")
@@ -81,7 +87,27 @@ fn status(state: State<Shared>) -> Result<Status, String> {
         server: r.server.clone(),
         update_reserved: r.update_reserved,
         update: r.update.clone(),
+        diagnostics_enabled: r.diagnostics.enabled,
+        diagnostics_queued: r.diagnostics.count(),
+        diagnostics_error: r.diagnostics.error,
     })
+}
+fn configure_diagnostics(r: &mut Runtime, enabled: bool) -> Result<(), String> {
+    if enabled {
+        updater::ensure_not_reserved(r)?;
+        if r.token.is_none() {
+            return Err("Sign in before enabling diagnostic uploads".into());
+        }
+    }
+    if r.diagnostics.enabled != enabled {
+        r.diagnostics.configure(enabled);
+    }
+    Ok(())
+}
+#[tauri::command]
+fn set_diagnostics(state: State<Shared>, enabled: bool) -> Result<(), String> {
+    let mut r = state.lock().map_err(|e| e.to_string())?;
+    configure_diagnostics(&mut r, enabled)
 }
 #[tauri::command]
 async fn login(state: State<'_, Shared>, email: String, password: String) -> Result<(), String> {
@@ -93,14 +119,15 @@ async fn login(state: State<'_, Shared>, email: String, password: String) -> Res
         if r.session.is_some() { return Err("Stop tracking before signing in".into()); }
         if !queue_matches_server(&r.queue.get("server").unwrap_or_default(), r.queue.count()) { return Err("This installation has unsynced records for another server. Sync them using version 0.1.0 before upgrading. No records were moved or deleted.".into()); }
         if r.queue.count() > 0 && r.queue.get("email").as_deref() != Some(email.trim().to_lowercase().as_str()) { return Err("Queued records belong to another account. Use that account to sync first.".into()); }
-        let response = client()?.post(format!("{server}/api/auth/login")).json(&json!({"email":&email,"password":password,"device_name":std::env::var("COMPUTERNAME").unwrap_or_else(|_| "WorkTrack desktop".into())})).send().map_err(|_| "Cannot reach server".to_string())?;
-        if !response.status().is_success() { return Err(format!("Login rejected ({})", response.status())); }
+        let response = client()?.post(format!("{server}/api/auth/login")).json(&json!({"email":&email,"password":password,"device_name":std::env::var("COMPUTERNAME").unwrap_or_else(|_| "WorkTrack desktop".into())})).send().map_err(|_| { r.diagnostics.record(LogCode::LoginFailed, None); "Cannot reach server".to_string() })?;
+        if !response.status().is_success() { r.diagnostics.record(LogCode::LoginFailed, Some(response.status().as_u16())); return Err(format!("Login rejected ({})", response.status())); }
         let body: serde_json::Value = response.json().map_err(|_| "Invalid login response")?;
         let token = body["device_token"].as_str().ok_or("Missing device token")?.to_string();
         // Fail closed rather than silently putting a device token in SQLite.
         credential(&server)?.set_password(&token).map_err(|_| "Could not save device token in OS credential storage")?;
         r.queue.set("email", &email.trim().to_lowercase())?;
         r.queue.set("server", &server)?;
+        r.diagnostics.configure(false);
         r.server = server; r.token = Some(token); r.error = None;
         Ok(())
     }).await.map_err(|e| e.to_string())?
@@ -131,15 +158,17 @@ fn start(state: State<Shared>, consent: bool) -> Result<(), String> {
     }
     let id = uuid::Uuid::new_v4().to_string();
     let started = utc_now();
-    r.queue.atomic(|q| {
-        q.push(
-            "/api/sessions/start",
-            &json!({"id":id,"started_at":started}),
-            None,
-        )?;
-        q.set("active_session", &id)?;
-        q.set("checkpoint", &started.to_rfc3339())
-    })?;
+    r.queue
+        .atomic(|q| {
+            q.push(
+                "/api/sessions/start",
+                &json!({"id":id,"started_at":started}),
+                None,
+            )?;
+            q.set("active_session", &id)?;
+            q.set("checkpoint", &started.to_rfc3339())
+        })
+        .inspect_err(|_| r.diagnostics.record(LogCode::QueueFailed, None))?;
     r.session = Some(id);
     r.segment = 0.0;
     r.segment_start = started;
@@ -163,7 +192,7 @@ fn flush_block(r: &mut Runtime, image: Option<&[u8]>) -> Result<(), String> {
     r.queue.atomic(|q| {
         q.push("/api/blocks", &json!({"blocks":[{"id":uuid::Uuid::new_v4().to_string(),"session_id":r.session,"start_at":r.segment_start,"end_at":end,"active_seconds":(r.active.floor() as i64).min(seconds)}]}), image)?;
         q.set("checkpoint", &end.to_rfc3339())
-    })?;
+    }).inspect_err(|_| r.diagnostics.record(LogCode::QueueFailed, None))?;
     r.segment -= seconds as f64;
     r.active = 0.0;
     r.segment_start = end;
@@ -173,14 +202,16 @@ fn stop_runtime(r: &mut Runtime) -> Result<(), String> {
     let block_result = flush_block(r, None);
     if let Some(id) = r.session.take() {
         // Collection is stopped before any fallible disk work.
-        r.queue.atomic(|q| {
-            q.push(
-                "/api/sessions/stop",
-                &json!({"id":id,"stopped_at":utc_now()}),
-                None,
-            )?;
-            q.set("active_session", "")
-        })?;
+        r.queue
+            .atomic(|q| {
+                q.push(
+                    "/api/sessions/stop",
+                    &json!({"id":id,"stopped_at":utc_now()}),
+                    None,
+                )?;
+                q.set("active_session", "")
+            })
+            .inspect_err(|_| r.diagnostics.record(LogCode::QueueFailed, None))?;
     }
     if block_result.is_err() {
         r.segment = 0.0;
@@ -228,6 +259,7 @@ async fn logout(state: State<'_, Shared>) -> Result<(), String> {
             .delete_credential()
             .map_err(|e| e.to_string())?;
         r.token = None;
+        r.diagnostics.configure(false);
         Ok(())
     })
     .await
@@ -296,7 +328,9 @@ fn sample_tick(
         r.segment = 0.0;
         return Ok(());
     }
-    let idle = idle.ok_or("Windows activity sampling failed")?;
+    let idle = idle
+        .ok_or("Windows activity sampling failed")
+        .inspect_err(|_| r.diagnostics.record(LogCode::ActivityFailed, None))?;
     r.elapsed += dt;
     r.segment += dt;
     if idle < 1.0 {
@@ -305,7 +339,8 @@ fn sample_tick(
     if r.elapsed >= r.next_capture {
         // Fixed elapsed boundaries, never randomized or caught up after lock/sleep.
         r.next_capture += 600.0;
-        let bytes = capture()?;
+        let bytes =
+            capture().inspect_err(|_| r.diagnostics.record(LogCode::CaptureFailed, None))?;
         flush_block(r, Some(&bytes))?;
     } else if r.segment >= 30.0 {
         flush_block(r, None)?;
@@ -464,6 +499,7 @@ fn main() {
                 update_reserved: false,
                 update: Default::default(),
                 pending_update: None,
+                diagnostics: Default::default(),
                 shutting_down: false,
                 error: if compatible_queue { None } else { Some("Unsynced records belong to another server. Sync using version 0.1.0 before upgrading. No records were moved or deleted.".into()) },
             }));
@@ -522,6 +558,8 @@ fn main() {
                     }
                 }
             });
+            let diagnostic_sender = shared.clone();
+            std::thread::spawn(move || diagnostics::run(diagnostic_sender));
             let heartbeat = shared.clone();
             std::thread::spawn(move || loop {
                 std::thread::sleep(Duration::from_secs(30));
@@ -533,12 +571,17 @@ fn main() {
                     }
                 });
                 if let Some((server, token)) = auth {
-                    if let Ok(http) = client() {
-                        let _ = http
-                            .post(format!("{server}/api/heartbeat"))
-                            .bearer_auth(token)
-                            .json(&json!({}))
-                            .send();
+                    let response = client().ok().and_then(|http| http
+                        .post(format!("{server}/api/heartbeat"))
+                        .bearer_auth(&token)
+                        .json(&json!({}))
+                        .send().ok());
+                    if !response.as_ref().is_some_and(|response| response.status().is_success()) {
+                        if let Ok(mut r) = heartbeat.try_lock() {
+                            if r.token.as_ref() == Some(&token) && r.server == server {
+                                r.diagnostics.record(LogCode::HeartbeatFailed, response.map(|response| response.status().as_u16()));
+                            }
+                        }
                     }
                 }
             });
@@ -555,6 +598,7 @@ fn main() {
                         }
                         Err(e) => {
                             if let Ok(mut r) = shared.lock() {
+                                r.diagnostics.record(LogCode::SyncFailed, None);
                                 r.error = Some(e);
                             }
                             delay = (delay * 2).min(300);
@@ -578,7 +622,7 @@ fn main() {
                 let _ = window.hide();
             }
         })
-        .invoke_handler(tauri::generate_handler![status, login, start, stop, logout, updater::check_update, updater::install_update])
+        .invoke_handler(tauri::generate_handler![status, login, start, stop, logout, set_diagnostics, updater::check_update, updater::install_update])
         .build(tauri::generate_context!())
         .expect("WorkTrack failed to start")
         .run(|app, event| {
@@ -640,6 +684,41 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_consent_requires_sign_in_but_opt_out_survives_update_reservation() {
+        let mut r = runtime();
+        assert!(configure_diagnostics(&mut r, true).is_err());
+        assert!(!r.diagnostics.enabled);
+        r.token = Some("test".into());
+        configure_diagnostics(&mut r, true).unwrap();
+        r.diagnostics.record(LogCode::SyncFailed, None);
+        configure_diagnostics(&mut r, true).unwrap();
+        assert_eq!(r.diagnostics.count(), 1);
+        r.update_reserved = true;
+        configure_diagnostics(&mut r, false).unwrap();
+        assert!(!r.diagnostics.enabled);
+        assert_eq!(r.diagnostics.count(), 0);
+        assert!(configure_diagnostics(&mut r, true).is_err());
+    }
+
+    #[test]
+    fn collection_failures_create_codes_only_when_diagnostics_are_enabled() {
+        let mut r = runtime();
+        configure_diagnostics(&mut r, false).unwrap();
+        assert!(sample_tick(&mut r, 1.0, true, None, || panic!("capture")).is_err());
+        assert_eq!(r.diagnostics.count(), 0);
+        r.token = Some("test".into());
+        configure_diagnostics(&mut r, true).unwrap();
+        assert!(sample_tick(&mut r, 1.0, true, None, || panic!("capture")).is_err());
+        assert_eq!(r.diagnostics.count(), 1);
+        r.elapsed = 599.0;
+        assert!(sample_tick(&mut r, 1.0, true, Some(0.0), || Err(
+            "private OS error or URL must stay local".into()
+        ))
+        .is_err());
+        assert_eq!(r.diagnostics.count(), 2);
+    }
+
+    #[test]
     fn fixed_server_preserves_queue_ownership() {
         assert_eq!(SERVER_URL, "https://worktrack.178.156.213.40.sslip.io");
         assert!(queue_matches_server("", 0));
@@ -666,6 +745,7 @@ mod tests {
             update_reserved: false,
             update: Default::default(),
             pending_update: None,
+            diagnostics: Default::default(),
             shutting_down: false,
         }
     }
