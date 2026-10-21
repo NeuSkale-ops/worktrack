@@ -10,6 +10,25 @@ Build a minimal tool to monitor remote workers on Windows.
 It should prove hours worked with screenshots and activity levels, like Worksnaps.
 It should stay small, cheap, and respectful of worker privacy.
 
+## Decisions (2026-10-21)
+
+| Question | Answer |
+|---|---|
+| Workers at launch | 20+ |
+| PC ownership | Mixed: company-owned and personal |
+| Project tracking in V1 | No, total hours only |
+| Screenshot frequency | One every 10 minutes |
+| Screenshot retention | Not decided, default 90 days |
+
+What these decisions change:
+- V1 has no projects. The timer is a single Start/Stop button.
+- Screenshot time is random inside each 10-minute block (for example 10:03, then 10:17).
+  This is still exactly one per 10 minutes, but workers cannot predict the moment.
+- Personal PCs cannot use a self-signed certificate (we should not install trust certificates on personal machines).
+  So unsigned install plus a guide is the plan for everyone, see section 7.
+- With 20+ workers, some will have Smart App Control on.
+  Budget for a real code signing certificate early, see section 7.
+
 ## 2. Market reference
 
 | | Worksnaps | Insightful |
@@ -65,8 +84,8 @@ Confirm on a real Windows 11 PC that the timer accepts a custom server URL.
 
 Worker app (Windows):
 - Log in with email and password.
-- Start and stop timer, choose a project.
-- One screenshot at a random moment in every 10-minute block.
+- Start and stop timer (no projects in V1).
+- One screenshot every 10 minutes, at a random moment inside each 10-minute block.
 - Activity % per block (active seconds divided by 600).
 - Idle detection: no input for 5 minutes, then ask "keep or discard this time?".
 - Worker can view and delete their own screenshots (deleting also removes that block's time).
@@ -84,6 +103,7 @@ Manager dashboard (web):
 
 ### V2 - next
 
+- Projects and tasks on the timer.
 - App and website usage (active window title and process name).
 - Productive, unproductive, neutral labels for apps.
 - Manual time entry with approval.
@@ -164,7 +184,7 @@ Parts 2 and 3 are one Next.js app.
 | Screenshot | `xcap::Monitor::all()`, capture each monitor, stitch or upload separately, resize to max 1280 px wide, encode as JPEG quality 70 (about 100 to 200 KB) |
 | Activity % | Poll `GetLastInputInfo` every 1 second. If last input changed since the previous poll, count that second as active. |
 | Idle | If time since last input is more than 5 minutes, pause the block and show a prompt when the worker returns. |
-| Blocks | Fixed 10-minute windows aligned to the clock (10:00, 10:10, ...). Each block holds start time, active seconds, project, and screenshot key. |
+| Blocks | Fixed 10-minute windows aligned to the clock (10:00, 10:10, ...). Each block holds start time, active seconds, and screenshot key. |
 | Upload | Every block end: ask API for a presigned R2 URL, PUT the JPEG, POST block metadata. Retry from SQLite on failure. |
 | Autostart | Registry Run key through the autostart plugin. The app opens to the tray, timer stays off until the worker starts it. |
 
@@ -222,10 +242,14 @@ Workers can check it at Windows Security > App & browser control > Smart App Con
 
 ### Recommended path
 
-- **Now (pilot, under 20 workers):** ship unsigned.
+- **Pilot (first 3 to 5 workers):** ship unsigned.
   Use option 1 or 3, plus a one-page install guide.
-  Ask each worker to confirm Smart App Control is off.
-- **Later (more workers or outside clients):** buy a code signing certificate.
+  Check Smart App Control on each PC during onboarding.
+- **Company PCs:** you may also use option 4 (USB or shared drive), or option 5 (self-signed) since you control them.
+- **Personal PCs:** options 1 to 3 only.
+  If Smart App Control is on, the worker must turn it off, which is a lot to ask for a personal machine.
+- **Full rollout (20+ workers):** buy an OV code signing certificate before rolling out to everyone.
+  This is the cleanest fix for personal PCs.
 
 ### Paid signing options (for later)
 
@@ -247,9 +271,8 @@ A new certificate still shows warnings until it builds reputation.
 ```text
 organizations   id, name, created_at
 users           id, org_id, email, name, role (owner|manager|worker), hourly_rate, created_at
-projects        id, org_id, name, archived
 devices         id, user_id, hostname, agent_version, last_seen_at
-blocks          id, user_id, project_id, device_id, start_at, active_seconds, idle_discarded, deleted_by_worker
+blocks          id, user_id, device_id, start_at, active_seconds, idle_discarded, deleted_by_worker
 screenshots     id, block_id, r2_key, taken_at, width, height, bytes
 consents        id, user_id, version, accepted_at
 ```
@@ -262,7 +285,6 @@ Hours = count of non-deleted blocks x 10 minutes.
 | Method | Path | Who | Purpose |
 |---|---|---|---|
 | POST | `/api/auth/*` | All | Better Auth login and session |
-| GET | `/api/projects` | Agent | Projects for the timer dropdown |
 | POST | `/api/uploads/screenshot-url` | Agent | Returns a presigned R2 PUT URL |
 | POST | `/api/blocks` | Agent | Save one or more finished blocks |
 | DELETE | `/api/blocks/:id` | Worker | Delete own block and screenshot |
@@ -281,14 +303,15 @@ Hours = count of non-deleted blocks x 10 minutes.
 - India's DPDP Act 2023 and the EU GDPR both expect notice, consent or a lawful basis, and data minimization.
   Get legal advice before rolling out to workers in other countries.
 
-## 11. Cost estimate (20 workers)
+## 11. Cost estimate (25 workers)
 
-Screenshot volume: 6 per hour x 8 hours x 22 days x 20 workers = about 21,000 per month.
-At about 150 KB each, that is about 3 GB per month, or about 9 GB kept at 90 days.
+Screenshot volume: 6 per hour x 8 hours x 22 days x 25 workers = about 26,400 per month.
+At about 150 KB each, that is about 4 GB per month, or about 12 GB kept at 90 days.
+Multi-monitor workers add more.
 
 | Item | Cost |
 |---|---|
-| Cloudflare R2 | Free tier covers 10 GB and 1 million writes per month. About $0 at this size. |
+| Cloudflare R2 | Free tier covers 10 GB and 1 million writes per month. At 12 GB, about $0.03 per month over the free tier. |
 | Neon Postgres | Free tier: 1 GB storage, 100 compute hours per month. Enough for a pilot. |
 | Vercel | Hobby plan is for non-commercial use. Plan for Pro at about $20 per month for business use (not re-verified). |
 | Code signing | $0 now (unsigned). Later about $200 to $500 per year. |
@@ -305,15 +328,12 @@ At about 150 KB each, that is about 3 GB per month, or about 9 GB kept at 90 day
 | Multi-monitor screenshots are large | Resize and compress, one image per monitor |
 
 Open questions for the owner:
-- How many workers at launch?
-- Are worker PCs personal or company-owned? This decides whether self-signed certificates are an option.
-- Do you need project-level tracking in V1, or just total hours?
-- Screenshot retention period?
+- Screenshot retention period (default 90 days)?
 - Is the company registered in a country that Azure Artifact Signing supports?
 
 ## 13. Next steps
 
-1. Answer the open questions above.
+1. Confirm screenshot retention.
 2. Scaffold the monorepo (`apps/agent`, `apps/web`, `packages/shared`).
 3. Build the agent core: timer, blocks, idle, screenshot, SQLite buffer.
 4. Build the API and database schema.
