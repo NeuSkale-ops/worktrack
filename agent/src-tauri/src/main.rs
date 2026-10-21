@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod platform;
 mod queue;
+mod updater;
 use chrono::Utc;
 use queue::Queue;
 use serde::Serialize;
@@ -34,6 +35,10 @@ struct Runtime {
     last: Instant,
     paused: bool,
     error: Option<String>,
+    update_reserved: bool,
+    update: updater::UpdateStatus,
+    pending_update: Option<tauri_plugin_updater::Update>,
+    shutting_down: bool,
 }
 type Shared = Arc<Mutex<Runtime>>;
 #[derive(Serialize)]
@@ -46,6 +51,8 @@ struct Status {
     queued: usize,
     error: Option<String>,
     server: String,
+    update_reserved: bool,
+    update: updater::UpdateStatus,
 }
 fn utc_now() -> chrono::DateTime<Utc> {
     chrono::DateTime::from_timestamp(Utc::now().timestamp(), 0).expect("valid current timestamp")
@@ -72,18 +79,17 @@ fn status(state: State<Shared>) -> Result<Status, String> {
         queued: r.queue.count(),
         error: r.error.clone(),
         server: r.server.clone(),
+        update_reserved: r.update_reserved,
+        update: r.update.clone(),
     })
 }
 #[tauri::command]
-async fn login(
-    state: State<'_, Shared>,
-    email: String,
-    password: String,
-) -> Result<(), String> {
+async fn login(state: State<'_, Shared>, email: String, password: String) -> Result<(), String> {
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let server = SERVER_URL.to_string();
         let mut r = state.lock().map_err(|e| e.to_string())?;
+        updater::ensure_not_reserved(&r)?;
         if r.session.is_some() { return Err("Stop tracking before signing in".into()); }
         if !queue_matches_server(&r.queue.get("server").unwrap_or_default(), r.queue.count()) { return Err("This installation has unsynced records for another server. Sync them using version 0.1.0 before upgrading. No records were moved or deleted.".into()); }
         if r.queue.count() > 0 && r.queue.get("email").as_deref() != Some(email.trim().to_lowercase().as_str()) { return Err("Queued records belong to another account. Use that account to sync first.".into()); }
@@ -102,6 +108,7 @@ async fn login(
 #[tauri::command]
 fn start(state: State<Shared>, consent: bool) -> Result<(), String> {
     let mut r = state.lock().map_err(|e| e.to_string())?;
+    updater::ensure_not_reserved(&r)?;
     if !cfg!(windows) {
         return Err("Tracking is supported only on Windows in V1".into());
     }
@@ -184,11 +191,13 @@ fn stop_runtime(r: &mut Runtime) -> Result<(), String> {
 #[tauri::command]
 fn stop(state: State<Shared>) -> Result<(), String> {
     let mut r = state.lock().map_err(|e| e.to_string())?;
+    updater::ensure_not_reserved(&r)?;
     stop_runtime(&mut r)
 }
 #[tauri::command]
 fn logout(state: State<Shared>) -> Result<(), String> {
     let mut r = state.lock().map_err(|e| e.to_string())?;
+    updater::ensure_not_reserved(&r)?;
     if r.session.is_some() || r.queue.count() > 0 {
         return Err("Stop and sync before signing out".into());
     }
@@ -382,6 +391,7 @@ fn icon(on: bool) -> tauri::image::Image<'static> {
 }
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
@@ -425,6 +435,10 @@ fn main() {
                 next_capture: 600.0,
                 last: Instant::now(),
                 paused: false,
+                update_reserved: false,
+                update: Default::default(),
+                pending_update: None,
+                shutting_down: false,
                 error: if compatible_queue { None } else { Some("Unsynced records belong to another server. Sync using version 0.1.0 before upgrading. No records were moved or deleted.".into()) },
             }));
             app.manage(shared.clone());
@@ -446,8 +460,12 @@ fn main() {
                     }
                     "stop" | "quit" => {
                         if let Ok(mut r) = app.state::<Shared>().lock() {
+                            if r.update_reserved { return; }
                             if let Err(e) = stop_runtime(&mut r) {
                                 r.error = Some(e);
+                            }
+                            if event.id.as_ref() == "quit" {
+                                r.shutting_down = true;
                             }
                         }
                         if event.id.as_ref() == "quit" {
@@ -524,17 +542,30 @@ fn main() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if let Ok(mut r) = window.state::<Shared>().lock() {
-                    if let Err(e) = stop_runtime(&mut r) {
-                        r.error = Some(e);
+                    if !r.update_reserved {
+                        if let Err(e) = stop_runtime(&mut r) {
+                            r.error = Some(e);
+                        }
                     }
                 }
                 api.prevent_close();
                 let _ = window.hide();
             }
         })
-        .invoke_handler(tauri::generate_handler![status, login, start, stop, logout])
-        .run(tauri::generate_context!())
-        .expect("WorkTrack failed to start");
+        .invoke_handler(tauri::generate_handler![status, login, start, stop, logout, updater::check_update, updater::install_update])
+        .build(tauri::generate_context!())
+        .expect("WorkTrack failed to start")
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                if let Ok(mut r) = app.state::<Shared>().lock() {
+                    if r.update_reserved {
+                        api.prevent_exit();
+                    } else {
+                        r.shutting_down = true;
+                    }
+                }
+            }
+        });
 }
 
 #[cfg(test)]
@@ -551,7 +582,7 @@ mod tests {
         assert!(!queue_matches_server("", 3));
     }
 
-    fn runtime() -> Runtime {
+    pub(crate) fn runtime() -> Runtime {
         Runtime {
             queue: Queue::open(std::path::Path::new(":memory:")).unwrap(),
             server: String::new(),
@@ -565,6 +596,10 @@ mod tests {
             last: Instant::now(),
             paused: false,
             error: None,
+            update_reserved: false,
+            update: Default::default(),
+            pending_update: None,
+            shutting_down: false,
         }
     }
     #[test]
