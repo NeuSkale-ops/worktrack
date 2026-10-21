@@ -1,7 +1,10 @@
 # Signing setup required for v0.1.2
 
 The draft release cannot become updater-ready until its verification public key matches a protected signing private key.
-No real signing key exists in the current envkit configuration.
+The owner has provisioned the local envkit signing variables and the matching public key.
+On October 21, 2026, a real Tauri-signed probe passed independent minisign verification against the configured public key.
+Do not regenerate or replace this key during the remaining release setup.
+Protected GitHub environments, signed Windows artifacts, and real upgrade acceptance are still required.
 Do not send a private key or password in chat.
 
 ## Operator actions

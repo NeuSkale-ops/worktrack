@@ -10,7 +10,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY0Nzc0OTdGRUQ3MDBDMDEKUldRQkRIRHRmMGwzWkI1Qi8xeWV3OGkrZ2ZuZ05vMFZYQ2FqUW9ITFg5cSt5RCt5TUYrU21BVU4K",
       "endpoints": ["https://worktrack.178.156.213.40.sslip.io/updates/windows/x86_64/latest.json"],
       "requireSignedVersion": true,
       "windows": { "installMode": "passive" }

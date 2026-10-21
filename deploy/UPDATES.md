@@ -1,8 +1,10 @@
 # Signed Windows updates
 
-Status: plumbing only.
-No signing key, GitHub environment, public update directory, or production manifest is created by this change.
-The source is prepared as version `0.1.2`, with an empty public key and updater artifact generation disabled until signing setup.
+Status: signing key configured locally and public verification key committed.
+Protected GitHub environments, public update hosting, and production manifest publication still require setup and acceptance.
+The source is prepared as version `0.1.2`, with the owner-provided public key and ordinary updater artifact generation disabled.
+The owner key pair passed a real Tauri signing and independent minisign verification check on October 21, 2026.
+This probe does not prove a signed Windows installer or an in-app upgrade.
 This version change alone does not create a signed or published release.
 The release helper refuses legacy versions, missing keys, mismatched versions, changed identity/scope, unsigned-version signatures, and unexpected URLs.
 Ordinary unsigned Windows CI and its fresh-install smoke workflow are unchanged.
