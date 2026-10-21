@@ -1,0 +1,304 @@
+# WorkTrack - Research and Plan
+
+Status: research only, no code yet.
+Date: 2026-10-21.
+Working name: "WorkTrack" (placeholder).
+
+## 1. Goal
+
+Build a minimal tool to monitor remote workers on Windows.
+It should prove hours worked with screenshots and activity levels, like Worksnaps.
+It should stay small, cheap, and respectful of worker privacy.
+
+## 2. Market reference
+
+| | Worksnaps | Insightful |
+|---|---|---|
+| Focus | Proof of hours for contractors | Workforce analytics for enterprises |
+| Core | Screenshots, activity, timesheets | Productivity, capacity, shadow AI, workflow mapping |
+| Price | $20/mo for 4 users up to $90/mo for 30 users, then $3/user | $8 to $16 per user per month (annual), plus add-ons |
+| Trial | 30 days | 7 days |
+| State | Dated product, last blog post 2021 | Active, AI-focused, 5,000+ organizations |
+
+Takeaway: our V1 should match Worksnaps in features, with a modern, clean product.
+Sources: worksnaps.net/www/pricing.shtml, insightful.io/pricing.
+
+## 3. Features
+
+### V1 - minimal (build first)
+
+Worker app (Windows):
+- Log in with email and password.
+- Start and stop timer, choose a project.
+- One screenshot at a random moment in every 10-minute block.
+- Activity % per block (active seconds divided by 600).
+- Idle detection: no input for 5 minutes, then ask "keep or discard this time?".
+- Worker can view and delete their own screenshots (deleting also removes that block's time).
+- Tray icon that shows whether tracking is on or off.
+- Consent screen on first launch.
+- Offline buffer: data is saved locally and uploaded when back online.
+
+Manager dashboard (web):
+- Workers list with "working now" status.
+- Daily timeline of 10-minute blocks with screenshot and activity %.
+- Hours per worker per day and week.
+- CSV export for payroll.
+- Invite workers by email.
+- Roles: Owner, Manager, Worker.
+
+### V2 - next
+
+- App and website usage (active window title and process name).
+- Productive, unproductive, neutral labels for apps.
+- Manual time entry with approval.
+- Weekly timesheet approval.
+- Hourly rates and pay totals.
+- Alerts (low activity, long idle, no work started) by email or Slack.
+- Screenshot blur option.
+- Auto-delete screenshots after N days.
+
+### V3 - only if needed
+
+- AI tool usage reports, meeting time.
+- Client invoices and payouts.
+- Screen recording, on-demand screenshots.
+- SSO, audit log, Jira or Asana integration, API and webhooks.
+- macOS agent.
+
+### Explicitly out of scope
+
+- Keystroke logging (recording what is typed).
+- Tracking when the timer is off.
+- Hidden or "stealth" mode.
+
+## 4. Architecture
+
+```mermaid
+flowchart LR
+  A[Windows agent<br/>Tauri + Rust] -->|1. request upload URL| B[Next.js API]
+  A -->|2. PUT screenshot| R[(Cloudflare R2)]
+  A -->|3. POST activity blocks| B
+  B --> P[(Postgres on Neon)]
+  D[Dashboard<br/>Next.js pages] --> B
+  D -->|signed GET URLs| R
+```
+
+Three parts:
+1. **Agent** on the worker's PC.
+2. **Backend API** that stores data.
+3. **Dashboard** for the manager.
+
+Parts 2 and 3 are one Next.js app.
+
+## 5. Tech stack
+
+| Layer | Choice | Reason |
+|---|---|---|
+| Agent shell | Tauri 2 | Small installer, low memory, Rust access to Windows APIs, can add macOS later |
+| Agent UI | React + TypeScript | Same language as the dashboard |
+| Agent logic | Rust | Timers, screenshots, idle checks, uploads |
+| Screenshots | `xcap` crate | Supports Windows 8.1+, all monitors, Apache-2.0 license |
+| Idle and activity | Win32 `GetLastInputInfo` via `windows` crate | Built into Windows, no keyboard hooks, lower antivirus risk |
+| Active app (V2) | Win32 `GetForegroundWindow` + `GetWindowTextW` | Built into Windows |
+| Local buffer | SQLite (`rusqlite`) | Survives crashes and offline periods |
+| Autostart | `tauri-plugin-autostart` | Official plugin, supports Windows |
+| Auto-update | `tauri-plugin-updater` | Official plugin, uses its own free signing key |
+| Backend + dashboard | Next.js (App Router) + TypeScript | One codebase for API and UI |
+| Database | Postgres on Neon + Drizzle ORM | Managed, typed queries, free tier to start |
+| File storage | Cloudflare R2 | S3-compatible, no egress fees |
+| Auth | Better Auth | Open source, roles and invites, also offered managed by Neon |
+| Hosting | Vercel | Simple deploys from git |
+| CI and builds | GitHub Actions `windows-latest` | Builds the Windows installer, since development is on a Mac |
+| Repo | pnpm monorepo | `apps/agent`, `apps/web`, `packages/shared` |
+
+### Why Tauri over the alternatives
+
+| Option | Verdict |
+|---|---|
+| Tauri | Chosen. Small and light, Rust gives direct Win32 access. |
+| .NET (WPF or WinUI) | Very good for Windows, but adds C# and blocks a future macOS agent. |
+| Electron | Easiest for web developers, but about 150 MB and heavy for an always-on app. |
+
+## 6. Windows agent details
+
+### How each feature works
+
+| Feature | Method |
+|---|---|
+| Screenshot | `xcap::Monitor::all()`, capture each monitor, stitch or upload separately, resize to max 1280 px wide, encode as JPEG quality 70 (about 100 to 200 KB) |
+| Activity % | Poll `GetLastInputInfo` every 1 second. If last input changed since the previous poll, count that second as active. |
+| Idle | If time since last input is more than 5 minutes, pause the block and show a prompt when the worker returns. |
+| Blocks | Fixed 10-minute windows aligned to the clock (10:00, 10:10, ...). Each block holds start time, active seconds, project, and screenshot key. |
+| Upload | Every block end: ask API for a presigned R2 URL, PUT the JPEG, POST block metadata. Retry from SQLite on failure. |
+| Autostart | Registry Run key through the autostart plugin. The app opens to the tray, timer stays off until the worker starts it. |
+
+### Notes from Microsoft docs
+
+- `GetLastInputInfo` only reports input for the current user session.
+  This is fine because the agent runs inside the worker's session.
+- Its tick count is "not guaranteed to be incremental", so the code must handle values that go backwards.
+- No Windows permission prompt is needed for screenshots, unlike macOS.
+
+### Installer
+
+- Tauri builds two Windows installers: NSIS (`-setup.exe`) and MSI.
+- Use **NSIS** with per-user install, so workers do not need admin rights.
+- MSI can only be built on Windows, so builds run on GitHub Actions.
+- WebView2 is preinstalled on Windows 10 and 11. Default mode downloads it only if missing.
+
+## 7. Code signing - can we skip it?
+
+**Short answer: yes, for a small team you control.**
+Signing is not required to install or run a Windows app.
+Tauri's docs say signing is only needed for the Microsoft Store and to avoid the SmartScreen warning.
+
+### What happens without signing
+
+| Check | What the worker sees | Can they get past it? |
+|---|---|---|
+| SmartScreen | Blue "Windows protected your PC" screen on files downloaded through a browser | Yes: click "More info", then "Run anyway" |
+| Smart App Control (Windows 11) | App is blocked outright | **No per-app bypass.** Only turning Smart App Control off (Windows Security settings) |
+| Antivirus heuristics | Defender may flag an unsigned app that takes screenshots | Usually yes, and we can report a false positive to Microsoft |
+| Tauri auto-updater | Not affected | Updater uses its own free key pair, separate from Windows signing |
+
+Smart App Control is the main risk.
+Microsoft says it turns on automatically "in most cases" on Windows 11.
+Windows turns it off on its own for enterprise-managed PCs, developer-mode PCs, and users it sees doing developer-style work.
+Recent Windows updates let users turn it off and on again without reinstalling Windows.
+Workers can check it at Windows Security > App & browser control > Smart App Control.
+
+### Ways to install without signing
+
+1. **Download and click "Run anyway"** (simplest).
+   Send a short guide with screenshots of the two clicks.
+2. **Remove the "downloaded from internet" mark before running.**
+   SmartScreen triggers on a hidden `Zone.Identifier` tag (called Mark of the Web) that browsers add.
+   PowerShell can remove it: `Unblock-File -Path .\WorkTrack-setup.exe`.
+3. **PowerShell one-line installer.**
+   A script downloads the installer with `Invoke-WebRequest` and runs it silently.
+   Files saved this way usually do not get Mark of the Web, so SmartScreen does not show.
+   Needs testing on a real Windows 11 PC before relying on it.
+4. **Deliver by USB or a shared drive.**
+   No browser download means no Mark of the Web, so no SmartScreen.
+5. **Self-signed certificate (company PCs only).**
+   Create your own certificate, sign the app, and install the certificate as trusted on each PC.
+   Needs admin rights on every PC, so it only fits PCs you manage.
+
+### Recommended path
+
+- **Now (pilot, under 20 workers):** ship unsigned.
+  Use option 1 or 3, plus a one-page install guide.
+  Ask each worker to confirm Smart App Control is off.
+- **Later (more workers or outside clients):** buy a code signing certificate.
+
+### Paid signing options (for later)
+
+| Option | Fit for us | Notes |
+|---|---|---|
+| Azure Artifact Signing (was "Trusted Signing") | **Not available in India today** | Individual developers must be in the US or Canada. Organizations only in the US, Canada, EU, UK, Australia, NZ, Japan, South Korea, Singapore, Switzerland, Norway, Israel. Needs a paid Azure subscription. Basic tier includes 5,000 signatures per month. |
+| OV certificate from a CA (Sectigo, SSL.com, Certum, DigiCert) | Works from India | Price not verified, roughly $200 to $500 per year. Key must live on a hardware token or cloud HSM, so pick a CA with cloud signing for GitHub Actions. |
+| SignPath Foundation | No | Free, but only for open source projects. |
+
+Correction to my earlier advice: I suggested Azure signing at about $10 per month.
+It is not open to individuals or companies in India right now.
+
+Important: signing does not remove SmartScreen right away.
+Microsoft says the prompt stops "once the file hash has sufficient download history".
+A new certificate still shows warnings until it builds reputation.
+
+## 8. Data model (first draft)
+
+```text
+organizations   id, name, created_at
+users           id, org_id, email, name, role (owner|manager|worker), hourly_rate, created_at
+projects        id, org_id, name, archived
+devices         id, user_id, hostname, agent_version, last_seen_at
+blocks          id, user_id, project_id, device_id, start_at, active_seconds, idle_discarded, deleted_by_worker
+screenshots     id, block_id, r2_key, taken_at, width, height, bytes
+consents        id, user_id, version, accepted_at
+```
+
+One row in `blocks` per 10 minutes worked.
+Hours = count of non-deleted blocks x 10 minutes.
+
+## 9. API (first draft)
+
+| Method | Path | Who | Purpose |
+|---|---|---|---|
+| POST | `/api/auth/*` | All | Better Auth login and session |
+| GET | `/api/projects` | Agent | Projects for the timer dropdown |
+| POST | `/api/uploads/screenshot-url` | Agent | Returns a presigned R2 PUT URL |
+| POST | `/api/blocks` | Agent | Save one or more finished blocks |
+| DELETE | `/api/blocks/:id` | Worker | Delete own block and screenshot |
+| GET | `/api/timeline?user&date` | Manager | Blocks with signed screenshot URLs |
+| GET | `/api/reports/hours?from&to` | Manager | Hours per worker |
+| GET | `/api/reports/hours.csv` | Manager | CSV export |
+| POST | `/api/invites` | Owner, Manager | Invite a worker |
+
+## 10. Privacy and legal
+
+- Tell workers in writing what is tracked, when, and why. Get signed consent.
+- Track only while the timer is running.
+- Never record keystroke content.
+- Let workers see and delete their own data.
+- Delete screenshots after a fixed period (default 90 days).
+- India's DPDP Act 2023 and the EU GDPR both expect notice, consent or a lawful basis, and data minimization.
+  Get legal advice before rolling out to workers in other countries.
+
+## 11. Cost estimate (20 workers)
+
+Screenshot volume: 6 per hour x 8 hours x 22 days x 20 workers = about 21,000 per month.
+At about 150 KB each, that is about 3 GB per month, or about 9 GB kept at 90 days.
+
+| Item | Cost |
+|---|---|
+| Cloudflare R2 | Free tier covers 10 GB and 1 million writes per month. About $0 at this size. |
+| Neon Postgres | Free tier: 1 GB storage, 100 compute hours per month. Enough for a pilot. |
+| Vercel | Hobby plan is for non-commercial use. Plan for Pro at about $20 per month for business use (not re-verified). |
+| Code signing | $0 now (unsigned). Later about $200 to $500 per year. |
+| **Total** | **About $0 to $20 per month for the pilot** |
+
+## 12. Risks and open questions
+
+| Risk | Mitigation |
+|---|---|
+| Smart App Control blocks unsigned app | Check on each worker PC during onboarding, buy a certificate if it becomes common |
+| Defender flags the agent | No keyboard hooks, no hidden mode, clear app name, submit false positives |
+| Worker kills the app | Dashboard shows "last seen" per device, and gaps show as missing time |
+| Fake activity (mouse jigglers) | Out of scope for V1, screenshots are the main proof |
+| Multi-monitor screenshots are large | Resize and compress, one image per monitor |
+
+Open questions for the owner:
+- How many workers at launch?
+- Are worker PCs personal or company-owned? This decides whether self-signed certificates are an option.
+- Do you need project-level tracking in V1, or just total hours?
+- Screenshot retention period?
+- Is the company registered in a country that Azure Artifact Signing supports?
+
+## 13. Next steps
+
+1. Answer the open questions above.
+2. Scaffold the monorepo (`apps/agent`, `apps/web`, `packages/shared`).
+3. Build the agent core: timer, blocks, idle, screenshot, SQLite buffer.
+4. Build the API and database schema.
+5. Build the dashboard timeline and CSV export.
+6. Set up GitHub Actions to build the unsigned NSIS installer.
+7. Pilot with 2 to 3 workers, then test the unsigned install flow on a fresh Windows 11 PC.
+
+## 14. Sources
+
+- Tauri Windows code signing: https://v2.tauri.app/distribute/sign/windows/
+- Tauri Windows installer: https://v2.tauri.app/distribute/windows-installer/
+- Tauri updater: https://v2.tauri.app/plugin/updater/
+- Tauri autostart: https://v2.tauri.app/plugin/autostart/
+- Smart App Control FAQ: https://support.microsoft.com/en-us/topic/what-is-smart-app-control-285ea03d-fa88-4d56-882e-6698afdb7003
+- Azure Artifact Signing quickstart (eligibility): https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart
+- Azure Artifact Signing FAQ: https://learn.microsoft.com/en-us/azure/artifact-signing/faq
+- `Unblock-File`: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/unblock-file
+- `GetLastInputInfo`: https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getlastinputinfo
+- xcap: https://github.com/nashaofu/xcap
+- Cloudflare R2 pricing: https://developers.cloudflare.com/r2/pricing/
+- Neon pricing: https://neon.com/pricing
+- SignPath Foundation: https://signpath.org/
+- Worksnaps pricing: https://www.worksnaps.net/www/pricing.shtml
+- Insightful pricing: https://www.insightful.io/pricing
