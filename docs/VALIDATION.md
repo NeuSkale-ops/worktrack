@@ -18,6 +18,22 @@ The production-image HTTPS container journey passed real diagnostic ingestion/de
 At this source checkpoint, the feature had not yet been deployed or included in a new signed Windows installer. The subsequent deployment below ships it without changing the immutable v0.1.2 download.
 Pending diagnostics are intentionally lost on exit, overflow, or sign-in changes, and pre-sign-in/startup/crash errors are not remotely captured.
 
+## Screenshot location/application implementation and deployment
+
+Source `9fb9e13be99e72cf586dc8eae5c177da546a09e9` adds optional screenshot-linked Windows geolocation and foreground executable usage during tracking.
+All 11 Go tests passed with race detection against disposable PostgreSQL 17, including metadata validation/range/freshness, authorized timeline access, immutable retries, and erasure on screenshot/block deletion without retry resurrection. Legacy payloads still pass.
+All 25 portable Rust tests and strict Clippy passed, including application aggregation/bounds, capture-only location records, no collection while stopped/locked/suspended, fresh-coordinate validation, consent-generation changes during an in-flight fix, tracking-mutex isolation, timeout fallback, and late-result protection. Both frontend builds and nine dashboard unit/API tests passed.
+Chromium passed 26 desktop mock-IPC checks and 11 owner/five manager/five worker dashboard checks at 375px width. These covered app-minute totals, zero coordinates/accuracy, disabled/unavailable locations, screenshot-dialog association, default-off consent, opt-in, and opt-out during update reservation.
+The production-image isolated HTTPS journey passed application-data persistence/path/duration validation plus the existing 25-worker tracking/report acceptance.
+
+Protected workflow `39609351264` passed native Windows tests, signed NSIS build, exact installer fresh install/startup, and independent Ubuntu verification. The downloaded candidate was reverified locally against the committed key, exact version, production URL, and SHA-256.
+The v0.1.4 manual installer is 3,923,241 bytes with SHA-256 `f45a1c10de9a5264470bdc2fcda0bd3cbbbbec957fdb6bb2b2310ba363099119`. GitHub preview release `v0.1.4` targets the exact build source.
+
+After a successfully restored encrypted pre-deployment backup, API deployed at 13:39 UTC and dashboard at 13:55 UTC on October 21, 2026. Live checks covered app/location validation, legacy reads, screenshot upload authorization, login/revocation, new installer bytes/checksum/headers, unchanged old installers, and a real 375px owner dashboard with the new application panel and download link.
+User/session/block counts remained 2/4/4; no real tracking/location/app-use records were created for acceptance. Services stayed healthy with no restarts/OOM events, original limits, no new public ports, and no database/shared-proxy recreation. WorkTrack, OMS, and portal remained HTTPS 200.
+No automatic-update manifest was published. Real connected-Windows geolocation accuracy, capture/lock/suspend, and old-to-new upgrade preservation remain unverified. Location denial/unavailability is expected on unsupported or policy-restricted PCs and must not be bypassed.
+See `deploy/SHARED-HOST.md` for the critical API rollback compatibility warning and backup/rollback paths, and `deploy/DOWNLOADS.md` for installation/consent instructions.
+
 ## Diagnostic deployment and signed Windows release
 
 On October 21, 2026, production API/dashboard images built from `fb46c07483dadb6309306ba087d5dcc33e113186` were deployed API first (12:38 UTC), then dashboard (12:58 UTC).

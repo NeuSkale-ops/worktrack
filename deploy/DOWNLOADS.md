@@ -1,6 +1,6 @@
 # Worker installer downloads
 
-The signed-in dashboard offers the production-configured Windows x64 installer at `/downloads/0.1.3/WorkTrack_0.1.3_x64-setup.exe`.
+The signed-in dashboard offers the production-configured Windows x64 installer at `/downloads/0.1.4/WorkTrack_0.1.4_x64-setup.exe`.
 Existing workers use their existing email and password after installation.
 A new invitation is not required.
 Tracking starts only when the worker clicks Start tracking.
@@ -15,14 +15,14 @@ No credentials or worker data are stored in the download directory.
 ## Standalone deployment
 
 The default `compose.yaml` mounts `/srv/worktrack-downloads` read-only, and its Caddy configuration serves `/downloads/*` as files rather than the React app.
-Place the verified installer and `SHA256SUMS` under `/srv/worktrack-downloads/0.1.3/` with mode 0755 directories and 0644 files.
+Place the verified installer and `SHA256SUMS` under `/srv/worktrack-downloads/0.1.4/` with mode 0755 directories and 0644 files.
 Use the standalone Compose commands in `README.md`. The shared-host image overlay below is not required.
 `deploy/test-web.sh` checks exact fixture bytes, attachment/cache headers, and 404 responses for missing, hidden, and directory paths against the standalone image.
 
 ## Shared host deployment
 
 Build the AMD64 web image away from the shared VM and load it using the reviewed release tag in `compose.release.yaml`.
-Place the verified installer in `/srv/worktrack-downloads/0.1.3/WorkTrack_0.1.3_x64-setup.exe` with public read permissions.
+Place the verified installer in `/srv/worktrack-downloads/0.1.4/WorkTrack_0.1.4_x64-setup.exe` with public read permissions.
 Keep the existing image and Caddy configuration available for rollback.
 Deploy the reviewed `Caddyfile.shared` and `compose.downloads.yaml` into `/opt/worktrack/deploy`.
 The downloads overlay adds a read-only installer directory mount; the final release overlay selects the current web image.
@@ -88,6 +88,23 @@ After manual installation, sign in and enable **Send diagnostic logs for this la
 Only failures are logged, so a healthy run can leave this list empty. Consent resets on restart or successful sign-in. Pending diagnostics are memory-only; tracking records remain durable and separate.
 Real worker login/capture/lock/suspend and old-to-new identity/data-preserving upgrade acceptance remain unperformed. Windows publisher warnings remain possible because Tauri updater signatures are not Authenticode publisher signing.
 No production automatic-update manifest was published. This is a manual-install testing release.
+
+## Location and application release v0.1.4, October 21, 2026
+
+Production-channel protected workflow `39609351264` succeeded from `9fb9e13be99e72cf586dc8eae5c177da546a09e9`.
+It passed native Windows Rust tests, the exact signed NSIS install/startup smoke, and independent Ubuntu signature/trusted-version/checksum verification. The candidate was independently reverified locally against the committed public key before manual publication.
+GitHub preview release `v0.1.4` targets the same source and contains only the verified setup, signature, and checksum. It does not publish an update feed.
+
+Public installer: `/downloads/0.1.4/WorkTrack_0.1.4_x64-setup.exe`, 3,923,241 bytes.
+SHA-256: `f45a1c10de9a5264470bdc2fcda0bd3cbbbbec957fdb6bb2b2310ba363099119`.
+`SHA256SUMS` and `WorkTrack_0.1.4_x64-setup.exe.sig` are beside it.
+Public HTTPS download acceptance, real existing-account login/revocation, correct dashboard link, executable/checksum identity, attachment/cache headers, and hidden/missing/directory 404s passed. Old v0.1.2 and v0.1.3 checksums remain unchanged.
+
+Stop tracking, wait for queued records to sync, and quit before upgrading. Do not uninstall or delete app data.
+After sign-in, accept the updated monitoring disclosure. Foreground executable minutes upload with time blocks, normally every 30 seconds, and appear under **Applications on selected day** for the selected worker/date. This includes idle time and is not proof of productivity; old agents have no retroactive app-use data.
+For location, explicitly enable **Share location with screenshots for this launch**, allow Windows permission, and check Windows location services/desktop-app access. Location requests occur only at screenshot boundaries (every ten running minutes), never continuously or immediately on Start. Screenshots show coordinates, accuracy and fix time, or sharing-off/unavailable. No IP-location guesses or external map provider are used by WorkTrack.
+
+A location-capable connected Windows PC is still required to validate real fixes/accuracy, capture/lock/suspend behavior, and in-place identity/data-preserving upgrade acceptance. Publisher warnings remain possible. This preview is manual-install only; automatic-update publication remains gated.
 
 ## Auto-update scope
 

@@ -14,7 +14,7 @@ npm --prefix agent run dev -- --port 1427
 ```
 
 Open `http://127.0.0.1:1427/tests/updater.html` in a normal browser.
-Wait for `PASS: 22 synthetic browser checks` above the app.
+Wait for `PASS: 26 synthetic browser checks` above the app.
 A failed check prints `FAIL` with its description and stack trace.
 Reload the page to rerun.
 Keep the tab visible to avoid background timer throttling.
@@ -30,6 +30,7 @@ It checks registration of the six-hour interval, not six hours of real elapsed t
 
 The checks cover startup and manual discovery, StrictMode duplicate-check protection, installed versus available versions, release notes, Later without installation, reopening the offer, tracking and queue safety, failed-check stale-offer invalidation, no-update display, explicit versioned installation, reservation gating, known and unknown download sizes, installation progress, failure recovery, sign-in gating, and neutral unavailable-build messaging.
 
+The harness also checks default-off location consent, app-usage disclosure, explicit location opt-in IPC, and opting out during an update reservation. It does not access a real Windows location provider.
 The harness also checks default-off diagnostic consent, explicit opt-in IPC, independent delivery status, opting out during an update reservation, and blocked opt-in while reserved or signed out.
 These are synthetic browser tests of frontend behavior, not proof of updater signatures, backend concurrency safety, Windows installation, restart, or data preservation.
 The signed Windows upgrade acceptance gates in `docs/AUTO-UPDATE-PLAN.md` still require a connected Windows environment.

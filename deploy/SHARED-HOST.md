@@ -2,8 +2,8 @@
 
 Host: `neuskale-app-ash` (`178.156.213.40`).
 Approved hostname: `worktrack.178.156.213.40.sslip.io`.
-API and web image source: `fb46c07483dadb6309306ba087d5dcc33e113186`.
-Deployed images: `worktrack-api:fb46c07` and `worktrack-web:fb46c07`.
+API and web image source: `9fb9e13be99e72cf586dc8eae5c177da546a09e9`.
+Deployed images: `worktrack-api:9fb9e13` and `worktrack-web:9fb9e13`.
 Apply `compose.release.yaml` last to retain these images.
 
 ## Layout
@@ -95,3 +95,21 @@ Its recovery identity is the existing mode-0600 `20261021T113204Z-f60d960.agekey
 For application rollback, append host-only `/opt/worktrack/deploy/compose.rollback-before-fb46c07.yaml` after the three normal Compose files. Recreate `web` first, then `api`, using `up -d --no-deps --no-build --pull never --wait`.
 This selects retained `worktrack-web:f60d960` and `worktrack-api:f60d960` images. The added log table is backward compatible and needs no database restore.
 The new manual v0.1.3 installer remains immutable even after server rollback. Diagnostics would receive 404/retry on the older API without blocking tracking. Do not repoint users to a downgrade or overwrite installer bytes.
+
+## Screenshot location/application deployment, 2026-10-21
+
+Reviewed source `9fb9e13be99e72cf586dc8eae5c177da546a09e9` was built for AMD64 off-host and deployed API first at 13:39 UTC, then web at 13:55 UTC after verifying/publishing signed Windows v0.1.4.
+The existing migration added nullable `blocks.location` and default-empty `blocks.application_usage` JSONB columns. Older agents remain supported; new agents require this compatible API.
+Both containers are healthy, carry the correct revision labels, retain original resource ceilings, have zero restarts/OOM events, and expose no new ports. Database and shared proxy creation timestamps are unchanged.
+
+Tracking counts stayed 2 users, 4 sessions, and 4 blocks. No production location/application records were created for acceptance.
+Public HTTPS checks verified new-field validation, legacy timeline reads, upload-reservation authorization, existing authentication/diagnostics, new installer bytes/checksum, new dashboard download/app-use panel, and credential revocation. Temporary diagnostic verification created and removed only its own synthetic event.
+WorkTrack, OMS, and portal remained HTTPS 200. Published v0.1.2/v0.1.3 files retain their original checksums. The automatic-update feed remains unpublished/404.
+
+Pre-deployment backup: `~/.local/share/worktrack-backups/20261021T133757Z-9fb9e13.dump.age`, restored successfully into isolated PostgreSQL 17 with matching tracking counts.
+Recovery uses existing mode-0600 `20261021T113204Z-f60d960.agekey`. Keep a protected offline recovery copy. This backup does not include screenshot objects.
+
+Retained pre-release images are `worktrack-api:fb46c07` and `worktrack-web:fb46c07`; host-only `/opt/worktrack/deploy/compose.rollback-before-9fb9e13.yaml` selects them when appended after the normal three Compose files.
+The schema additions are backward compatible and do not require a database restore. However, do not roll the API back after v0.1.4 workers start uploading: older APIs reject the new block fields. Their queues would remain durable but stop syncing until a compatible API is restored within the seven-day offline window.
+Prefer a forward API fix or retain the compatible API while rolling back only web. Never overwrite immutable installer bytes, direct workers to a downgrade, remove app data, or restore over production as an application rollback shortcut.
+Real connected-Windows location/capture and in-place upgrade preservation still require worker acceptance; see `DOWNLOADS.md`.

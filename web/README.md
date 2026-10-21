@@ -41,7 +41,7 @@ Network responses are stubbed only in isolated client tests, never in the applic
 
 For dependency-free browser checks, run `pnpm dev --port 1428` and open `/tests/diagnostics.html?role=owner`, then repeat with `role=manager` and `role=worker`.
 The harness renders the real dashboard with mocked API responses and exposes `document.documentElement.dataset.testResult` as `passed` or `failed`.
-It checks explicit loading, role visibility, escaped names, empty results, and failure recovery. These fixtures are not included in the production build and do not test native Windows behavior.
+It checks explicit loading, role visibility, escaped names, empty results, failure recovery, application-minute aggregation, zero coordinates/accuracy, missing location states, and the screenshot dialog's linked location. These fixtures are not included in the production build and do not test native Windows behavior.
 
 ## Screenshot location and application minutes
 

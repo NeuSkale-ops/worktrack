@@ -74,7 +74,7 @@ if (process.env.WT_TEST_R2_CONFIG === 'true') {
   assert(signed.searchParams.get('X-Amz-Credential').includes('/auto/s3/'));
   console.log('PASS: production R2-prefixed settings produce bucket-scoped signed URL with explicit R2 key and auto region (no live upload)');
 }
-const block = { id: randomUUID(), session_id: sessionID, start_at: start.toISOString(), end_at: end.toISOString(), active_seconds: 30 };
+const block = { id: randomUUID(), session_id: sessionID, start_at: start.toISOString(), end_at: end.toISOString(), active_seconds: 30, application_usage: [{ app: 'chrome.exe', milliseconds: 45000 }, { app: 'code.exe', milliseconds: 15000 }] };
 await request('/api/blocks', { method: 'POST', token, body: { blocks: [block] } });
 await request('/api/blocks', { method: 'POST', token, body: { blocks: [block] } });
 await request('/api/blocks', { method: 'POST', token, body: { blocks: [{ ...block, active_seconds: 31 }] }, status: 409 });
@@ -85,6 +85,11 @@ const date = start.toISOString().slice(0, 10);
 const timeline = await request(`/api/timeline?user=${worker.user.id}&date=${date}`, { browser: true });
 assert.equal(timeline.filter(row => row.id === block.id).length, 1, 'Retry must not duplicate a block');
 assert.equal(timeline.find(row => row.id === block.id).duration_seconds, 60);
+assert.deepEqual(timeline.find(row => row.id === block.id).application_usage, block.application_usage);
+assert.equal(timeline.find(row => row.id === block.id).location, null);
+await request('/api/blocks', { method: 'POST', token, body: { blocks: [{ ...block, application_usage: [{ app: 'C:\\private\\app.exe', milliseconds: 1000 }] }] }, status: 400 });
+await request('/api/blocks', { method: 'POST', token, body: { blocks: [{ ...block, application_usage: [{ app: 'chrome.exe', milliseconds: 60001 }] }] }, status: 400 });
+console.log('PASS: foreground application usage persists with blocks, full paths and excess duration rejected, legacy location omitted');
 const report = await request(`/api/reports/hours?from=${date}&to=${date}`, { browser: true });
 assert.equal(report.find(row => row.user_id === worker.user.id).seconds, 60);
 const csv = await request(`/api/reports/hours.csv?from=${date}&to=${date}`, { browser: true });
