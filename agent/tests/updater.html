@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Updater UI tests</title></head>
+<body>
+<aside><h1>Updater UI tests (mock IPC)</h1><pre id="results">Running…</pre></aside>
+<div id="root"></div>
+<script type="module">
+// Dev-only entry point. Tests exercise the real React app without a Tauri backend.
+const results = document.querySelector('#results');
+const checks = [];
+const calls = [];
+const intervals = [];
+const originalInterval = window.setInterval.bind(window);
+window.setInterval = (callback, delay, ...args) => {
+  intervals.push({ callback, delay });
+  return originalInterval(callback, delay, ...args);
+};
+const offer = { version: '0.1.2', current_version: '0.1.1', body: 'Test release notes', date: null };
+const state = {
+  authenticated: true, tracking: false, paused: false, elapsed: 0,
+  next_capture: 600, queued: 0, error: null, server: 'mock', update_reserved: false,
+  update: { phase: 'idle', downloaded: 0, total: null, error: null },
+};
+let available = offer;
+let checkError = null;
+let rejectInstall;
+window.__TAURI_INTERNALS__ = {
+  async invoke(command, args) {
+    calls.push({ command, args });
+    if (command === 'plugin:app|version') return '0.1.1';
+    if (command === 'status') return structuredClone(state);
+    if (command === 'check_update') {
+      if (checkError) throw checkError;
+      return available;
+    }
+    if (command === 'install_update') return new Promise((resolve, reject) => { rejectInstall = reject; });
+    if (['start', 'stop', 'login', 'logout'].includes(command)) return;
+    throw new Error(`Unexpected IPC command: ${command}`);
+  },
+};
+const text = () => document.querySelector('main')?.innerText || '';
+const button = label => [...document.querySelectorAll('main button')].find(node => node.textContent === label);
+const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+async function until(predicate, description) {
+  const deadline = Date.now() + 15000;
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error(`Timed out: ${description}`);
+    await wait(50);
+  }
+}
+async function check(description, predicate) {
+  await until(predicate, description);
+  checks.push(description);
+  results.textContent = checks.map(name => `PASS ${name}`).join('\n');
+}
+function click(label) {
+  const target = button(label);
+  if (!target || target.disabled) throw new Error(`Button unavailable: ${label}`);
+  target.click();
+}
+async function refresh() {
+  intervals.find(entry => entry.delay === 1000).callback();
+  await wait(100);
+}
+try {
+  await import('/src/main.tsx');
+  await check('startup discovers update and distinguishes installed/offered versions', () => text().includes('Installed version 0.1.1') && text().includes('Version 0.1.2') && text().includes('Test release notes'));
+  await check('StrictMode performs one startup check', () => calls.filter(call => call.command === 'check_update').length === 1);
+  await check('six-hour update interval is registered', () => intervals.some(entry => entry.delay === 21600000));
+  click('Later');
+  await check('Later hides notes and never installs', () => Boolean(button('Show update')) && !text().includes('Release notes') && !calls.some(call => call.command === 'install_update'));
+  click('Show update');
+  await check('deferred offer can be reopened', () => text().includes('Test release notes'));
+  state.tracking = true;
+  await refresh();
+  await check('tracking blocks Update now but allows Stop', () => button('Update now')?.disabled && !button('Stop tracking')?.disabled);
+  state.tracking = false;
+  state.queued = 1;
+  await refresh();
+  await check('queued records block Update now', () => button('Update now')?.disabled && text().includes('1 records waiting to sync'));
+  state.queued = 0;
+  await refresh();
+  await until(() => button('Update now') && !button('Update now').disabled, 'queue drained');
+  document.querySelector('input[type=checkbox]').click();
+  await until(() => !button('Start tracking').disabled, 'tracking consent');
+  checkError = 'Offline';
+  click('Check for updates');
+  await check('failed check clears stale offer and leaves tracking usable', () => text().includes('Could not check for updates') && !button('Update now') && !text().includes('Version 0.1.2') && !button('Start tracking').disabled);
+  checkError = null;
+  available = null;
+  click('Check for updates');
+  await check('no-update result shows installed version', () => text().includes('You are up to date on version 0.1.1'));
+  available = offer;
+  click('Check for updates');
+  await until(() => button('Update now') && !button('Update now').disabled, 'offer refreshed');
+  click('Update now');
+  await check('explicit install sends offered version and gates tracking/sign-in', () => calls.some(call => call.command === 'install_update' && call.args.version === '0.1.2') && button('Start tracking').disabled && button('Renew sign-in').disabled && button('Sign out').disabled);
+  state.update_reserved = true;
+  state.update = { phase: 'downloading', downloaded: 50, total: 100, error: null };
+  await refresh();
+  await check('backend download progress renders', () => document.querySelector('progress')?.value === 50 && text().includes('50%'));
+  state.update.total = null;
+  await refresh();
+  await check('unknown download size renders indeterminate progress', () => document.querySelector('progress') && !document.querySelector('progress').hasAttribute('value'));
+  state.update.phase = 'installing';
+  await refresh();
+  await check('install phase renders', () => text().includes('Installing update. Please keep WorkTrack open.'));
+  state.update_reserved = false;
+  state.update = { phase: 'error', downloaded: 50, total: null, error: 'Download interrupted' };
+  rejectInstall('Download interrupted');
+  await check('installation failure releases controls', () => text().includes('Update could not be installed') && !button('Start tracking').disabled);
+  state.authenticated = false;
+  state.update_reserved = true;
+  await refresh();
+  await check('backend reservation disables sign-in fields and button', () => button('Sign in')?.disabled && document.querySelector('input[name=email]')?.disabled);
+  state.update_reserved = false;
+  state.update = { phase: 'unavailable', downloaded: 0, total: null, error: 'UPDATER_UNAVAILABLE: Signed Windows builds only.' };
+  checkError = state.update.error;
+  await refresh();
+  await until(() => button('Check for updates') && !button('Check for updates').disabled, 'reservation released');
+  click('Check for updates');
+  await check('unsupported build is neutral and sign-in remains available', () => text().includes('App updates are not available in this build') && !document.querySelector('main [role=alert]') && !button('Sign in').disabled && !button('Update now'));
+  document.documentElement.dataset.testResult = 'passed';
+  results.textContent += `\n\nPASS: ${checks.length} synthetic browser checks. No real updater or Windows installation was exercised.`;
+} catch (error) {
+  document.documentElement.dataset.testResult = 'failed';
+  results.textContent += `\n\nFAIL: ${error.stack || error}`;
+  console.error(error);
+}
+</script>
+</body>
+</html>
