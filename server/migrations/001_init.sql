@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS blocks (
  CHECK(end_at > start_at AND extract(epoch FROM end_at-start_at)=duration_seconds)
 );
 CREATE INDEX IF NOT EXISTS blocks_user_time ON blocks(user_id,start_at);
+CREATE INDEX IF NOT EXISTS blocks_report_time ON blocks(start_at) WHERE deleted_at IS NULL;
 ALTER TABLE blocks ADD COLUMN IF NOT EXISTS screenshot_deleted_at timestamptz;
 CREATE TABLE IF NOT EXISTS uploads (
  block_id uuid PRIMARY KEY, user_id uuid NOT NULL REFERENCES users(id),

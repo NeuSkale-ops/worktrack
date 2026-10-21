@@ -93,7 +93,8 @@ func (a *app) hours(w http.ResponseWriter, r *http.Request) {
 	rows, e := a.db.Query(r.Context(), `SELECT u.id::text,u.name,to_char(d.day,'YYYY-MM-DD'),sum(extract(epoch FROM least(b.end_at,d.day+interval '1 day')-greatest(b.start_at,d.day)))::bigint
  FROM blocks b JOIN users u ON u.id=b.user_id
  CROSS JOIN LATERAL generate_series(date_trunc('day',b.start_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC',date_trunc('day',(b.end_at-interval '1 microsecond') AT TIME ZONE 'UTC') AT TIME ZONE 'UTC',interval '1 day') d(day)
- WHERE b.deleted_at IS NULL AND d.day>=$1 AND d.day<$2 AND ($3<>'worker' OR u.id=$4)
+ WHERE b.deleted_at IS NULL AND b.start_at>=$1::timestamptz-interval '600 seconds' AND b.start_at<$2 AND b.end_at>$1
+ AND d.day>=$1 AND d.day<$2 AND ($3<>'worker' OR u.id=$4)
  GROUP BY u.id,u.name,d.day ORDER BY d.day,u.name,u.id`, from, to.AddDate(0, 0, 1), u.Role, u.ID)
 	if e != nil {
 		fail(w, 500, "report unavailable")

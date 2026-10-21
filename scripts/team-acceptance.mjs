@@ -25,7 +25,7 @@ for (let index = 0; index < 25; index++) {
   const invite = await api('/api/invites', { email: workerEmail, role: 'worker' }, undefined, 201);
   await api('/api/auth/accept-invite', { token: invite.token, name: `Team acceptance ${index + 1}`, password });
   const login = await api('/api/auth/login', { email: workerEmail, password, device_name: `Fixture PC ${index + 1}` });
-  const start = new Date(Math.floor(Date.now() / 1000) * 1000 - 120_000);
+  const start = new Date(Math.floor((Date.now() - 120_000) / 60_000) * 60_000);
   const session = randomUUID();
   const token = login.device_token;
   await api('/api/sessions/start', { id: session, started_at: start.toISOString() }, token);
