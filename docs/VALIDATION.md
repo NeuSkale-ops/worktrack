@@ -10,6 +10,7 @@ Location and diagnostics are now mandatory in the desktop app. The opt-in comman
 All 28 portable Rust tests and strict all-target Clippy passed on macOS. All Go tests passed with race detection against disposable PostgreSQL 17, including a new day-spans test for worker scoping, deleted blocks and absence of screenshot keys. Twelve dashboard unit/API tests passed, including the zone-aware ribbon helper. Both production frontend builds passed.
 Chromium via Playwright passed 27 desktop mock-IPC checks three times, and 20 owner, 14 manager (five consecutive runs) and 11 worker dashboard checks at 375px. A real 375px probe found no element wider than the viewport.
 Not yet exercised: native Windows location permission prompts, the `ms-settings:privacy-location` shortcut, a signed installer, or production deployment. The new Windows build must ship with an updated monitoring notice and policy review because location and diagnostics can no longer be refused inside the app.
+GitHub CI: Windows agent run `39638996208` passed native `cargo check --all-targets`, `cargo test` and an unsigned NSIS build for `53b5cdb`, and installer smoke `39642733235` passed. CI run `39639402254` at `ff5bc56` (includes the redesign) passed web, Go and deployment-config jobs.
 
 ## Review fixes (source only, not deployed)
 
