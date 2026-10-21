@@ -93,7 +93,7 @@ Complete the unproven connected-worker gates below, and inspect retained native 
 1. Signing configuration, protected release credentials, and updater artifacts are implemented.
 2. Rust update commands, the exclusive installation gate, and the React prompt are implemented.
 3. Approved isolated hosting and read-only Caddy mounts are provisioned; publication remains gated.
-4. Obtain passing native Windows upgrade evidence and complete the remaining connected-worker checks before enabling the production manifest.
+4. Native Windows upgrade evidence passed in `39663283701`. Complete the remaining connected-worker checks before enabling the production manifest.
 5. Publish an accepted signed release and explain the one-time manual installation to workers on versions without an updater.
 
 ## Acceptance gates
@@ -112,7 +112,7 @@ Complete the unproven connected-worker gates below, and inspect retained native 
 
 A connected Windows environment is required for the full in-app upgrade and restart checks.
 GitHub Windows compilation, unit tests, and silent fresh installation are useful prerequisites but cannot replace those observations.
-The native upgrade job has been added, but these real in-app upgrade checks have no recorded passing result here. Signed candidate builds and fresh-install smoke tests are recorded in `deploy/DOWNLOADS.md`; they do not satisfy this gate.
+The native upgrade job passed real installed 0.1.5-to-0.1.6 UIAutomation checks in `39663283701`. Its isolated HTTPS feed and seeded identity cover the installer and local-state boundaries, not connected-worker login, actual synchronization, active tracking or location. Signed candidate builds and fresh-install smoke tests alone do not satisfy these remaining gates.
 Host readiness and basic account isolation were verified separately. They do not prove public artifact publication, native upgrade/data preservation, real worker login, or native tracking/location behavior.
 
 ## Official references
