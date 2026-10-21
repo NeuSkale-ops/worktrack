@@ -2,14 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, ApiError, post } from './api'
 import type { Block, Hours, Invite, OpenSession, User, Worker } from './api'
-import { activity, applicationTotals, duration, locationText, screenshotPlaceholder, utcDate, weekRange } from './utils'
+import { activity, applicationTotals, duration, localDate, locationText, screenshotPlaceholder, utcDate, weekRange, zone } from './utils'
 import AgentLogs from './AgentLogs'
+import { canManage, MemberAdmin, PasswordForm, ResetPassword } from './Admin'
 
 const time = (value: string) =>
   new Date(value).toLocaleTimeString(undefined, {
     hour: '2-digit',
     minute: '2-digit',
-    timeZone: 'UTC',
+    timeZone: zone,
   })
 const message = (error: unknown) =>
   error instanceof Error
@@ -29,9 +30,11 @@ function Auth({ onLogin }: { onLogin: (user: User) => void }) {
   const token =
     new URLSearchParams(location.search).get('token') ||
     new URLSearchParams(location.search).get('invite')
-  const [joining, setJoining] = useState(Boolean(token))
+  const [joining, setJoining] = useState(Boolean(token) && location.pathname !== '/reset')
+  const [resetting, setResetting] = useState(Boolean(token) && location.pathname === '/reset')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const fields = new FormData(event.currentTarget)
@@ -83,8 +86,18 @@ function Auth({ onLogin }: { onLogin: (user: User) => void }) {
         </p>
       </section>
       <section className="auth-form">
+        {resetting && token ? (
+          <ResetPassword
+            token={token}
+            onDone={() => {
+              setResetting(false)
+              setNotice('Password updated. Sign in with your new password.')
+            }}
+          />
+        ) : (
         <form onSubmit={submit}>
           <h2>{joining ? 'Join your team' : 'Welcome back'}</h2>
+          {notice && <p role="status" className="muted">{notice}</p>}
           <p className="muted">
             {joining
               ? 'Create your account with your invitation.'
@@ -123,7 +136,9 @@ function Auth({ onLogin }: { onLogin: (user: User) => void }) {
                 ? 'Create account and sign in'
                 : 'Sign in'}
           </button>
+          {!joining && <p className="muted">Forgot your password? Ask your manager for a reset link.</p>}
         </form>
+        )}
       </section>
     </main>
   )
@@ -211,7 +226,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
   const manager = user.role !== 'worker'
   const [team, setTeam] = useState<Worker[]>([])
   const [selected, setSelected] = useState(user.id)
-  const [date, setDate] = useState(utcDate())
+  const [date, setDate] = useState(localDate())
   const [blocks, setBlocks] = useState<Block[]>([])
   const [hours, setHours] = useState<Hours[]>([])
   const [openSession, setOpenSession] = useState<OpenSession | null>(null)
@@ -230,9 +245,9 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
       const [members, timeline, report, session] = await Promise.all([
         manager ? api<Worker[]>('/team') : Promise.resolve([]),
         api<Block[]>(
-          `/timeline?${new URLSearchParams({ user: selected, date })}`,
+          `/timeline?${new URLSearchParams({ user: selected, date, tz: zone })}`,
         ),
-        api<Hours[]>(`/reports/hours?${new URLSearchParams(weekRange(date))}`),
+        api<Hours[]>(`/reports/hours?${new URLSearchParams({ ...weekRange(date), tz: zone })}`),
         api<OpenSession | null>('/sessions/current'),
       ])
       if (generation.current !== current) return
@@ -352,7 +367,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
             <h1>{manager ? 'Team overview' : 'Your working day'}</h1>
             <p className="muted">
               A transparent record of time and activity. All dates and times in
-              UTC.
+              {' '}{zone}.
             </p>
           </div>
           <div className="sync">
@@ -483,7 +498,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
                             person.working ? 'status-dot active' : 'status-dot'
                           }
                         />
-                        {person.working ? 'Working now' : 'Not tracking'}
+                        {person.disabled ? 'Disabled' : person.working ? 'Working now' : 'Not tracking'}
                       </small>
                       {person.last_seen_at && (
                         <small>
@@ -500,6 +515,12 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
                 )}
               </div>
               <InviteForm />
+              {(() => {
+                const person = team.find((p) => p.id === selected)
+                return person && canManage(user, person) ? (
+                  <MemberAdmin key={person.id} person={person} onChange={() => void load()} />
+                ) : null
+              })()}
             </aside>
           )}
           <section className="timeline-panel" aria-busy={busy}>
@@ -513,7 +534,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
                 </p>
               </div>
               <label className="date-label">
-                Date (UTC)
+                Date ({zone})
                 <input
                   type="date"
                   value={date}
@@ -542,13 +563,13 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
                     <button
                       className="screenshot"
                       onClick={() => setExpanded(block)}
-                      aria-label={`View work block at ${time(block.start_at)} UTC`}
+                      aria-label={`View work block at ${time(block.start_at)}`}
                     >
                       {block.screenshot_url ? (
                         <Screenshot
                           key={block.screenshot_url}
                           url={block.screenshot_url}
-                          alt={`Work screenshot at ${time(block.start_at)} UTC`}
+                          alt={`Work screenshot at ${time(block.start_at)}`}
                         />
                       ) : (
                         <span>{screenshotPlaceholder(block)}</span>
@@ -604,7 +625,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
         </div>
         <section className="reports" aria-labelledby="applications-heading">
           <h2 id="applications-heading">Applications on selected day</h2>
-          <p className="muted">Selected worker, {date} UTC. Estimated foreground time from work blocks starting on this date, including idle time. Not proof of productivity.</p>
+          <p className="muted">Selected worker, {date} ({zone}). Estimated foreground time from work blocks starting on this date, including idle time. Not proof of productivity.</p>
           {applications.length ? <div className="table-scroll"><table>
             <caption className="sr-only">Foreground application usage in minutes</caption>
             <thead><tr><th scope="col">Application</th><th scope="col">Minutes</th></tr></thead>
@@ -621,7 +642,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
             </div>
             <a
               className="button"
-              href={`/api/reports/hours.csv?${new URLSearchParams(range)}`}
+              href={`/api/reports/hours.csv?${new URLSearchParams({ ...range, tz: zone })}`}
               download
             >
               Export CSV
@@ -690,6 +711,9 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
           )}
         </section>
         {user.role === 'owner' && <AgentLogs />}
+        <section className="reports">
+          <PasswordForm />
+        </section>
         <footer>
           WorkTrack · Screenshots and activity are recorded only while the
           desktop timer is running.
@@ -703,7 +727,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
         }}
       >
         <div className="dialog-heading">
-          <h2>Work block {expanded && time(expanded.start_at)} UTC</h2>
+          <h2>Work block {expanded && time(expanded.start_at)}</h2>
           <button onClick={() => dialog.current?.close()} autoFocus>
             Close
           </button>

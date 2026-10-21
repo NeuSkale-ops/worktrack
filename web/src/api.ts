@@ -11,6 +11,7 @@ export interface OpenSession {
 }
 export interface Worker extends User {
   working: boolean
+  disabled?: boolean
   last_seen_at: string | null
 }
 export interface ScreenshotLocation {

@@ -26,6 +26,12 @@ export function locationText(location?: ScreenshotLocation | null): string | nul
 export function utcDate(date = new Date()): string {
   return date.toISOString().slice(0, 10)
 }
+/** Browser IANA zone, sent as `tz` so report days match the viewer's calendar. */
+export const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+/** YYYY-MM-DD for `date` in time zone `tz`. */
+export function localDate(date = new Date(), tz = zone): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
+}
 export function weekRange(date: string): { from: string; to: string } {
   const day = new Date(`${date}T00:00:00Z`)
   day.setUTCDate(day.getUTCDate() - ((day.getUTCDay() + 6) % 7))

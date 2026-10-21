@@ -3,6 +3,19 @@
 Date: 2026-10-21.
 This records observed checks, not a production-readiness claim.
 
+## Review fixes (source only, not deployed)
+
+Fixes found in a code review: a refused record could block the desktop queue forever, schema changes could not reach existing databases, accounts could not be offboarded, reports used UTC days only, the login limiter put every client behind Caddy into one bucket, and blocks were accepted without checking that the screenshot object existed.
+- Migrations: `schema_migrations` runs each numbered file once. `001_init.sql` stays idempotent, so an existing database adopts it. `003` replaces the `agent_logs` code constraint. Applying the migrations twice and against a pre-existing test database both passed.
+- Accounts: disable/enable, device revocation, one-time 24-hour reset links and self-service password change. Covered by Go integration tests for role boundaries, credential revocation, session closure without added time, single-use/newest-only links and disabled-user lockout.
+- Reports: optional IANA `tz`. Tests cover an IST block split at 18:30 UTC, plus the existing UTC boundaries for JSON and CSV. Go embeds tzdata because the Alpine image has no zoneinfo.
+- Rate limiting: `TRUSTED_PROXIES` with right-to-left `X-Forwarded-For` parsing. Unit tests cover spoofed prefixes, chained proxies and malformed headers. Compose trusts private ranges. The shared Caddyfile trusts private ranges and passed `caddy validate`.
+- Uploads: block finalization HEADs the object. A missing object returns `upload_expired`, so existing agents re-upload with no client change.
+- Agent: a 24-hour refusal streak sets the head record aside into a capped local table. Rust tests cover hold, release, streak reset and the status codes that count as permanent. All 28 Rust tests and strict Clippy passed.
+- Dashboard: the browser time zone is sent as `tz`. There are member admin controls, a `/reset` page and a password change form. A real-browser run (Chromium, 375px, Asia/Kolkata) against the local API and PostgreSQL 17 checked the tz request, reset link creation, disable/enable, reset-page password set, worker sign-in, a self-service change, the absence of worker admin controls and no horizontal overflow. 11 web unit tests passed.
+
+Deploy order: API first, because older agents and dashboards stay compatible and the new `sync_rejected` code needs migration 003 before a new agent sends it. Then deploy the dashboard, then ship a new signed agent. Take and restore-test a backup first as usual. These changes have not been deployed or built into a signed installer.
+
 ## Diagnostic logging source follow-up
 
 The source now includes separately opted-in desktop diagnostics, device-authenticated ingestion, seven-day live-database retention, and an owner-only dashboard viewer.

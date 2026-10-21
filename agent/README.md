@@ -96,7 +96,10 @@ A successful object upload is saved as an immutable screenshot key before postin
 The original JPEG remains in the bounded SQLite queue until the block acknowledgement is committed.
 If the server returns the specific `upload_expired` code, only the staged key is cleared and the same block UUID and retained JPEG are uploaded again on retry.
 Other failures do not trigger reupload or silently discard data.
+Permanent refusals (HTTP 400, 403, 404, 409, 410, 413 or 422, other than `upload_expired`) keep retrying for 24 hours from the first refusal in a streak. After that the refused head record moves to a local `rejected` table, newer records continue to sync, and the app shows the count. Further refusals in the same streak move aside immediately, and any accepted record resets the streak. The newest 20 rejected records, including JPEG bytes, are kept for support and never resent automatically. A `sync_rejected` diagnostic is recorded when diagnostics are enabled. 401, 429 and 5xx responses never set records aside.
 No bearer token is sent to object storage.
+
+The server URL defaults to the production origin. Set `WORKTRACK_SERVER_URL` at build time for a staging build, and change the updater endpoint in `tauri.conf.json` separately.
 
 The payload budget is 256 MiB, with 64 KiB reserved for Stop records.
 The database is capped at 73,728 SQLite pages, normally 288 MiB at 4 KiB/page.

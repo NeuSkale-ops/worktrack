@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { activity, applicationTotals, duration, locationText, screenshotPlaceholder, utcDate, weekRange } from './utils.ts'
+import { activity, applicationTotals, duration, localDate, locationText, screenshotPlaceholder, utcDate, weekRange } from './utils.ts'
 
 test('time-only and deleted blocks are not mislabeled as unavailable screenshots', () => {
   assert.equal(screenshotPlaceholder({ screenshot_status: 'not_captured', duration_seconds: 30 }), 'No screenshot captured (30s time block).')
@@ -45,4 +45,11 @@ test('activity handles empty and partial blocks safely', () => {
   assert.equal(activity(45, 60), 75)
   assert.equal(activity(120, 60), 100)
   assert.equal(activity(-1, 60), 0)
+})
+test('local dates follow the requested zone, not UTC', () => {
+  // 20:00 UTC is already the next day in India and still the same day in New York.
+  const instant = new Date('2026-10-21T20:00:00Z')
+  assert.equal(localDate(instant, 'Asia/Kolkata'), '2026-10-22')
+  assert.equal(localDate(instant, 'America/New_York'), '2026-10-21')
+  assert.equal(localDate(instant, 'UTC'), '2026-10-21')
 })

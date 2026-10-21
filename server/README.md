@@ -1,7 +1,7 @@
 # WorkTrack API server
 
 Run `go run .` from this directory with `DATABASE_URL` set to PostgreSQL 17.
-The server applies embedded, idempotent SQL under a transaction-scoped advisory lock before accepting requests.
+The server applies embedded SQL migrations once each, in order, under a transaction-scoped advisory lock before accepting requests. See `API.md` for the migration rules.
 See [API.md](API.md) for request shapes and environment variables.
 
 ## Local development
@@ -18,8 +18,8 @@ Browser credentials expire after 24 hours, device credentials after 90 days, and
 Only SHA-256 hashes of random credentials and invites are persisted.
 Passwords use Argon2id with a unique random 16-byte salt, 64 MiB memory, three passes, and two lanes.
 
-Login is limited to 10 attempts per account per minute and 120 per direct peer IP per minute, plus four concurrent expensive password hashes.
-Forwarded IP headers are deliberately ignored, so clients behind Caddy share the peer-IP budget.
+Login is limited to 10 attempts per account per minute and 120 per client IP per minute, plus four concurrent expensive password hashes.
+The client IP comes from `X-Forwarded-For` only when the direct peer is listed in `TRUSTED_PROXIES`. The Compose files trust private Docker ranges because only Caddy can reach the API. Otherwise all clients behind a proxy share one bucket.
 These limits are process-local and reset on restart, so keep one API replica or enforce additional limits at the reverse proxy.
 
 ## Private object storage

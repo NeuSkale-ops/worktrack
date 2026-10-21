@@ -12,8 +12,14 @@ Agent requests use Authorization: Bearer <device_token>.
 | GET | /api/auth/me | | user |
 | POST | /api/auth/logout | {} | {ok:true} |
 | POST | /api/auth/accept-invite | {token,name,password} | {ok:true}, then login |
+| POST | /api/auth/reset-password | {token,password} | {ok:true}, one-time link, revokes all sign-ins |
+| POST | /api/auth/password | {current_password,new_password} | {ok:true}, keeps this sign-in, revokes others |
+| POST | /api/users/{id}/disable | {} | {ok:true}, blocks sign-in, revokes credentials, closes open session |
+| POST | /api/users/{id}/enable | {} | {ok:true} |
+| POST | /api/users/{id}/revoke-devices | {} | {ok:true,revoked} |
+| POST | /api/users/{id}/password-reset | {} | {token,url,expires_at}, 24-hour link |
 | POST | /api/invites | {email,role:"worker"} | {token,url,expires_at} |
-| GET | /api/team | | array of {id,email,name,role,working,last_seen_at} |
+| GET | /api/team | | array of {id,email,name,role,working,disabled,last_seen_at} |
 | POST | /api/agent/logs | {version,events:[{id,occurred_at,code,status?}]} | {ok:true}, device credential only |
 | GET | /api/agent/logs | | newest 100 diagnostic entries, owner only |
 | GET | /api/sessions/current | | own open session {id,started_at,recoverable}, or null |
@@ -25,19 +31,21 @@ Agent requests use Authorization: Bearer <device_token>.
 | POST | /api/blocks | {blocks:[{id:UUID,session_id:UUID,start_at,end_at,active_seconds:integer,screenshot_key?:string}]} | {ok:true} |
 | DELETE | /api/blocks/{id}/screenshot | | {ok:true}, preserves tracked time |
 | DELETE | /api/blocks/{id} | | {ok:true} |
-| GET | /api/timeline?user=UUID&date=YYYY-MM-DD | | array of {id,user_id,session_id,start_at,end_at,duration_seconds,active_seconds,screenshot_url,screenshot_status} |
-| GET | /api/reports/hours?from=YYYY-MM-DD&to=YYYY-MM-DD | | array of {user_id,name,date,seconds,hours} |
-| GET | /api/reports/hours.csv?from=YYYY-MM-DD&to=YYYY-MM-DD | | CSV |
+| GET | /api/timeline?user=UUID&date=YYYY-MM-DD&tz=IANA | | array of {id,user_id,session_id,start_at,end_at,duration_seconds,active_seconds,screenshot_url,screenshot_status} |
+| GET | /api/reports/hours?from=YYYY-MM-DD&to=YYYY-MM-DD&tz=IANA | | array of {user_id,name,date,seconds,hours} |
+| GET | /api/reports/hours.csv?from=YYYY-MM-DD&to=YYYY-MM-DD&tz=IANA | | CSV |
 | GET | /api/health | | {ok:true} |
 
 User: {id,email,name,role}.
 Owner/manager can read team data, workers only their own timeline/hours.
 Only owner can invite managers. Managers can invite workers.
+Account administration follows the same hierarchy: owners manage managers and workers, managers manage workers, nobody manages their own account through `/api/users/{id}`. Disabled accounts cannot sign in, every credential and pending reset link is revoked, and an open session closes at its last uploaded block (or its start) without adding time. Records are kept. Disabled users appear in `/api/team` with `disabled:true`.
+Reset links are delivered out of band like invites. Only the newest link per user works, each works once, and disabled users cannot use them.
 All tracking writes target the authenticated user's data.
 Blocks are immutable and idempotent by UUID. Conflicting retries return 409.
 Duration is exact end_at minus start_at, integer seconds from 1 through 600. All tracking timestamps must be whole seconds. active_seconds must be between zero and duration.
 Blocks must fit their session and must not overlap other blocks. Partial final blocks are allowed.
-Screenshots must use the returned object_key. size_bytes must be 1..5242880 and PUT Content-Length must match it. An own session within the last seven days is required before requesting upload URLs. Unfinished upload reservations are capped at 200 per user. Abandoned uploads expire after eight days, beyond the seven-day accepted offline window. A block referencing a missing reservation returns HTTP 400 with `{code:"upload_expired",error:"screenshot upload reservation expired; request a new upload URL and upload again"}`. Retain JPEG bytes until block acknowledgment, clear the staged key on this code, then presign and PUT again using the same block UUID. Deleted uploads are retried durably after all five-minute PUT URLs expire.
+Screenshots must use the returned object_key. Before accepting a screenshot block the API checks that the object exists in storage. A missing object returns the same `upload_expired` code, so the agent uploads again. size_bytes must be 1..5242880 and PUT Content-Length must match it. An own session within the last seven days is required before requesting upload URLs. Unfinished upload reservations are capped at 200 per user. Abandoned uploads expire after eight days, beyond the seven-day accepted offline window. A block referencing a missing reservation returns HTTP 400 with `{code:"upload_expired",error:"screenshot upload reservation expired; request a new upload URL and upload again"}`. Retain JPEG bytes until block acknowledgment, clear the staged key on this code, then presign and PUT again using the same block UUID. Deleted uploads are retried durably after all five-minute PUT URLs expire.
 The agent captures exactly every 600 elapsed running seconds, never while stopped, not randomized.
 Session start and stop accept client timestamps for offline buffering, no more than 7 days old or 2 minutes in future.
 Recovery is for a lost computer or lost app data, not ordinary offline delivery. Stop and sync the original computer whenever possible.
@@ -45,9 +53,10 @@ The dashboard requires confirmation. The API only recovers the explicitly suppli
 Deleting one's block excludes its time and makes its screenshot inaccessible through this API.
 
 Timeline `screenshot_status` distinguishes `not_captured` (no screenshot attached), `deleted` (intentionally removed), `available` (a five-minute download URL was issued), and `unavailable` (an attached screenshot currently has no download URL). An issued URL is not a storage existence check. Ordinary time blocks usually upload every 30 seconds; screenshots occur only at ten running-minute boundaries. No screenshot on an ordinary block is not an upload failure. Clients should distinguish these states instead of labeling every time-only block unavailable.
-Date report ranges include both dates and default to today UTC.
-Timeline dates select whole blocks by their UTC start date, preserving the original block duration and activity without clipping.
-Hours reports and CSV split blocks crossing midnight into exact seconds on each UTC calendar date.
+Date report ranges include both dates and default to today in the requested zone.
+Optional `tz` is an IANA zone such as `Asia/Kolkata` (default `UTC`). Dates then mean local calendar days, so an IST day runs 18:30 to 18:30 UTC. Daylight-saving days are 23 or 25 hours. Unknown zones return 400.
+Timeline dates select whole blocks by their local start date, preserving the original block duration and activity without clipping.
+Hours reports and CSV split blocks crossing local midnight into exact seconds on each local calendar date.
 Consequently, summing a timeline day's full blocks can differ from that day's payroll total for cross-midnight work.
 Use the hours report, not a timeline sum, for daily payroll totals.
 
@@ -72,7 +81,8 @@ The ingestion endpoint requires a device credential, not a browser cookie. Accou
 The app version must contain three numeric dot-separated components, each with one to five digits.
 Each request is limited to 16 KiB and 1 to 20 events. Event IDs are UUIDs, timestamps are RFC3339 within the past seven days or at most two minutes ahead, and optional HTTP status must be 100 through 599.
 
-Allowed codes: `login_failed`, `sync_failed`, `capture_failed`, `activity_failed`, `queue_failed`, `heartbeat_failed`, `update_check_failed`, `update_install_failed`.
+Allowed codes: `login_failed`, `sync_failed`, `capture_failed`, `activity_failed`, `queue_failed`, `heartbeat_failed`, `update_check_failed`, `update_install_failed`, `sync_rejected`.
+`sync_rejected` means the desktop app set a record aside after the server refused it (400/403/404/409/410/413/422) for 24 hours. The record stays in the app's local `rejected` table (newest 20) for support and is never resent automatically.
 The server derives fixed severity/messages from these codes. Never send raw error strings, request URLs, credentials, screenshots, keyboard content, or machine names.
 Duplicate `(authenticated user, event ID)` pairs are acknowledged without overwriting stored data.
 Requests are atomic. Invalid input returns 400; browser uploads or non-owner reads return 403; throttled requests return 429 with `Retry-After`.
@@ -97,3 +107,5 @@ The R2-prefixed access keys are passed explicitly to the S3-compatible SDK.
 Legacy S3_/AWS_ environment names are not read for this storage configuration.
 Without S3 configuration upload URL requests return 503.
 Run `go run .` from server/. SQL migrations run automatically under a PostgreSQL advisory lock.
+Each `migrations/NNN_name.sql` file runs once, in name order, recorded in `schema_migrations`. Add a new numbered file for every schema change and never edit an applied one. `001_init.sql` stays idempotent so databases created before version tracking adopt it safely.
+TRUSTED_PROXIES is a comma-separated list of CIDRs or IPs. Only when the direct peer is in that list does the login limiter read `X-Forwarded-For`, walking right to left past trusted hops. Leave it empty when the API is directly reachable.
