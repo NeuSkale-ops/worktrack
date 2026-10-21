@@ -38,6 +38,10 @@ The agent captures exactly every 600 elapsed running seconds, never while stoppe
 Session start and stop accept client timestamps for offline buffering, no more than 7 days old or 2 minutes in future.
 Deleting one's block excludes its time and makes its screenshot inaccessible through this API.
 Date report ranges include both dates and default to today UTC.
+Timeline dates select whole blocks by their UTC start date, preserving the original block duration and activity without clipping.
+Hours reports and CSV split blocks crossing midnight into exact seconds on each UTC calendar date.
+Consequently, summing a timeline day's full blocks can differ from that day's payroll total for cross-midnight work.
+Use the hours report, not a timeline sum, for daily payroll totals.
 
 ## Environment
 
