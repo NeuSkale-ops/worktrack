@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { api, ApiError, post } from './api'
 import type { Block, Hours, Invite, OpenSession, User, Worker } from './api'
 import { activity, duration, utcDate, weekRange } from './utils'
+import AgentLogs from './AgentLogs'
 
 const time = (value: string) =>
   new Date(value).toLocaleTimeString(undefined, {
@@ -675,6 +676,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
             <p className="empty">No recorded hours this week.</p>
           )}
         </section>
+        {user.role === 'owner' && <AgentLogs />}
         <footer>
           WorkTrack · Screenshots and activity are recorded only while the
           desktop timer is running.

@@ -30,6 +30,17 @@ export interface Hours {
   seconds: number
   hours: number
 }
+export interface AgentLog {
+  id: string
+  user_id: string
+  name: string
+  occurred_at: string
+  version: string
+  code: string
+  level: 'warn' | 'error'
+  message: string
+  status?: number
+}
 export interface Invite {
   token: string
   url: string

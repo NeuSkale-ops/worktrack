@@ -39,9 +39,14 @@ pnpm build
 Tests cover UTC dates, Monday-based weeks, time formatting, activity calculations, cookie credentials, JSON requests, and API errors.
 Network responses are stubbed only in isolated client tests, never in the application.
 
+For dependency-free browser checks, run `pnpm dev --port 1428` and open `/tests/diagnostics.html?role=owner`, then repeat with `role=manager` and `role=worker`.
+The harness renders the real dashboard with mocked API responses and exposes `document.documentElement.dataset.testResult` as `passed` or `failed`.
+It checks explicit loading, role visibility, escaped names, empty results, and failure recovery. These fixtures are not included in the production build and do not test native Windows behavior.
+
 ## Behavior
 
 - Owners and managers can see the team, live tracking status, timelines, and weekly timesheets, and create private worker invitation links.
+- Only owners see **Desktop diagnostic logs (owner only)** below the timesheet. Expand it and click **Load recent logs** for the newest 100 opted-in desktop events from the last seven days. It does not fetch automatically. Managers/workers have no diagnostic panel, and the API independently enforces owner access.
 - Workers see only their own timeline and hours.
 - Status, timeline URLs, and hours refresh every 30 seconds while the tab is visible.
 - Reporting dates and timeline times are UTC, matching the API.

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Diagnostic log UI checks</title><style>#results{white-space:pre-wrap}body>aside{padding:16px}</style></head>
+<body>
+<aside><h1>Diagnostic log UI checks (mock API)</h1><pre id="results">Running…</pre></aside>
+<div id="root"></div>
+<script type="module">
+const role = new URLSearchParams(location.search).get('role') || 'owner';
+if (!['owner', 'manager', 'worker'].includes(role)) throw new Error('Unknown test role');
+const user = { id: '00000000-0000-4000-8000-000000000001', email: 'fixture@example.test', name: 'Fixture', role };
+let logCalls = 0;
+let mode = 'events';
+window.fetch = async input => {
+  const path = String(input);
+  if (path === '/api/auth/me') return Response.json(user);
+  if (path === '/api/team') return Response.json([user]);
+  if (path.startsWith('/api/timeline?') || path.startsWith('/api/reports/hours?')) return Response.json([]);
+  if (path === '/api/sessions/current') return Response.json(null);
+  if (path === '/api/agent/logs') {
+    logCalls++;
+    if (role !== 'owner') throw new Error('Non-owner must not fetch diagnostics');
+    if (mode === 'error') return Response.json({ error: 'Diagnostics unavailable' }, { status: 503 });
+    return Response.json(mode === 'empty' ? [] : [{
+      id: '00000000-0000-4000-8000-000000000002', user_id: user.id,
+      name: '<img src=x onerror=alert(1)>', occurred_at: '2026-10-21T12:00:00Z',
+      version: '0.1.2', code: 'sync_failed', level: 'warn',
+      message: 'Tracking data could not be synced.', status: 503,
+    }]);
+  }
+  throw new Error(`Unexpected API request: ${path}`);
+};
+const checks = [];
+const results = document.querySelector('#results');
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function check(description, predicate) {
+  const deadline = Date.now() + 10000;
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error(`Timed out: ${description}`);
+    await wait(25);
+  }
+  checks.push(description);
+  results.textContent = checks.map(name => `PASS ${name}`).join('\n');
+}
+try {
+  await import('/src/main.tsx');
+  await check('real dashboard loaded', () => Boolean(document.querySelector('.page-heading')));
+  if (role === 'owner') {
+    const panel = document.querySelector('.diagnostic-logs');
+    await check('owner panel is collapsed and does not fetch automatically', () => panel && !panel.querySelector('details').open && logCalls === 0);
+    panel.querySelector('details').open = true;
+    const button = panel.querySelector('button');
+    button.click();
+    await check('owner loads code, version and HTTP status', () => panel.innerText.includes('sync_failed') && panel.innerText.includes('0.1.2') && panel.innerText.includes('HTTP 503.'));
+    await check('worker name is escaped rather than interpreted as HTML', () => panel.innerText.includes('<img src=x') && !panel.querySelector('img'));
+    mode = 'empty';
+    await check('load control released', () => !button.disabled);
+    button.click();
+    await check('empty response clears previous events', () => panel.innerText.includes('No diagnostic logs received') && !panel.querySelector('table'));
+    mode = 'error';
+    await check('empty load control released', () => !button.disabled);
+    button.click();
+    await check('failed read shows recoverable error without stale events', () => panel.querySelector('[role=alert]')?.textContent.includes('Diagnostics unavailable') && !panel.querySelector('table'));
+  } else {
+    await check('non-owner has neither diagnostic panel nor diagnostic requests', () => !document.querySelector('.diagnostic-logs') && logCalls === 0);
+  }
+  document.documentElement.dataset.testResult = 'passed';
+  results.textContent += `\nPASS: ${checks.length} ${role} UI checks. API responses were mocked.`;
+} catch (error) {
+  document.documentElement.dataset.testResult = 'failed';
+  results.textContent += `\nFAIL: ${error.stack || error}`;
+}
+</script>
+</body>
+</html>

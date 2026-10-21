@@ -422,6 +422,16 @@ meter {
 .table-scroll {
   overflow-x: auto;
 }
+.diagnostic-logs summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.diagnostic-logs th,
+.diagnostic-logs td {
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 table {
   width: 100%;
   border-collapse: collapse;
