@@ -57,5 +57,8 @@ docker exec "$web" cat /data/caddy/pki/authorities/local/root.crt > "$scratch/ro
 NODE_EXTRA_CA_CERTS="$scratch/root.crt" APP_ORIGIN="$origin" \
   WT_TEST_BASE="$origin" WT_TEST_OWNER_EMAIL=container-owner@example.test \
   WT_TEST_OWNER_PASSWORD=disposable-acceptance-password node scripts/integration.mjs
+NODE_EXTRA_CA_CERTS="$scratch/root.crt" APP_ORIGIN="$origin" \
+  WT_TEST_BASE="$origin" WT_TEST_OWNER_EMAIL=container-owner@example.test \
+  WT_TEST_OWNER_PASSWORD=disposable-acceptance-password node scripts/team-acceptance.mjs
 curl --silent --fail --cacert "$scratch/root.crt" "$origin/invite?token=example" | grep -q '<html'
 echo 'PASS: production nonroot read-only React/Caddy + Go + PostgreSQL stack over HTTPS, Secure cookies and SPA routing'

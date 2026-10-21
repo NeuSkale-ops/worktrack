@@ -20,6 +20,9 @@ This records observed checks, not a production-readiness claim.
   It started isolated, nonroot, read-only Caddy and Go containers with real PostgreSQL, reached the public HTTPS endpoint, used a process-scoped trusted local CA, completed the full authentication/invite/tracking/report/deletion workflow through Caddy, and fetched the React SPA invite route.
   Production `DEV_MODE=false` was used, so the browser session cookie had its production Secure policy.
   This is an end-to-end server deployment check, not a copied or stubbed API.
+- The same production HTTPS acceptance run created 25 actual invited test users and device tokens.
+  Concurrent heartbeats showed all 25 as working, each user's report contained exactly 60 seconds, CSV included all 25, and concurrent stops changed all 25 to not working.
+  This is functional acceptance for the expected team size, not a throughput or latency benchmark.
 - Go production Docker image built successfully.
 - Dashboard Docker image built and its nonroot, read-only Caddy startup, SPA fallback, HTTPS, health and public redirect smoke tests passed.
 - A review reproduced a 48-hour offline upload failure against real PostgreSQL.
@@ -30,12 +33,17 @@ This records observed checks, not a production-readiness claim.
 
 ## GitHub CI
 
-- Linux CI passed on commit `464f774`, including real database tests, HTTP acceptance and Docker/Caddy smoke tests.
-- Windows compilation and NSIS packaging are running in GitHub Actions.
-  Do not interpret portable macOS compilation as a successful Windows build.
+- Linux CI run `39556205956` passed on commit `c8cf00a`, including real PostgreSQL race tests, public HTTP acceptance, Docker/Caddy smoke and the production HTTPS container journey.
+- Native Windows run `39555423364` passed on application commit `464f774`.
+  All-target compilation, eight Rust tests, unsigned NSIS release packaging and artifact upload succeeded.
+  Subsequent changes through `c8cf00a` affect verification/deployment configuration, not desktop application source.
+- Installer workflow run `39557691598` downloaded that artifact, silently installed it per user on Windows, verified the executable and launched it successfully for five seconds.
+  The installer smoke passed at 06:48:24 UTC.
+  Process survival proves installation/startup only, not tracking state or screenshot capture.
+- Artifact: `windows-nsis-unsigned`, installer `WorkTrack_0.1.0_x64-setup.exe`.
+  Downloaded installer SHA-256: `b1dff44d7b0acf68daba7a5db87198cf327b9857168223ca8ab1c3a34718efeb`.
+  CI artifacts expire after seven days, so a permanent release still needs an approved distribution process.
 - All six Go tests against PostgreSQL and all eight Rust tests passed after offline-recovery fixes.
-  Windows all-target compilation also passed on the earlier `c0f2f98` snapshot.
-  The latest Windows compilation, installer and runtime smoke must pass before packaging is accepted.
 
 ## Test limitations
 
@@ -59,7 +67,7 @@ The local production-image HTTPS test closes the server deployment feedback loop
 
 ## Before a worker pilot
 
-1. Get the Windows installer through the Windows CI workflow and test installation on a clean Windows 11 PC.
+1. Download the verified Windows installer and complete interactive acceptance on a clean Windows 11 PC.
 2. Configure private Hetzner Object Storage with the approved retention period and narrowly scoped credentials.
 3. Verify a real capture arrives after ten active minutes and is visible only to authorized users.
 4. Stop tracking and verify that no more screenshots are produced.
