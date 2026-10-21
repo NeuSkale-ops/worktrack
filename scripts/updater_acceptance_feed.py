@@ -48,6 +48,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         pass  # Do not log headers, authentication tokens or request bodies.
 
     def respond(self, status, body=b"", content_type="application/octet-stream", mode=None):
+        # Empty responses can complete as soon as headers arrive, including on Windows.
+        with self.server.log_lock:
+            with (self.server.root / "access.jsonl").open("a", encoding="utf-8") as log:
+                log.write(json.dumps({"path": self.path, "status": status, "mode": mode}) + "\n")
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
@@ -55,9 +59,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Connection", "close")
         self.end_headers()
         self.close_connection = True
-        with self.server.log_lock:
-            with (self.server.root / "access.jsonl").open("a", encoding="utf-8") as log:
-                log.write(json.dumps({"path": self.path, "status": status, "mode": mode}) + "\n")
         return body
 
     def do_POST(self):
