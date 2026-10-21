@@ -365,11 +365,15 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
             </ol>
             <p className="muted">
               This installer is updater-enabled and supports signed updates.
-              Future production updates require publishing the update feed.
+              Future production updates require publishing the update feed and
+              install only when you choose Update now.
             </p>
             <p className="muted">
               Windows may show a publisher warning during installation. This is
               separate from signed update verification.
+            </p>
+            <p className="muted">
+              <a href="/downloads/0.1.2/SHA256SUMS">View SHA-256 checksums</a>
             </p>
           </div>
           <a
