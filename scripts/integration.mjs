@@ -21,7 +21,13 @@ async function request(path, { method = 'GET', body, token, browser = false, sta
   });
   const text = await response.text();
   assert.equal(response.status, status, `${method} ${path}: ${text}`);
-  if (browser && response.headers.has('set-cookie')) cookie = response.headers.get('set-cookie').split(';')[0];
+  if (browser && response.headers.has('set-cookie')) {
+    const setCookie = response.headers.get('set-cookie');
+    assert.match(setCookie, /HttpOnly/i, 'Session cookie must not be readable by browser scripts');
+    assert.match(setCookie, /SameSite=Strict/i, 'Session cookie must restrict cross-site requests');
+    if (new URL(base).protocol === 'https:') assert.match(setCookie, /Secure/i, 'Production HTTPS session cookie must be Secure');
+    cookie = setCookie.split(';')[0];
+  }
   return response.headers.get('content-type')?.includes('application/json') ? JSON.parse(text) : text;
 }
 

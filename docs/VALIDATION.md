@@ -16,6 +16,10 @@ This records observed checks, not a production-readiness claim.
 - Desktop frontend TypeScript and production build passed.
 - Rust desktop code compiled on macOS and eight tests passed.
   These cover stopped/locked/suspended scheduling, fixed 600-second capture boundaries, whole-second partial stops, SQLite transaction rollback, queue persistence, retrying finalized blocks without uploading the screenshot again, and reuploading retained evidence after an expired upload reservation.
+- `bash scripts/container-acceptance.sh` passed against the actual production Docker images.
+  It started isolated, nonroot, read-only Caddy and Go containers with real PostgreSQL, reached the public HTTPS endpoint, used a process-scoped trusted local CA, completed the full authentication/invite/tracking/report/deletion workflow through Caddy, and fetched the React SPA invite route.
+  Production `DEV_MODE=false` was used, so the browser session cookie had its production Secure policy.
+  This is an end-to-end server deployment check, not a copied or stubbed API.
 - Go production Docker image built successfully.
 - Dashboard Docker image built and its nonroot, read-only Caddy startup, SPA fallback, HTTPS, health and public redirect smoke tests passed.
 - A review reproduced a 48-hour offline upload failure against real PostgreSQL.
@@ -26,11 +30,12 @@ This records observed checks, not a production-readiness claim.
 
 ## GitHub CI
 
-- Linux CI passed on commit `c0f2f98`, including real database tests, HTTP acceptance and Docker/Caddy smoke tests.
+- Linux CI passed on commit `464f774`, including real database tests, HTTP acceptance and Docker/Caddy smoke tests.
 - Windows compilation and NSIS packaging are running in GitHub Actions.
   Do not interpret portable macOS compilation as a successful Windows build.
-- Offline-recovery changes after that CI snapshot were rerun locally with all six Go tests against PostgreSQL and all eight Rust tests passing.
-  The latest pushed revision must also pass CI before release.
+- All six Go tests against PostgreSQL and all eight Rust tests passed after offline-recovery fixes.
+  Windows all-target compilation also passed on the earlier `c0f2f98` snapshot.
+  The latest Windows compilation, installer and runtime smoke must pass before packaging is accepted.
 
 ## Test limitations
 
@@ -42,6 +47,15 @@ This records observed checks, not a production-readiness claim.
 - No real worker screenshots or credentials were used.
 - Signing, updates and autostart are not approved release features until the desktop README release checklist passes.
 - Account recovery, device management and stronger authentication need further work before a broad production rollout.
+
+## Explicit external acceptance constraints
+
+The development machine is macOS and there is no connected interactive Windows worker PC or Windows VM available to this session.
+The desktop deliberately refuses monitoring on non-Windows platforms, so running it on macOS cannot validate screenshots.
+GitHub Windows compilation and installer smoke can verify packaging, but cannot substitute for the lock/suspend and ten-minute screenshot journey on an interactive worker desktop.
+That part of acceptance is externally blocked until a Windows test machine is available.
+No Hetzner access, domain or private bucket configuration has been supplied for production provisioning, so the actual Hetzner storage boundary is also unverified.
+The local production-image HTTPS test closes the server deployment feedback loop without pretending those external checks passed.
 
 ## Before a worker pilot
 
