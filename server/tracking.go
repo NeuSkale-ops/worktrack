@@ -9,6 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -251,6 +252,19 @@ func (a *app) blocks(w http.ResponseWriter, r *http.Request) {
 			if !reserved {
 				writeJSON(w, 400, map[string]string{"code": "upload_expired", "error": "screenshot upload reservation expired; request a new upload URL and upload again"})
 				return
+			}
+			// The reservation proves a URL was issued, not that the PUT landed.
+			if a.s3 != nil {
+				_, e = a.s3.HeadObject(r.Context(), &s3.HeadObjectInput{Bucket: aws.String(a.bucket), Key: aws.String(b.Screenshot)})
+				var missing *types.NotFound
+				if errors.As(e, &missing) {
+					writeJSON(w, 400, map[string]string{"code": "upload_expired", "error": "screenshot object not found; upload again"})
+					return
+				}
+				if e != nil {
+					fail(w, 503, "could not verify screenshot upload")
+					return
+				}
 			}
 		}
 		var fits bool

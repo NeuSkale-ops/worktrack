@@ -11,11 +11,26 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-func dateValue(v string) (time.Time, error) {
+func dateValue(v string, loc *time.Location) (time.Time, error) {
 	if v == "" {
-		v = time.Now().UTC().Format("2006-01-02")
+		v = time.Now().In(loc).Format("2006-01-02")
 	}
-	return time.Parse("2006-01-02", v)
+	return time.ParseInLocation("2006-01-02", v, loc)
+}
+
+// zone reads the optional IANA `tz` query parameter, defaulting to UTC.
+// Report days then start at local midnight in that zone.
+func zone(w http.ResponseWriter, r *http.Request) (*time.Location, bool) {
+	name := r.URL.Query().Get("tz")
+	if name == "" {
+		return time.UTC, true
+	}
+	loc, e := time.LoadLocation(name)
+	if e != nil || name == "Local" || len(name) > 64 {
+		fail(w, 400, "invalid time zone")
+		return nil, false
+	}
+	return loc, true
 }
 func (a *app) timeline(w http.ResponseWriter, r *http.Request) {
 	u := current(r)
@@ -31,7 +46,11 @@ func (a *app) timeline(w http.ResponseWriter, r *http.Request) {
 		fail(w, 403, "own timeline only")
 		return
 	}
-	date, e := dateValue(r.URL.Query().Get("date"))
+	loc, okay := zone(w, r)
+	if !okay {
+		return
+	}
+	date, e := dateValue(r.URL.Query().Get("date"), loc)
 	if e != nil {
 		fail(w, 400, "invalid date")
 		return
@@ -90,24 +109,29 @@ type hourRow struct {
 }
 
 func (a *app) hours(w http.ResponseWriter, r *http.Request) {
-	from, e := dateValue(r.URL.Query().Get("from"))
+	loc, okay := zone(w, r)
+	if !okay {
+		return
+	}
+	from, e := dateValue(r.URL.Query().Get("from"), loc)
 	if e != nil {
 		fail(w, 400, "invalid from date")
 		return
 	}
-	to, e := dateValue(r.URL.Query().Get("to"))
+	to, e := dateValue(r.URL.Query().Get("to"), loc)
 	if e != nil || to.Before(from) || to.Sub(from) > 366*24*time.Hour {
 		fail(w, 400, "invalid date range (maximum 367 days)")
 		return
 	}
 	u := current(r)
-	// Split cross-midnight blocks so payroll counts exact seconds on each UTC date.
-	rows, e := a.db.Query(r.Context(), `SELECT u.id::text,u.name,to_char(d.day,'YYYY-MM-DD'),sum(extract(epoch FROM least(b.end_at,d.day+interval '1 day')-greatest(b.start_at,d.day)))::bigint
+	// Split cross-midnight blocks so payroll counts exact seconds on each local
+	// date. d.day is a local wall-clock midnight, so DST days are 23 or 25 hours.
+	rows, e := a.db.Query(r.Context(), `SELECT u.id::text,u.name,to_char(d.day,'YYYY-MM-DD'),sum(extract(epoch FROM least(b.end_at,(d.day+interval '1 day') AT TIME ZONE $5)-greatest(b.start_at,d.day AT TIME ZONE $5)))::bigint
  FROM blocks b JOIN users u ON u.id=b.user_id
- CROSS JOIN LATERAL generate_series(date_trunc('day',b.start_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC',date_trunc('day',(b.end_at-interval '1 microsecond') AT TIME ZONE 'UTC') AT TIME ZONE 'UTC',interval '1 day') d(day)
+ CROSS JOIN LATERAL generate_series(date_trunc('day',b.start_at AT TIME ZONE $5),date_trunc('day',(b.end_at-interval '1 microsecond') AT TIME ZONE $5),interval '1 day') d(day)
  WHERE b.deleted_at IS NULL AND b.start_at>=$1::timestamptz-interval '600 seconds' AND b.start_at<$2 AND b.end_at>$1
- AND d.day>=$1 AND d.day<$2 AND ($3<>'worker' OR u.id=$4)
- GROUP BY u.id,u.name,d.day ORDER BY d.day,u.name,u.id`, from, to.AddDate(0, 0, 1), u.Role, u.ID)
+ AND d.day>=$6::date AND d.day<=$7::date AND ($3<>'worker' OR u.id=$4)
+ GROUP BY u.id,u.name,d.day ORDER BY d.day,u.name,u.id`, from, to.AddDate(0, 0, 1), u.Role, u.ID, loc.String(), from.Format("2006-01-02"), to.Format("2006-01-02"))
 	if e != nil {
 		fail(w, 500, "report unavailable")
 		return

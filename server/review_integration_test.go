@@ -63,6 +63,9 @@ func TestReviewOfflineUploadedBlockSurvivesCleanup(t *testing.T) {
 	}
 	var deleted atomic.Bool
 	storage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			return
+		}
 		if r.Method != http.MethodDelete {
 			t.Errorf("unexpected storage request: %s", r.Method)
 		}

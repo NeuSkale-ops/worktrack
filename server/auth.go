@@ -44,7 +44,7 @@ func (a *app) login(w http.ResponseWriter, r *http.Request) {
 	defer func() { <-a.authSlots }()
 	var u user
 	var hash string
-	e := a.db.QueryRow(r.Context(), "SELECT id::text,email,name,role,password_hash FROM users WHERE email=$1", strings.ToLower(strings.TrimSpace(in.Email))).Scan(&u.ID, &u.Email, &u.Name, &u.Role, &hash)
+	e := a.db.QueryRow(r.Context(), "SELECT id::text,email,name,role,password_hash FROM users WHERE email=$1 AND disabled_at IS NULL", strings.ToLower(strings.TrimSpace(in.Email))).Scan(&u.ID, &u.Email, &u.Name, &u.Role, &hash)
 	if e != nil {
 		hash = "AAAAAAAAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 	}
@@ -172,7 +172,7 @@ func (a *app) heartbeat(w http.ResponseWriter, r *http.Request) {
 }
 func (a *app) team(w http.ResponseWriter, r *http.Request) {
 	u := current(r)
-	rows, e := a.db.Query(r.Context(), `SELECT u.id::text,u.email,u.name,u.role,u.last_seen_at,EXISTS(SELECT 1 FROM work_sessions s WHERE s.user_id=u.id AND s.stopped_at IS NULL) AND u.last_seen_at>now()-interval '2 minutes' FROM users u WHERE $1<>'worker' OR u.id=$2 ORDER BY u.name,u.id`, u.Role, u.ID)
+	rows, e := a.db.Query(r.Context(), `SELECT u.id::text,u.email,u.name,u.role,u.last_seen_at,EXISTS(SELECT 1 FROM work_sessions s WHERE s.user_id=u.id AND s.stopped_at IS NULL) AND u.last_seen_at>now()-interval '2 minutes',u.disabled_at IS NOT NULL FROM users u WHERE $1<>'worker' OR u.id=$2 ORDER BY u.name,u.id`, u.Role, u.ID)
 	if e != nil {
 		fail(w, 500, "team unavailable")
 		return
@@ -183,11 +183,12 @@ func (a *app) team(w http.ResponseWriter, r *http.Request) {
 		var v user
 		var seen *time.Time
 		var working *bool
-		if e = rows.Scan(&v.ID, &v.Email, &v.Name, &v.Role, &seen, &working); e != nil {
+		var disabled bool
+		if e = rows.Scan(&v.ID, &v.Email, &v.Name, &v.Role, &seen, &working, &disabled); e != nil {
 			fail(w, 500, "team unavailable")
 			return
 		}
-		out = append(out, map[string]any{"id": v.ID, "email": v.Email, "name": v.Name, "role": v.Role, "last_seen_at": seen, "working": working != nil && *working})
+		out = append(out, map[string]any{"id": v.ID, "email": v.Email, "name": v.Name, "role": v.Role, "last_seen_at": seen, "working": working != nil && *working, "disabled": disabled})
 	}
 	if rows.Err() != nil {
 		fail(w, 500, "team unavailable")

@@ -54,6 +54,7 @@ func TestHoursUTCBoundaries(t *testing.T) {
 		deleted    bool
 	}{
 		{"2026-01-01T12:00:00Z", "2026-01-01T12:00:30Z", 30, false},
+		{"2026-01-02T18:25:00Z", "2026-01-02T18:35:00Z", 600, false},
 		{"2026-01-03T23:50:00Z", "2026-01-04T00:00:00Z", 600, false},
 		{"2026-01-04T23:50:01Z", "2026-01-05T00:00:01Z", 600, false},
 		{"2026-01-05T00:00:01Z", "2026-01-05T00:01:01Z", 60, false},
@@ -67,15 +68,19 @@ func TestHoursUTCBoundaries(t *testing.T) {
 	for _, tc := range []struct {
 		from, to string
 		want     map[string]int64
+		tz       string
 	}{
-		{"2026-01-03", "2026-01-03", map[string]int64{"2026-01-03": 600}},
-		{"2026-01-04", "2026-01-04", map[string]int64{"2026-01-04": 599}},
-		{"2026-01-05", "2026-01-05", map[string]int64{"2026-01-05": 61}},
-		{"2026-01-04", "2026-01-05", map[string]int64{"2026-01-04": 599, "2026-01-05": 61}},
+		{"2026-01-03", "2026-01-03", map[string]int64{"2026-01-03": 600}, ""},
+		{"2026-01-04", "2026-01-04", map[string]int64{"2026-01-04": 599}, ""},
+		{"2026-01-05", "2026-01-05", map[string]int64{"2026-01-05": 61}, ""},
+		{"2026-01-04", "2026-01-05", map[string]int64{"2026-01-04": 599, "2026-01-05": 61}, ""},
+		// IST midnight is 18:30 UTC: the 18:25-18:35 block splits in half.
+		{"2026-01-02", "2026-01-03", map[string]int64{"2026-01-02": 300, "2026-01-03": 300}, "Asia/Kolkata"},
+		{"2026-01-04", "2026-01-06", map[string]int64{"2026-01-04": 600, "2026-01-05": 660, "2026-01-06": 30}, "Asia/Kolkata"},
 	} {
 		for _, suffix := range []string{"", ".csv"} {
-			t.Run(tc.from+"_"+tc.to+suffix, func(t *testing.T) {
-				r := httptest.NewRequest("GET", "/api/reports/hours"+suffix+"?from="+tc.from+"&to="+tc.to, nil)
+			t.Run(tc.from+"_"+tc.to+tc.tz+suffix, func(t *testing.T) {
+				r := httptest.NewRequest("GET", "/api/reports/hours"+suffix+"?from="+tc.from+"&to="+tc.to+"&tz="+tc.tz, nil)
 				r.Header.Set("Authorization", "Bearer "+raw)
 				w := httptest.NewRecorder()
 				a.routes().ServeHTTP(w, r)

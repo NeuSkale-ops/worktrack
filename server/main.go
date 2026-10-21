@@ -10,15 +10,21 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
+	"path"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
+	_ "time/tzdata" // the Alpine image has no zoneinfo for report time zones
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -42,6 +48,7 @@ type app struct {
 	bucket    string
 	authSlots chan struct{}
 	limiter   loginLimiter
+	proxies   []*net.IPNet
 }
 type user struct {
 	ID    string `json:"id"`
@@ -72,6 +79,10 @@ func main() {
 	}
 	defer db.Close()
 	a := &app{db: db, origin: env("APP_ORIGIN", "http://localhost:5173"), dev: os.Getenv("DEV_MODE") == "true", authSlots: make(chan struct{}, 4)}
+	if a.proxies, err = parseProxies(os.Getenv("TRUSTED_PROXIES")); err != nil {
+		slog.Error("TRUSTED_PROXIES", "error", err)
+		os.Exit(1)
+	}
 	if err = a.migrate(ctx); err != nil {
 		slog.Error("migration", "error", err)
 		os.Exit(1)
@@ -118,12 +129,35 @@ func (a *app) migrate(ctx context.Context) error {
 	if _, e = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(74123019)"); e != nil {
 		return e
 	}
-	sql, e := migrations.ReadFile("migrations/001_init.sql")
+	// Each file runs once, in name order. 001 is idempotent so databases created
+	// before this table existed adopt it safely. Never edit an applied file.
+	if _, e = tx.Exec(ctx, "CREATE TABLE IF NOT EXISTS schema_migrations(name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())"); e != nil {
+		return e
+	}
+	files, e := fs.Glob(migrations, "migrations/*.sql")
 	if e != nil {
 		return e
 	}
-	if _, e = tx.Exec(ctx, string(sql)); e != nil {
-		return e
+	sort.Strings(files)
+	for _, file := range files {
+		name := path.Base(file)
+		var done bool
+		if e = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE name=$1)", name).Scan(&done); e != nil {
+			return e
+		}
+		if done {
+			continue
+		}
+		sql, e := migrations.ReadFile(file)
+		if e != nil {
+			return e
+		}
+		if _, e = tx.Exec(ctx, string(sql)); e != nil {
+			return fmt.Errorf("%s: %w", name, e)
+		}
+		if _, e = tx.Exec(ctx, "INSERT INTO schema_migrations(name) VALUES($1)", name); e != nil {
+			return e
+		}
 	}
 	return tx.Commit(ctx)
 }
@@ -267,7 +301,7 @@ func (a *app) auth(next http.HandlerFunc) http.HandlerFunc {
 		var i identity
 		i.hash = digest(value)
 		i.kind = kind
-		e := a.db.QueryRow(r.Context(), "SELECT u.id::text,u.email,u.name,u.role FROM credentials c JOIN users u ON u.id=c.user_id WHERE c.token_hash=$1 AND c.kind=$2 AND c.expires_at>now()", i.hash, kind).Scan(&i.ID, &i.Email, &i.Name, &i.Role)
+		e := a.db.QueryRow(r.Context(), "SELECT u.id::text,u.email,u.name,u.role FROM credentials c JOIN users u ON u.id=c.user_id WHERE c.token_hash=$1 AND c.kind=$2 AND c.expires_at>now() AND u.disabled_at IS NULL", i.hash, kind).Scan(&i.ID, &i.Email, &i.Name, &i.Role)
 		if errors.Is(e, pgx.ErrNoRows) {
 			fail(w, 401, "invalid or expired session")
 			return
@@ -291,7 +325,8 @@ func (a *app) routes() http.Handler {
 	m.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { ok(w) })
 	m.HandleFunc("POST /api/auth/login", a.login)
 	m.HandleFunc("POST /api/auth/accept-invite", a.acceptInvite)
-	for path, h := range map[string]http.HandlerFunc{"GET /api/auth/me": func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, current(r).user) }, "POST /api/auth/logout": a.logout, "POST /api/invites": a.invite, "GET /api/team": a.team, "POST /api/agent/logs": a.ingestAgentLogs, "GET /api/agent/logs": a.agentLogs, "GET /api/sessions/current": a.openSession, "POST /api/sessions/recover": a.recoverSession, "POST /api/sessions/start": a.start, "POST /api/sessions/stop": a.stop, "POST /api/heartbeat": a.heartbeat, "POST /api/uploads/screenshot-url": a.upload, "POST /api/blocks": a.blocks, "DELETE /api/blocks/{id}/screenshot": a.deleteScreenshot, "DELETE /api/blocks/{id}": a.deleteBlock, "GET /api/timeline": a.timeline, "GET /api/reports/hours": a.hours, "GET /api/reports/hours.csv": a.hours} {
+	m.HandleFunc("POST /api/auth/reset-password", a.resetPassword)
+	for path, h := range map[string]http.HandlerFunc{"POST /api/auth/password": a.changePassword, "POST /api/users/{id}/disable": a.disableUser, "POST /api/users/{id}/enable": a.enableUser, "POST /api/users/{id}/revoke-devices": a.revokeDevices, "POST /api/users/{id}/password-reset": a.createPasswordReset, "GET /api/auth/me": func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, current(r).user) }, "POST /api/auth/logout": a.logout, "POST /api/invites": a.invite, "GET /api/team": a.team, "POST /api/agent/logs": a.ingestAgentLogs, "GET /api/agent/logs": a.agentLogs, "GET /api/sessions/current": a.openSession, "POST /api/sessions/recover": a.recoverSession, "POST /api/sessions/start": a.start, "POST /api/sessions/stop": a.stop, "POST /api/heartbeat": a.heartbeat, "POST /api/uploads/screenshot-url": a.upload, "POST /api/blocks": a.blocks, "DELETE /api/blocks/{id}/screenshot": a.deleteScreenshot, "DELETE /api/blocks/{id}": a.deleteBlock, "GET /api/timeline": a.timeline, "GET /api/reports/hours": a.hours, "GET /api/reports/hours.csv": a.hours} {
 		m.HandleFunc(path, a.auth(h))
 	}
 	return a.security(m)

@@ -185,7 +185,14 @@ func TestPostgresHTTP(t *testing.T) {
 	// Real AWS presigner with a local S3-compatible delete endpoint, no live secrets.
 	failDelete := true
 	deleted := 0
+	missingKey := "never-matches"
 	storage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "HEAD" {
+			if strings.Contains(r.URL.Path, missingKey) {
+				w.WriteHeader(404)
+			}
+			return
+		}
 		if r.Method != "DELETE" {
 			t.Errorf("unexpected storage method %s", r.Method)
 		}
@@ -213,6 +220,12 @@ func TestPostgresHTTP(t *testing.T) {
 	b.ID = bid
 	b.Active = 20
 	b.Screenshot = signed["object_key"].(string)
+	// A reservation without an uploaded object must make the agent re-upload.
+	missingKey = bid
+	if out := request("POST", "/api/blocks", map[string]any{"blocks": []block{b}}, 400); out["code"] != "upload_expired" {
+		t.Fatalf("missing object accepted: %v", out)
+	}
+	missingKey = "never-matches"
 	request("POST", "/api/blocks", map[string]any{"blocks": []block{b}}, 200)
 	request("DELETE", "/api/blocks/"+bid+"/screenshot", nil, 503)
 	var seconds int
