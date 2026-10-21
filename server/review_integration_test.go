@@ -104,4 +104,16 @@ func TestReviewOfflineUploadedBlockSurvivesCleanup(t *testing.T) {
 	if err = db.QueryRow(ctx, "SELECT count(*) FROM uploads WHERE block_id=$1", bid).Scan(&remaining); err != nil || remaining != 1 {
 		t.Fatalf("finalized live screenshot reservation lost: count=%d error=%v", remaining, err)
 	}
+	payload, err = json.Marshal(map[string]any{"blocks": []block{{ID: expiredID, SessionID: sid, Start: started.Add(time.Minute), End: started.Add(90 * time.Second), Active: 10, Screenshot: uid + "/" + expiredID + ".jpg"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = httptest.NewRequest(http.MethodPost, "/api/blocks", bytes.NewReader(payload))
+	r.Header.Set("Authorization", "Bearer "+raw)
+	w = httptest.NewRecorder()
+	a.routes().ServeHTTP(w, r)
+	var failure map[string]string
+	if err = json.Unmarshal(w.Body.Bytes(), &failure); err != nil || w.Code != http.StatusBadRequest || failure["code"] != "upload_expired" {
+		t.Fatalf("missing reservation must signal recoverable upload expiry: status=%d body=%s error=%v", w.Code, w.Body.String(), err)
+	}
 }
