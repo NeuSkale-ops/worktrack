@@ -81,8 +81,14 @@ fn client() -> Result<reqwest::blocking::Client, String> {
         .map_err(|e| e.to_string())
 }
 #[tauri::command]
-fn status(state: State<Shared>) -> Result<Status, String> {
-    let r = state.lock().map_err(|e| e.to_string())?;
+async fn status(state: State<'_, Shared>) -> Result<Status, String> {
+    let shared = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || snapshot_status(&shared))
+        .await
+        .map_err(|e| e.to_string())?
+}
+fn snapshot_status(shared: &Shared) -> Result<Status, String> {
+    let r = shared.lock().map_err(|e| e.to_string())?;
     Ok(Status {
         authenticated: r.token.is_some(),
         tracking: r.session.is_some(),
@@ -374,6 +380,26 @@ fn sample_tick(
     }
     Ok(())
 }
+fn collect_tick(
+    shared: &Shared,
+    last: &mut Option<(bool, bool)>,
+    notify: impl FnOnce(bool, bool) -> bool,
+) {
+    let state = {
+        let Ok(mut r) = shared.lock() else {
+            return;
+        };
+        if let Err(e) = tick(&mut r) {
+            let _ = stop_runtime(&mut r);
+            r.error = Some(e);
+        }
+        (r.session.is_some(), r.paused)
+    };
+    // Tray setters wait for the UI thread, which may itself need the Runtime lock.
+    if *last != Some(state) && notify(state.0, state.1) {
+        *last = Some(state);
+    }
+}
 fn sync_one(shared: &Shared) -> Result<bool, String> {
     let (item, server, token) = {
         let r = shared.lock().map_err(|e| e.to_string())?;
@@ -581,23 +607,23 @@ fn main() {
                 .build(app)?;
             let collector = shared.clone();
             let handle = app.handle().clone();
-            std::thread::spawn(move || loop {
-                std::thread::sleep(Duration::from_millis(100));
-                if let Ok(mut r) = collector.lock() {
-                    if let Err(e) = tick(&mut r) {
-                        let _ = stop_runtime(&mut r);
-                        r.error = Some(e);
-                    }
-                    if let Some(tray) = handle.tray_by_id("tracker") {
-                        let _ = tray.set_icon(Some(icon(r.session.is_some())));
-                        let _ = tray.set_tooltip(Some(if r.session.is_none() {
-                            "WorkTrack - tracking OFF"
-                        } else if r.paused {
-                            "WorkTrack - PAUSED"
-                        } else {
-                            "WorkTrack - tracking ON"
-                        }));
-                    }
+            std::thread::spawn(move || {
+                let mut last = None;
+                loop {
+                    std::thread::sleep(Duration::from_millis(100));
+                    collect_tick(&collector, &mut last, |tracking, paused| {
+                        if let Some(tray) = handle.tray_by_id("tracker") {
+                            let icon_updated = tray.set_icon(Some(icon(tracking))).is_ok();
+                            let tooltip_updated = tray.set_tooltip(Some(if !tracking {
+                                "WorkTrack - tracking OFF"
+                            } else if paused {
+                                "WorkTrack - PAUSED"
+                            } else {
+                                "WorkTrack - tracking ON"
+                            })).is_ok();
+                            icon_updated && tooltip_updated
+                        } else { false }
+                    });
                 }
             });
             let location_worker = shared.clone();
@@ -686,6 +712,34 @@ fn main() {
 mod tests {
     use super::*;
 
+    #[test]
+    fn tray_notification_releases_runtime_before_waiting_for_ui_and_only_updates_on_change() {
+        let mut r = runtime();
+        r.session = None;
+        let shared = Arc::new(Mutex::new(r));
+        let mut last = None;
+        let mut notifications = 0;
+        collect_tick(&shared, &mut last, |tracking, paused| {
+            let r = shared
+                .try_lock()
+                .expect("tray/UI must not inherit collector lock");
+            assert_eq!(tracking, r.session.is_some());
+            assert_eq!(paused, r.paused);
+            drop(r);
+            assert!(!snapshot_status(&shared).unwrap().tracking);
+            notifications += 1;
+            true
+        });
+        collect_tick(&shared, &mut last, |_, _| {
+            panic!("unchanged tray state must not be reposted")
+        });
+        assert_eq!(notifications, 1);
+        last = None;
+        collect_tick(&shared, &mut last, |_, _| false);
+        assert_eq!(last, None, "failed tray updates must remain retryable");
+        collect_tick(&shared, &mut last, |_, _| true);
+        assert_eq!(last, Some((false, false)));
+    }
     #[test]
     fn device_logout_revokes_token_and_handles_retries() {
         use std::io::{Read, Write};

@@ -26,11 +26,12 @@ const state = {
 let available = offer;
 let checkError = null;
 let rejectInstall;
+let statusGate = null;
 window.__TAURI_INTERNALS__ = {
   async invoke(command, args) {
     calls.push({ command, args });
     if (command === 'plugin:app|version') return '0.1.1';
-    if (command === 'status') return structuredClone(state);
+    if (command === 'status') { if (statusGate) await statusGate; return structuredClone(state); }
     if (command === 'check_update') {
       if (checkError) throw checkError;
       return available;
@@ -71,6 +72,15 @@ try {
   await check('startup discovers update and distinguishes installed/offered versions', () => text().includes('Installed version 0.1.1') && text().includes('Version 0.1.2') && text().includes('Test release notes'));
   await check('StrictMode performs one startup check', () => calls.filter(call => call.command === 'check_update').length === 1);
   await check('six-hour update interval is registered', () => intervals.some(entry => entry.delay === 21600000));
+  await wait(100);
+  let releaseStatus;
+  statusGate = new Promise(resolve => { releaseStatus = resolve; });
+  const beforePoll = calls.filter(call => call.command === 'status').length;
+  for (let i = 0; i < 5; i++) intervals.find(entry => entry.delay === 1000).callback();
+  await wait(100);
+  await check('slow status IPC permits only one pending poll', () => calls.filter(call => call.command === 'status').length === beforePoll + 1);
+  releaseStatus(); statusGate = null;
+  await wait(100);
   await check('diagnostics default off with disclosure', () => !document.querySelector('#diagnostic-consent').checked && text().includes('No error text, screenshots'));
   await check('location defaults off and app-usage disclosure is visible', () => !document.querySelector('#location-consent').checked && text().includes('foreground application names') && text().includes('No continuous location tracking'));
   document.querySelector('#location-consent').click();

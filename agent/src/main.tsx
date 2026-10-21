@@ -21,6 +21,7 @@ function App() {
   const [unavailable, setUnavailable] = useState('');
   const [deferred, setDeferred] = useState(false);
   const [installing, setInstalling] = useState(false);
+  const refreshPending = useRef(false);
   const checkPending = useRef(false);
   const installPending = useRef(false);
   const reserved = useRef(false);
@@ -45,7 +46,13 @@ function App() {
     const id = setInterval(() => void checkUpdate(), 6 * 60 * 60 * 1000);
     return () => clearInterval(id);
   }, []);
-  async function refresh() { try { setStatus(await invoke<Status>('status')); } catch (e) { setError(String(e)); } }
+  async function refresh() {
+    if (refreshPending.current) return;
+    refreshPending.current = true;
+    try { setStatus(await invoke<Status>('status')); }
+    catch (e) { setError(String(e)); }
+    finally { refreshPending.current = false; }
+  }
   useEffect(() => { void refresh(); const id = setInterval(() => void refresh(), 1000); return () => clearInterval(id); }, []);
   async function run(command: string, args?: Record<string, unknown>) {
     if (reserved.current && !(['set_diagnostics', 'set_location'].includes(command) && args?.enabled === false)) return;
