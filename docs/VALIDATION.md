@@ -12,6 +12,9 @@ A synthetic JPEG-marker object was used and the associated test block was delete
 Screenshot-only deletion preserved time, anonymous object access was rejected, and test auth tokens were revoked.
 After removing bootstrap settings and recreating the API, the original owner credentials still logged in.
 Both pre-existing public apps remained HTTP 200 with valid TLS.
+The complete live workflow was rerun after final bootstrap removal at 07:39 UTC and passed again.
+Additional real-interface checks observed unauthenticated team reads returning 401, hostile or absent Origin cookie mutations returning 403, SPA deep links loading, old signed image URLs returning 404 after deletion, and both revoked token types returning 401.
+All three WorkTrack containers were healthy with zero restarts, no OOM events, enforced memory limits and no published host ports.
 The short owner password was explicitly approved by the user and remains a security limitation.
 See `deploy/SHARED-HOST.md` for image revisions, resource limits and remaining backup/runtime gates.
 The following initial validation record predates this deployment, so statements about unavailable Hetzner access below are historical.
