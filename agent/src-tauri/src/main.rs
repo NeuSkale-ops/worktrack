@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod applications;
 mod diagnostics;
+mod location;
 mod platform;
 mod queue;
 mod updater;
@@ -41,6 +43,8 @@ struct Runtime {
     update: updater::UpdateStatus,
     pending_update: Option<tauri_plugin_updater::Update>,
     diagnostics: diagnostics::Diagnostics,
+    location: location::Consent,
+    applications: applications::Applications,
     shutting_down: bool,
 }
 type Shared = Arc<Mutex<Runtime>>;
@@ -59,6 +63,9 @@ struct Status {
     diagnostics_enabled: bool,
     diagnostics_queued: usize,
     diagnostics_error: Option<&'static str>,
+    location_enabled: bool,
+    location_pending: bool,
+    location_error: Option<&'static str>,
 }
 fn utc_now() -> chrono::DateTime<Utc> {
     chrono::DateTime::from_timestamp(Utc::now().timestamp(), 0).expect("valid current timestamp")
@@ -90,6 +97,9 @@ fn status(state: State<Shared>) -> Result<Status, String> {
         diagnostics_enabled: r.diagnostics.enabled,
         diagnostics_queued: r.diagnostics.count(),
         diagnostics_error: r.diagnostics.error,
+        location_enabled: r.location.enabled,
+        location_pending: r.location.pending,
+        location_error: r.location.error,
     })
 }
 fn configure_diagnostics(r: &mut Runtime, enabled: bool) -> Result<(), String> {
@@ -128,6 +138,7 @@ async fn login(state: State<'_, Shared>, email: String, password: String) -> Res
         r.queue.set("email", &email.trim().to_lowercase())?;
         r.queue.set("server", &server)?;
         r.diagnostics.configure(false);
+        r.location.reset();
         r.server = server; r.token = Some(token); r.error = None;
         Ok(())
     }).await.map_err(|e| e.to_string())?
@@ -175,6 +186,7 @@ fn start(state: State<Shared>, consent: bool) -> Result<(), String> {
     r.elapsed = 0.0;
     r.active = 0.0;
     r.next_capture = 600.0;
+    r.applications.clear();
     r.last = Instant::now();
     r.paused = false;
     r.error = None;
@@ -189,11 +201,18 @@ fn flush_block(r: &mut Runtime, image: Option<&[u8]>) -> Result<(), String> {
         return Ok(());
     }
     let end = r.segment_start + chrono::Duration::seconds(seconds);
+    let location = image.map(|_| {
+        let mut snapshot = location::Snapshot::new(r.location.enabled);
+        snapshot.captured_at = end;
+        snapshot
+    });
+    let applications = r.applications.snapshot(seconds);
     r.queue.atomic(|q| {
-        q.push("/api/blocks", &json!({"blocks":[{"id":uuid::Uuid::new_v4().to_string(),"session_id":r.session,"start_at":r.segment_start,"end_at":end,"active_seconds":(r.active.floor() as i64).min(seconds)}]}), image)?;
+        q.push("/api/blocks", &json!({"blocks":[{"id":uuid::Uuid::new_v4().to_string(),"session_id":r.session,"start_at":r.segment_start,"end_at":end,"active_seconds":(r.active.floor() as i64).min(seconds),"location":location,"application_usage":applications}]}), image)?;
         q.set("checkpoint", &end.to_rfc3339())
     }).inspect_err(|_| r.diagnostics.record(LogCode::QueueFailed, None))?;
     r.segment -= seconds as f64;
+    r.applications.clear();
     r.active = 0.0;
     r.segment_start = end;
     Ok(())
@@ -260,6 +279,7 @@ async fn logout(state: State<'_, Shared>) -> Result<(), String> {
             .map_err(|e| e.to_string())?;
         r.token = None;
         r.diagnostics.configure(false);
+        r.location.reset();
         Ok(())
     })
     .await
@@ -300,13 +320,19 @@ fn tick(r: &mut Runtime) -> Result<(), String> {
     } else {
         None
     };
-    sample_tick(r, dt, unlocked, idle, screenshot)
+    let app = if unlocked && dt <= 2.0 && !r.paused {
+        platform::foreground_app()
+    } else {
+        None
+    };
+    sample_tick(r, dt, unlocked, idle, app.as_deref(), screenshot)
 }
 fn sample_tick(
     r: &mut Runtime,
     dt: f64,
     unlocked: bool,
     idle: Option<f64>,
+    app: Option<&str>,
     capture: impl FnOnce() -> Result<Vec<u8>, String>,
 ) -> Result<(), String> {
     if r.session.is_none() {
@@ -333,6 +359,7 @@ fn sample_tick(
         .inspect_err(|_| r.diagnostics.record(LogCode::ActivityFailed, None))?;
     r.elapsed += dt;
     r.segment += dt;
+    r.applications.record(app, dt);
     if idle < 1.0 {
         r.active += dt;
     }
@@ -361,6 +388,19 @@ fn sync_one(shared: &Shared) -> Result<bool, String> {
     let http = client()?;
     let mut payload: serde_json::Value =
         serde_json::from_str(&item.json).map_err(|e| e.to_string())?;
+    if payload["blocks"][0]["location"]["status"] == "pending" {
+        let snapshot: location::Snapshot =
+            serde_json::from_value(payload["blocks"][0]["location"].clone())
+                .map_err(|e| e.to_string())?;
+        if (utc_now() - snapshot.captured_at).num_seconds() >= 10 {
+            shared
+                .lock()
+                .map_err(|e| e.to_string())?
+                .queue
+                .finish_location(item.id, &snapshot.finish(None))?;
+        }
+        return Ok(false);
+    }
     if payload["blocks"][0]["screenshot_key"].as_str().is_none() {
         if let Some(bytes) = item.image.as_ref() {
             let block_id = payload["blocks"][0]["id"]
@@ -500,6 +540,8 @@ fn main() {
                 update: Default::default(),
                 pending_update: None,
                 diagnostics: Default::default(),
+                location: Default::default(),
+                applications: Default::default(),
                 shutting_down: false,
                 error: if compatible_queue { None } else { Some("Unsynced records belong to another server. Sync using version 0.1.0 before upgrading. No records were moved or deleted.".into()) },
             }));
@@ -558,6 +600,8 @@ fn main() {
                     }
                 }
             });
+            let location_worker = shared.clone();
+            std::thread::spawn(move || location::run(location_worker));
             let diagnostic_sender = shared.clone();
             std::thread::spawn(move || diagnostics::run(diagnostic_sender));
             let heartbeat = shared.clone();
@@ -622,7 +666,7 @@ fn main() {
                 let _ = window.hide();
             }
         })
-        .invoke_handler(tauri::generate_handler![status, login, start, stop, logout, set_diagnostics, updater::check_update, updater::install_update])
+        .invoke_handler(tauri::generate_handler![status, login, start, stop, logout, set_diagnostics, location::set_location, updater::check_update, updater::install_update])
         .build(tauri::generate_context!())
         .expect("WorkTrack failed to start")
         .run(|app, event| {
@@ -704,14 +748,14 @@ mod tests {
     fn collection_failures_create_codes_only_when_diagnostics_are_enabled() {
         let mut r = runtime();
         configure_diagnostics(&mut r, false).unwrap();
-        assert!(sample_tick(&mut r, 1.0, true, None, || panic!("capture")).is_err());
+        assert!(sample_tick(&mut r, 1.0, true, None, None, || panic!("capture")).is_err());
         assert_eq!(r.diagnostics.count(), 0);
         r.token = Some("test".into());
         configure_diagnostics(&mut r, true).unwrap();
-        assert!(sample_tick(&mut r, 1.0, true, None, || panic!("capture")).is_err());
+        assert!(sample_tick(&mut r, 1.0, true, None, None, || panic!("capture")).is_err());
         assert_eq!(r.diagnostics.count(), 1);
         r.elapsed = 599.0;
-        assert!(sample_tick(&mut r, 1.0, true, Some(0.0), || Err(
+        assert!(sample_tick(&mut r, 1.0, true, Some(0.0), None, || Err(
             "private OS error or URL must stay local".into()
         ))
         .is_err());
@@ -746,6 +790,8 @@ mod tests {
             update: Default::default(),
             pending_update: None,
             diagnostics: Default::default(),
+            location: Default::default(),
+            applications: Default::default(),
             shutting_down: false,
         }
     }
@@ -754,7 +800,7 @@ mod tests {
         let mut r = runtime();
         let mut captures = Vec::new();
         for second in 1..=1800 {
-            sample_tick(&mut r, 1.0, true, Some(0.0), || {
+            sample_tick(&mut r, 1.0, true, Some(0.0), Some("chrome.exe"), || {
                 captures.push(second);
                 Ok(vec![1, 2, 3])
             })
@@ -762,22 +808,67 @@ mod tests {
         }
         assert_eq!(captures, vec![600, 1200, 1800]);
         assert_eq!(r.elapsed, 1800.0);
+        let mut screenshots = 0;
+        while let Some(item) = r.queue.first().unwrap() {
+            let body: serde_json::Value = serde_json::from_str(&item.json).unwrap();
+            let block = &body["blocks"][0];
+            assert_eq!(block["application_usage"][0]["app"], "chrome.exe");
+            assert!(
+                block["application_usage"][0]["milliseconds"]
+                    .as_u64()
+                    .unwrap()
+                    <= 30000
+            );
+            if item.image.is_some() {
+                screenshots += 1;
+                assert_eq!(block["location"]["status"], "disabled");
+            } else {
+                assert!(block["location"].is_null());
+            }
+            r.queue.ack(item.id).unwrap();
+        }
+        assert_eq!(screenshots, 3);
     }
     #[test]
     fn stopped_locked_and_suspend_never_capture_or_count() {
         let mut r = runtime();
         r.elapsed = 599.0;
-        sample_tick(&mut r, 1.0, false, None, || panic!("locked capture")).unwrap();
-        assert_eq!(r.elapsed, 599.0);
-        sample_tick(&mut r, 3600.0, true, Some(0.0), || {
-            panic!("suspend capture")
-        })
+        sample_tick(
+            &mut r,
+            1.0,
+            false,
+            None,
+            Some("must-not-record.exe"),
+            || panic!("locked capture"),
+        )
         .unwrap();
-        sample_tick(&mut r, 1.0, true, Some(0.0), || panic!("resume catchup")).unwrap();
+        assert_eq!(r.elapsed, 599.0);
+        sample_tick(
+            &mut r,
+            3600.0,
+            true,
+            Some(0.0),
+            Some("must-not-record.exe"),
+            || panic!("suspend capture"),
+        )
+        .unwrap();
+        sample_tick(
+            &mut r,
+            1.0,
+            true,
+            Some(0.0),
+            Some("must-not-record.exe"),
+            || panic!("resume catchup"),
+        )
+        .unwrap();
         assert_eq!(r.elapsed, 599.0);
         r.session = None;
-        sample_tick(&mut r, 1.0, true, None, || panic!("off capture")).unwrap();
+        sample_tick(&mut r, 1.0, true, None, Some("must-not-record.exe"), || {
+            panic!("off capture")
+        })
+        .unwrap();
         assert_eq!(r.elapsed, 599.0);
+        assert!(r.applications.snapshot(600).is_empty());
     }
     #[test]
     fn partial_stop_is_integer_seconds_and_idempotent() {
@@ -802,7 +893,7 @@ mod tests {
     #[test]
     fn missing_activity_fails_closed() {
         let mut r = runtime();
-        assert!(sample_tick(&mut r, 1.0, true, None, || panic!("capture")).is_err());
+        assert!(sample_tick(&mut r, 1.0, true, None, None, || panic!("capture")).is_err());
         assert_eq!(r.elapsed, 0.0);
     }
     #[test]

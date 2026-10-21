@@ -43,6 +43,12 @@ For dependency-free browser checks, run `pnpm dev --port 1428` and open `/tests/
 The harness renders the real dashboard with mocked API responses and exposes `document.documentElement.dataset.testResult` as `passed` or `failed`.
 It checks explicit loading, role visibility, escaped names, empty results, and failure recovery. These fixtures are not included in the production build and do not test native Windows behavior.
 
+## Screenshot location and application minutes
+
+Each timeline screenshot can show a worker-consented coordinate fix, accuracy, and fix timestamp, or a clear disabled/unavailable status. The screenshot dialog repeats its associated location. No map provider is contacted automatically.
+**Applications on selected day** sums foreground executable milliseconds from the selected worker's time blocks starting on that UTC date. It includes idle time and is an estimate, not a productivity score. Older agents have no historical application/location data; hosted apps may share an executable and inaccessible processes appear as Unknown.
+Workers see their own data; managers/owners can see team timelines. Deleting a screenshot also removes its location; deleting a time block removes app usage and location from the live database.
+
 ## Behavior
 
 - Owners and managers can see the team, live tracking status, timelines, and weekly timesheets, and create private worker invitation links.

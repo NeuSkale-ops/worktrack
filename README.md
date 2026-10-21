@@ -28,7 +28,7 @@ Screenshots follow a fixed 10-minute elapsed interval, not randomized clock wind
 
 ## Privacy
 
-Workers must receive a clear monitoring notice and explicitly start tracking.
+Workers must receive a clear monitoring notice and explicitly start tracking. Foreground executable names and estimated time per app are recorded while tracking, not window titles, full paths, sites, or documents. Optional screenshot-linked location requires separate worker consent and Windows location permission, with accuracy shown and no continuous location collection.
 Personal activity outside tracking must not be collected.
 Separately opted-in desktop diagnostics may send fixed failure codes, app version, numeric HTTP status, and timestamps while tracking is stopped. They contain no raw error text or screen/input contents and are readable only by the owner, with seven-day live-database retention.
 Activity measurements are input activity, not proof of productivity.

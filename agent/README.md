@@ -62,6 +62,9 @@ cargo clippy --locked -- -D warnings
   There is no randomized capture, immediate Start capture, stopped capture, or catch-up burst after sleep.
   Windows is not a real-time operating system: the 100 ms collector dispatches at the first available scheduler tick after the boundary, and capture/encoding adds latency.
 - Only the primary monitor is captured, downscaled to fit 1920 x 1080 and JPEG encoded at quality 65.
+- Foreground application executable names and estimated milliseconds per app are sampled only during unlocked tracking, including idle time. No window titles, full executable paths, document names, or browser URLs are collected. At most 32 names per block are retained, with overflow grouped as Other and inaccessible processes as Unknown. Hosted UWP/PWA/browser windows can share an executable name.
+- Optional location sharing defaults off each launch/sign-in and requires explicit worker consent plus Windows permission. A fresh Windows geolocation fix is requested only at screenshot boundaries, never continuously, with a five-second timeout. Coordinates, accuracy, fix time, and the screenshot block timestamp are queued together. Denied, stale, or unavailable fixes do not block time or screenshots. No IP-based location fallback is used.
+- Location requests run outside the tracking mutex and are cancelled/ignored after Stop, lock, or consent/account changes. Pending fixes expire to unavailable within ten seconds so upload cannot remain blocked. No fix is obtained later during offline replay. Queued location/app data uses the existing account-bound durable tracking queue, not diagnostic logs.
 - `GetLastInputInfo` exposes a last-input timestamp, not typed content.
   Active time is sampled when that input is less than one second old, and idle time is the remaining running time.
   This is an activity estimate, not an exact count of input events.
@@ -72,6 +75,8 @@ cargo clippy --locked -- -D warnings
   Resuming uses a fresh wall-clock segment without changing the fixed elapsed capture boundaries.
   Privacy guards are polling-based and need real Windows lock/suspend validation before deployment.
 - Offline records can upload while stopped, but no new monitoring occurs.
+
+Workers, managers, and the owner can view location and app-use records through the existing timeline permissions. Deleting a screenshot clears its location from the live database but keeps app usage and tracked time. Deleting a time block clears both metadata types. Database backups retain their separate snapshots. These are client-reported estimates, not proof of attendance or productivity.
 
 ## Durable offline delivery
 

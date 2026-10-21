@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { activity, duration, utcDate, weekRange } from './utils.ts'
+import { activity, applicationTotals, duration, locationText, utcDate, weekRange } from './utils.ts'
 
+test('foreground milliseconds aggregate by app without inventing older-client data', () => {
+  assert.deepEqual(applicationTotals([{}, { application_usage: [{ app: 'chrome.exe', milliseconds: 60000 }] }, { application_usage: [{ app: 'chrome.exe', milliseconds: 30000 }, { app: 'code.exe', milliseconds: 10000 }] }]), [{ app: 'chrome.exe', milliseconds: 90000 }, { app: 'code.exe', milliseconds: 10000 }])
+})
+test('location renders zero coordinates, accuracy and honest missing states', () => {
+  assert.equal(locationText(null), null)
+  assert.match(locationText({ status: 'disabled', captured_at: '' })!, /sharing off/)
+  assert.match(locationText({ status: 'unavailable', captured_at: '' })!, /unavailable/)
+  assert.match(locationText({ status: 'available', captured_at: '', latitude: 0, longitude: 0, accuracy_m: 25 })!, /0.00000, 0.00000.*±25 m/)
+})
 test('weeks run Monday to Sunday across month and year boundaries', () => {
   assert.deepEqual(weekRange('2027-01-01'), {
     from: '2026-12-28',

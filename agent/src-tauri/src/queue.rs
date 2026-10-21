@@ -34,7 +34,7 @@ impl Queue {
     }
     pub fn open(path: &Path) -> Result<Self, String> {
         let c = Connection::open(path).map_err(|e| e.to_string())?;
-        c.execute_batch("PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA max_page_count=73728; CREATE TABLE IF NOT EXISTS queue(id INTEGER PRIMARY KEY, path TEXT NOT NULL, json TEXT NOT NULL, image BLOB); CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);").map_err(|e| e.to_string())?;
+        c.execute_batch("PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA max_page_count=73728; CREATE TABLE IF NOT EXISTS queue(id INTEGER PRIMARY KEY, path TEXT NOT NULL, json TEXT NOT NULL, image BLOB); CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE INDEX IF NOT EXISTS queue_location_pending ON queue(id) WHERE json_extract(json,'$.blocks[0].location.status')='pending';").map_err(|e| e.to_string())?;
         Ok(Self(c))
     }
     pub fn push(&self, path: &str, json: &Value, image: Option<&[u8]>) -> Result<(), String> {
@@ -84,6 +84,29 @@ impl Queue {
             )
             .optional()
             .map_err(|e| e.to_string())
+    }
+    pub fn pending_location(
+        &self,
+    ) -> Result<Option<(i64, crate::location::Snapshot, String)>, String> {
+        let row: Option<(i64, String)> = self.0.query_row("SELECT id,json FROM queue WHERE json_extract(json,'$.blocks[0].location.status')='pending' ORDER BY id LIMIT 1", [], |r| Ok((r.get(0)?,r.get(1)?))).optional().map_err(|e|e.to_string())?;
+        row.map(|(id, json)| {
+            let payload: Value = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+            let location = serde_json::from_value(payload["blocks"][0]["location"].clone())
+                .map_err(|e| e.to_string())?;
+            let session = payload["blocks"][0]["session_id"]
+                .as_str()
+                .ok_or("Missing screenshot session")?
+                .to_owned();
+            Ok((id, location, session))
+        })
+        .transpose()
+    }
+    pub fn finish_location(
+        &self,
+        id: i64,
+        location: &crate::location::Snapshot,
+    ) -> Result<(), String> {
+        self.0.execute("UPDATE queue SET json=json_set(json,'$.blocks[0].location',json(?2)) WHERE id=?1 AND json_extract(json,'$.blocks[0].location.status')='pending'", params![id, serde_json::to_string(location).map_err(|e|e.to_string())?]).map(|_|()).map_err(|e|e.to_string())
     }
     pub fn count(&self) -> usize {
         self.0

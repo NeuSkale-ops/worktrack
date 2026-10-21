@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, ApiError, post } from './api'
 import type { Block, Hours, Invite, OpenSession, User, Worker } from './api'
-import { activity, duration, utcDate, weekRange } from './utils'
+import { activity, applicationTotals, duration, locationText, utcDate, weekRange } from './utils'
 import AgentLogs from './AgentLogs'
 
 const time = (value: string) =>
@@ -223,6 +223,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const generation = useRef(0)
   const range = weekRange(date)
+  const applications = applicationTotals(blocks)
   const load = useCallback(async () => {
     const current = ++generation.current
     try {
@@ -572,6 +573,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
                         % activity
                       </span>
                     </div>
+                    {block.location && <p className="muted">{locationText(block.location)}</p>}
                     {selected === user.id && (
                       <div className="block-actions">
                         {block.screenshot_url && (
@@ -598,6 +600,15 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
             )}
           </section>
         </div>
+        <section className="reports" aria-labelledby="applications-heading">
+          <h2 id="applications-heading">Applications on selected day</h2>
+          <p className="muted">Selected worker, {date} UTC. Estimated foreground time from work blocks starting on this date, including idle time. Not proof of productivity.</p>
+          {applications.length ? <div className="table-scroll"><table>
+            <caption className="sr-only">Foreground application usage in minutes</caption>
+            <thead><tr><th scope="col">Application</th><th scope="col">Minutes</th></tr></thead>
+            <tbody>{applications.map(app => <tr key={app.app}><th scope="row">{app.app}</th><td>{(app.milliseconds / 60000).toFixed(2)}</td></tr>)}</tbody>
+          </table></div> : <p className="muted">No application usage recorded. Install the latest desktop app and start tracking to collect it.</p>}
+        </section>
         <section className="reports">
           <div className="section-heading">
             <div>
@@ -704,6 +715,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
         ) : (
           <p className="empty">No screenshot is available for this block.</p>
         )}
+        {expanded?.location && <p>{locationText(expanded.location)}</p>}
         {expanded && (
           <p>
             {duration(expanded.duration_seconds)} tracked ·{' '}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -176,12 +177,14 @@ func (a *app) stop(w http.ResponseWriter, r *http.Request) {
 }
 
 type block struct {
-	ID         string    `json:"id"`
-	SessionID  string    `json:"session_id"`
-	Start      time.Time `json:"start_at"`
-	End        time.Time `json:"end_at"`
-	Active     int       `json:"active_seconds"`
-	Screenshot string    `json:"screenshot_key"`
+	ID           string              `json:"id"`
+	SessionID    string              `json:"session_id"`
+	Start        time.Time           `json:"start_at"`
+	End          time.Time           `json:"end_at"`
+	Active       int                 `json:"active_seconds"`
+	Screenshot   string              `json:"screenshot_key"`
+	Location     *screenshotLocation `json:"location,omitempty"`
+	Applications []applicationUsage  `json:"application_usage,omitempty"`
 }
 
 func (b block) validate(uid string) error {
@@ -192,7 +195,7 @@ func (b block) validate(uid string) error {
 	if b.Screenshot != "" && b.Screenshot != uid+"/"+b.ID+".jpg" {
 		return fmt.Errorf("invalid screenshot key")
 	}
-	return nil
+	return b.validateMonitoring()
 }
 func (a *app) blocks(w http.ResponseWriter, r *http.Request) {
 	var in struct {
@@ -206,7 +209,11 @@ func (a *app) blocks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := current(r)
-	for _, b := range in.Blocks {
+	for i := range in.Blocks {
+		if in.Blocks[i].Applications == nil {
+			in.Blocks[i].Applications = []applicationUsage{}
+		}
+		b := in.Blocks[i]
 		if e := b.validate(u.ID); e != nil {
 			fail(w, 400, e.Error())
 			return
@@ -225,9 +232,10 @@ func (a *app) blocks(w http.ResponseWriter, r *http.Request) {
 	for _, b := range in.Blocks {
 		var old block
 		var uid string
-		e = tx.QueryRow(r.Context(), "SELECT user_id::text,id::text,session_id::text,start_at,end_at,active_seconds,screenshot_key FROM blocks WHERE id=$1", b.ID).Scan(&uid, &old.ID, &old.SessionID, &old.Start, &old.End, &old.Active, &old.Screenshot)
+		var deleted, screenshotDeleted bool
+		e = tx.QueryRow(r.Context(), "SELECT user_id::text,id::text,session_id::text,start_at,end_at,active_seconds,screenshot_key,location,application_usage,deleted_at IS NOT NULL,screenshot_deleted_at IS NOT NULL FROM blocks WHERE id=$1", b.ID).Scan(&uid, &old.ID, &old.SessionID, &old.Start, &old.End, &old.Active, &old.Screenshot, &old.Location, &old.Applications, &deleted, &screenshotDeleted)
 		if e == nil {
-			if uid != u.ID || old.SessionID != b.SessionID || !old.Start.Equal(b.Start) || !old.End.Equal(b.End) || old.Active != b.Active || old.Screenshot != b.Screenshot {
+			if uid != u.ID || old.SessionID != b.SessionID || !old.Start.Equal(b.Start) || !old.End.Equal(b.End) || old.Active != b.Active || old.Screenshot != b.Screenshot || (!deleted && !reflect.DeepEqual(old.Applications, b.Applications)) || (!deleted && !screenshotDeleted && !reflect.DeepEqual(old.Location, b.Location)) {
 				fail(w, 409, "block ID reused with different data")
 				return
 			}
@@ -265,7 +273,7 @@ func (a *app) blocks(w http.ResponseWriter, r *http.Request) {
 			fail(w, 409, "block overlaps existing time")
 			return
 		}
-		_, e = tx.Exec(r.Context(), "INSERT INTO blocks(id,user_id,session_id,start_at,end_at,duration_seconds,active_seconds,screenshot_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8)", b.ID, u.ID, b.SessionID, b.Start, b.End, int(b.End.Sub(b.Start).Seconds()), b.Active, b.Screenshot)
+		_, e = tx.Exec(r.Context(), "INSERT INTO blocks(id,user_id,session_id,start_at,end_at,duration_seconds,active_seconds,screenshot_key,location,application_usage) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)", b.ID, u.ID, b.SessionID, b.Start, b.End, int(b.End.Sub(b.Start).Seconds()), b.Active, b.Screenshot, b.Location, b.Applications)
 		if e != nil {
 			fail(w, 409, "block conflict")
 			return
@@ -356,7 +364,7 @@ func (a *app) deleteBlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var key string
-	e := a.db.QueryRow(r.Context(), "UPDATE blocks SET deleted_at=COALESCE(deleted_at,now()) WHERE id=$1 AND user_id=$2 RETURNING screenshot_key", id, current(r).ID).Scan(&key)
+	e := a.db.QueryRow(r.Context(), "UPDATE blocks SET deleted_at=COALESCE(deleted_at,now()),location=NULL,application_usage='[]'::jsonb WHERE id=$1 AND user_id=$2 RETURNING screenshot_key", id, current(r).ID).Scan(&key)
 	if e != nil {
 		fail(w, 404, "block not found")
 		return

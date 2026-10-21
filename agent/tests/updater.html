@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="UTF-8"><title>Updater UI tests</title></head>
+<head><meta charset="UTF-8"><title>Updater UI tests</title><style>#results{white-space:pre-wrap;overflow-wrap:anywhere}aside{padding:16px}</style></head>
 <body>
 <aside><h1>Updater UI tests (mock IPC)</h1><pre id="results">Running…</pre></aside>
 <div id="root"></div>
@@ -20,6 +20,7 @@ const state = {
   authenticated: true, tracking: false, paused: false, elapsed: 0,
   next_capture: 600, queued: 0, error: null, server: 'mock', update_reserved: false,
   diagnostics_enabled: false, diagnostics_queued: 0, diagnostics_error: null,
+  location_enabled: false, location_pending: false, location_error: null,
   update: { phase: 'idle', downloaded: 0, total: null, error: null },
 };
 let available = offer;
@@ -35,6 +36,7 @@ window.__TAURI_INTERNALS__ = {
       return available;
     }
     if (command === 'install_update') return new Promise((resolve, reject) => { rejectInstall = reject; });
+    if (command === 'set_location') { state.location_enabled = args.enabled; return; }
     if (command === 'set_diagnostics') { state.diagnostics_enabled = args.enabled; return; }
     if (['start', 'stop', 'login', 'logout'].includes(command)) return;
     throw new Error(`Unexpected IPC command: ${command}`);
@@ -70,6 +72,9 @@ try {
   await check('StrictMode performs one startup check', () => calls.filter(call => call.command === 'check_update').length === 1);
   await check('six-hour update interval is registered', () => intervals.some(entry => entry.delay === 21600000));
   await check('diagnostics default off with disclosure', () => !document.querySelector('#diagnostic-consent').checked && text().includes('No error text, screenshots'));
+  await check('location defaults off and app-usage disclosure is visible', () => !document.querySelector('#location-consent').checked && text().includes('foreground application names') && text().includes('No continuous location tracking'));
+  document.querySelector('#location-consent').click();
+  await check('location requires explicit opt-in IPC', () => state.location_enabled && !document.querySelector('#diagnostic-consent').disabled && calls.some(call => call.command === 'set_location' && call.args.enabled === true));
   document.querySelector('#diagnostic-consent').click();
   await check('diagnostics require explicit opt-in IPC', () => state.diagnostics_enabled && calls.some(call => call.command === 'set_diagnostics' && call.args.enabled === true));
   state.diagnostics_queued = 2;
@@ -111,6 +116,10 @@ try {
   document.querySelector('#diagnostic-consent').click();
   await check('diagnostic opt-out stays available during update reservation', () => !state.diagnostics_enabled && calls.some(call => call.command === 'set_diagnostics' && call.args.enabled === false));
   await check('reservation blocks enabling diagnostics', () => document.querySelector('#diagnostic-consent').disabled);
+  await until(() => !document.querySelector('#location-consent').disabled, 'location opt-out ready');
+  document.querySelector('#location-consent').click();
+  await check('location opt-out survives update reservation', () => !state.location_enabled && calls.some(call => call.command === 'set_location' && call.args.enabled === false));
+  await check('reservation blocks location opt-in', () => document.querySelector('#location-consent').disabled);
   state.update.total = null;
   await refresh();
   await check('unknown download size renders indeterminate progress', () => document.querySelector('progress') && !document.querySelector('progress').hasAttribute('value'));

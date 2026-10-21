@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS blocks (
 CREATE INDEX IF NOT EXISTS blocks_user_time ON blocks(user_id,start_at);
 CREATE INDEX IF NOT EXISTS blocks_report_time ON blocks(start_at) WHERE deleted_at IS NULL;
 ALTER TABLE blocks ADD COLUMN IF NOT EXISTS screenshot_deleted_at timestamptz;
+ALTER TABLE blocks ADD COLUMN IF NOT EXISTS location jsonb CHECK(location IS NULL OR jsonb_typeof(location)='object');
+ALTER TABLE blocks ADD COLUMN IF NOT EXISTS application_usage jsonb NOT NULL DEFAULT '[]'::jsonb CHECK(jsonb_typeof(application_usage)='array');
 CREATE TABLE IF NOT EXISTS uploads (
  block_id uuid PRIMARY KEY, user_id uuid NOT NULL REFERENCES users(id),
  object_key text NOT NULL, expires_at timestamptz NOT NULL

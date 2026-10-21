@@ -36,7 +36,7 @@ func (a *app) timeline(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid date")
 		return
 	}
-	rows, e := a.db.Query(r.Context(), "SELECT id::text,user_id::text,session_id::text,start_at,end_at,duration_seconds,active_seconds,CASE WHEN screenshot_deleted_at IS NULL THEN screenshot_key ELSE '' END FROM blocks WHERE user_id=$1 AND start_at>=$2 AND start_at<$3 AND deleted_at IS NULL ORDER BY start_at", uid, date, date.AddDate(0, 0, 1))
+	rows, e := a.db.Query(r.Context(), "SELECT id::text,user_id::text,session_id::text,start_at,end_at,duration_seconds,active_seconds,CASE WHEN screenshot_deleted_at IS NULL THEN screenshot_key ELSE '' END,location,application_usage FROM blocks WHERE user_id=$1 AND start_at>=$2 AND start_at<$3 AND deleted_at IS NULL ORDER BY start_at", uid, date, date.AddDate(0, 0, 1))
 	if e != nil {
 		fail(w, 500, "timeline unavailable")
 		return
@@ -47,7 +47,9 @@ func (a *app) timeline(w http.ResponseWriter, r *http.Request) {
 		var id, userID, sid, key string
 		var start, end time.Time
 		var duration, active int
-		if e = rows.Scan(&id, &userID, &sid, &start, &end, &duration, &active, &key); e != nil {
+		var location *screenshotLocation
+		var applications []applicationUsage
+		if e = rows.Scan(&id, &userID, &sid, &start, &end, &duration, &active, &key, &location, &applications); e != nil {
 			fail(w, 500, "timeline unavailable")
 			return
 		}
@@ -60,7 +62,7 @@ func (a *app) timeline(w http.ResponseWriter, r *http.Request) {
 			}
 			signedURL = signed.URL
 		}
-		out = append(out, map[string]any{"id": id, "user_id": userID, "session_id": sid, "start_at": start, "end_at": end, "duration_seconds": duration, "active_seconds": active, "screenshot_url": signedURL})
+		out = append(out, map[string]any{"id": id, "user_id": userID, "session_id": sid, "start_at": start, "end_at": end, "duration_seconds": duration, "active_seconds": active, "screenshot_url": signedURL, "location": location, "application_usage": applications})
 	}
 	if rows.Err() != nil {
 		fail(w, 500, "timeline unavailable")

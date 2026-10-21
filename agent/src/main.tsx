@@ -6,7 +6,7 @@ import './style.css';
 
 type Update = { version: string; current_version: string; body: string | null; date: string | null };
 type UpdateStatus = { phase: 'idle' | 'checking' | 'available' | 'downloading' | 'installing' | 'installed' | 'error' | 'unavailable'; downloaded: number; total: number | null; error: string | null };
-type Status = { authenticated: boolean; tracking: boolean; paused: boolean; elapsed: number; next_capture: number; queued: number; error: string | null; server: string; update: UpdateStatus; update_reserved: boolean; diagnostics_enabled: boolean; diagnostics_queued: number; diagnostics_error: string | null };
+type Status = { authenticated: boolean; tracking: boolean; paused: boolean; elapsed: number; next_capture: number; queued: number; error: string | null; server: string; update: UpdateStatus; update_reserved: boolean; diagnostics_enabled: boolean; diagnostics_queued: number; diagnostics_error: string | null; location_enabled: boolean; location_pending: boolean; location_error: string | null };
 function App() {
   const [status, setStatus] = useState<Status>();
   const [error, setError] = useState('');
@@ -48,7 +48,7 @@ function App() {
   async function refresh() { try { setStatus(await invoke<Status>('status')); } catch (e) { setError(String(e)); } }
   useEffect(() => { void refresh(); const id = setInterval(() => void refresh(), 1000); return () => clearInterval(id); }, []);
   async function run(command: string, args?: Record<string, unknown>) {
-    if (reserved.current && !(command === 'set_diagnostics' && args?.enabled === false)) return;
+    if (reserved.current && !(['set_diagnostics', 'set_location'].includes(command) && args?.enabled === false)) return;
     setBusy(true); setError('');
     try { await invoke(command, args); if (command === 'login') setRenew(false); await refresh(); } catch (e) { setError(String(e)); } finally { setBusy(false); }
   }
@@ -68,7 +68,7 @@ function App() {
   const unsafeInstall = !status || status.tracking || status.queued > 0;
   return <main>
     <header><span className="mark">W</span><div><h1>WorkTrack</h1><p>Your time. Clearly recorded.</p></div></header>
-    <section className="disclosure"><h2>What monitoring means</h2><p>Only while you choose Start, WorkTrack measures elapsed time and input activity, and takes a compressed screenshot of your primary display at each exact 10-minute elapsed boundary. No random captures.</p><p>No typed text, keys, window titles, or websites are recorded. Locking or suspending pauses monitoring. Stop ends monitoring collection. Queued records and separately enabled diagnostics may still upload while stopped.</p><p>Screenshots can contain private information. Close private content before starting. This app remains visible in the tray and never starts tracking automatically.</p></section>
+    <section className="disclosure"><h2>What monitoring means</h2><p>Only while you choose Start, WorkTrack measures elapsed time, input activity, foreground application names and estimated time in each, and takes a compressed screenshot of your primary display at each exact 10-minute elapsed boundary. No random captures.</p><p>No typed text, keys, window titles, or websites are recorded. Locking or suspending pauses monitoring. Stop ends monitoring collection. Queued records and separately enabled diagnostics may still upload while stopped.</p><p>You, your managers, and the owner can view these work records. No application file paths are sent. Application usage stays with work records until the time block is deleted from the live database. Backups follow separate retention. Screenshots can contain private information. Close private content before starting. This app remains visible in the tray and never starts tracking automatically.</p></section>
     {!status?.authenticated || renew ? <form onSubmit={e => { e.preventDefault(); const data = new FormData(e.currentTarget); void run('login', { email: data.get('email'), password: data.get('password') }); }}>
       <p>Connected to your WorkTrack workspace. Sign in with the account created from your invitation.</p>
       <label>Email<input name="email" type="email" autoComplete="username" required disabled={installReserved} /></label>
@@ -82,6 +82,13 @@ function App() {
       <p>{status.queued} records waiting to sync</p><button className="secondary" disabled={busy || installReserved || status.tracking} onClick={() => setRenew(true)}>Renew sign-in</button><button className="secondary" disabled={busy || installReserved || status.tracking || status.queued > 0} onClick={() => void run('logout')}>Sign out</button>
     </section>}
     {(error || status?.error) && <p role="alert" className="error">{error || status?.error}</p>}
+    <section className="disclosure" aria-labelledby="location-title">
+      <h2 id="location-title">Location with screenshots</h2>
+      <p>Optional coordinates, accuracy, and fix time are linked to each screenshot and visible to you, managers, and the owner. Windows may use Wi-Fi or GPS; accuracy varies. No continuous location tracking or IP-based guesses. Deleting a screenshot removes its location from the live database; backups follow separate retention.</p>
+      <label><input id="location-consent" type="checkbox" checked={Boolean(status?.location_enabled || status?.location_pending)} disabled={busy || !status?.authenticated || (installReserved && !status?.location_enabled && !status?.location_pending)} onChange={e => void run('set_location', { enabled: e.target.checked })} />Share location with screenshots for this launch</label>
+      <p>{status?.location_pending ? 'Waiting for Windows location permission. You can turn this off.' : status?.location_enabled ? 'Location requested only when a screenshot is taken. A denied or unavailable fix does not stop tracking.' : 'Off by default. Sign in and enable sharing to request Windows permission.'}</p>
+      {status?.location_error && <p role="status">{status.location_error}</p>}
+    </section>
     <section className="disclosure" aria-labelledby="diagnostics-title">
       <h2 id="diagnostics-title">Diagnostic logs for testing</h2>
       <p>Optional error codes, HTTP status, app version, and timestamps are linked to your account and sent to the owner. No error text, screenshots, typed content, passwords, or tokens are included. Logs expire after seven days.</p>

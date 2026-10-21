@@ -13,6 +13,15 @@ export interface Worker extends User {
   working: boolean
   last_seen_at: string | null
 }
+export interface ScreenshotLocation {
+  status: 'available' | 'disabled' | 'unavailable'
+  captured_at: string
+  latitude?: number
+  longitude?: number
+  accuracy_m?: number
+  observed_at?: string
+}
+export interface ApplicationUsage { app: string; milliseconds: number }
 export interface Block {
   id: string
   user_id: string
@@ -22,6 +31,8 @@ export interface Block {
   duration_seconds: number
   active_seconds: number
   screenshot_url: string | null
+  location?: ScreenshotLocation | null
+  application_usage?: ApplicationUsage[]
 }
 export interface Hours {
   user_id: string

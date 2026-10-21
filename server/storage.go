@@ -89,7 +89,7 @@ func (a *app) deleteScreenshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var key string
-	e := a.db.QueryRow(r.Context(), "UPDATE blocks SET screenshot_deleted_at=COALESCE(screenshot_deleted_at,now()) WHERE id=$1 AND user_id=$2 RETURNING screenshot_key", id, current(r).ID).Scan(&key)
+	e := a.db.QueryRow(r.Context(), "UPDATE blocks SET screenshot_deleted_at=COALESCE(screenshot_deleted_at,now()),location=NULL WHERE id=$1 AND user_id=$2 RETURNING screenshot_key", id, current(r).ID).Scan(&key)
 	if e != nil {
 		fail(w, 404, "block not found")
 		return

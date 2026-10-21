@@ -49,6 +49,20 @@ Hours reports and CSV split blocks crossing midnight into exact seconds on each 
 Consequently, summing a timeline day's full blocks can differ from that day's payroll total for cross-midnight work.
 Use the hours report, not a timeline sum, for daily payroll totals.
 
+## Screenshot location and foreground application usage
+
+Each `/api/blocks` entry may include `location` and `application_usage`. Legacy agents may omit both.
+`application_usage` is an array of up to 32 unique `{app,milliseconds}` entries. Names are executable basenames (1–256 UTF-8 bytes), never paths/control characters, and durations must be positive integers whose sum does not exceed the block duration in milliseconds.
+Timeline responses include the same array. The dashboard aggregates selected-worker blocks starting on the selected UTC date into estimated foreground minutes, including idle time. It does not identify browser sites, windows, documents, or all background-running apps.
+
+`location` is null on ordinary time blocks. Screenshot entries may contain `{status,captured_at,latitude?,longitude?,accuracy_m?,observed_at?}`.
+Statuses are `available`, `disabled`, or `unavailable`; local pending states are never accepted by the API.
+Capture timestamps must be within five seconds of the screenshot block end. Available locations require finite latitude [-90,90], longitude [-180,180], positive accuracy up to 20,000,000 metres, and a fix timestamp between two seconds before and ten seconds after capture. Disabled/unavailable records cannot carry coordinates or fix metadata.
+Worker consent and Windows permission govern collection; absence of a location never prevents screenshot/time ingestion. These fields are client-reported and can be approximate or spoofed, not verified attendance evidence.
+
+Existing own-timeline and manager/owner team permissions apply. Duplicate blocks must retain matching metadata. Screenshot deletion physically clears location; time-block deletion clears location and application usage. Retrying an old deleted block cannot restore erased metadata. Work records remain until deletion; database backups have separate retention.
+Deploy this API before a client that sends these fields. Older API versions reject unknown block fields and cannot ingest new-client queues until the compatible API is restored.
+
 ## Desktop diagnostic logs
 
 Diagnostic upload is separately opt-in in the desktop app and independent of tracking delivery.
