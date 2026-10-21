@@ -136,7 +136,7 @@ flowchart LR
   A[Windows agent<br/>Tauri + Rust] -->|HTTPS| C[Caddy]
   M[Manager browser] -->|HTTPS| C
   subgraph VPS[Hetzner Cloud VPS - Docker Compose]
-    C --> W[Next.js app<br/>API + dashboard]
+    C --> W[Go server<br/>API + serves React dashboard]
     W --> P[(Postgres 17)]
   end
   A -->|PUT via presigned URL| S[(Hetzner Object Storage)]
@@ -150,14 +150,16 @@ Three parts:
 2. **Backend API** that stores data.
 3. **Dashboard** for the manager.
 
-Parts 2 and 3 are one Next.js app, running in Docker on one Hetzner VPS.
+Parts 2 and 3 ship as one Go binary in one Docker container.
+The React dashboard is built to static files and embedded into the Go binary with `go:embed`.
+The Go server answers `/api/*` and serves the dashboard for every other path.
 
 ## 5. Tech stack
 
 | Layer | Choice | Reason |
 |---|---|---|
 | Agent shell | Tauri 2 | Small installer, low memory, Rust access to Windows APIs, can add macOS later |
-| Agent UI | React + TypeScript | Same language as the dashboard |
+| Agent UI | React + TypeScript (Vite) | Same tools as the dashboard |
 | Agent logic | Rust | Timers, screenshots, idle checks, uploads |
 | Screenshots | `xcap` crate | Supports Windows 8.1+, all monitors, Apache-2.0 license |
 | Idle and activity | Win32 `GetLastInputInfo` via `windows` crate | Built into Windows, no keyboard hooks, lower antivirus risk |
@@ -165,20 +167,42 @@ Parts 2 and 3 are one Next.js app, running in Docker on one Hetzner VPS.
 | Local buffer | SQLite (`rusqlite`) | Survives crashes and offline periods |
 | Autostart | `tauri-plugin-autostart` | Official plugin, supports Windows |
 | Auto-update | `tauri-plugin-updater` | Official plugin, uses its own free signing key |
-| Backend + dashboard | Next.js (App Router) + TypeScript, `output: "standalone"` | One codebase for API and UI, standalone mode makes a small Docker image |
-| Database | Postgres 17 in Docker + Drizzle ORM | Self-hosted on the same VPS, typed queries and migrations |
+| Backend language | Go (latest stable) | Single static binary, low memory, simple deploys, strong standard library |
+| HTTP router | Go standard library `net/http` (`ServeMux` with method and path patterns) | No framework needed for about 10 endpoints |
+| Database access | `pgx` v5 + `sqlc` | Write plain SQL, `sqlc` generates typed Go functions. No ORM. |
+| Migrations | `goose` | Plain `.sql` files, run on server start |
+| Object Storage client | `aws-sdk-go-v2` (S3) | Presigned PUT and GET URLs against Hetzner's S3 endpoint |
+| Auth | Own code: `argon2id` password hashes, sessions table in Postgres | Small surface. Dashboard uses an HttpOnly cookie. Agent uses a long-lived device token in the `Authorization` header. |
+| Logging | `log/slog` (standard library) | Structured JSON logs, no extra dependency |
+| Config | Environment variables | Set in `docker-compose.yml` from an env file on the server |
+| Dashboard | React + TypeScript + Vite | Plain single-page app, no server rendering needed for an internal tool |
+| Dashboard routing and data | TanStack Router + TanStack Query | Typed routes, caching and refetching for API calls |
+| Dashboard UI | Tailwind CSS + shadcn/ui | Ready-made accessible components, no design system to build |
+| Database | Postgres 17 in Docker | Self-hosted on the same VPS |
 | File storage | Hetzner Object Storage (S3-compatible) | Presigned URLs, built-in object expiry for screenshot retention, 1 TB included in base price |
-| Auth | Better Auth (self-hosted, tables in our Postgres) | Open source, sessions, roles, invites |
 | Reverse proxy + HTTPS | Caddy | Automatic Let's Encrypt certificates, one short config file |
-| Server | Hetzner Cloud VPS, Ubuntu 24.04 LTS, Docker Compose | One machine runs Caddy, Next.js, Postgres |
+| Server | Hetzner Cloud VPS, Ubuntu 24.04 LTS, Docker Compose | One machine runs Caddy, the Go server, Postgres |
 | Firewall | Hetzner Cloud Firewall | Free, only ports 22 (SSH, your IP only), 80, 443 open |
 | Backups | Nightly `pg_dump` to Object Storage + Hetzner server backups | Two independent copies of the database |
 | Agent updates | `latest.json` + installer in an Object Storage bucket | Tauri updater reads it, stays inside Hetzner |
-| CI and builds | GitHub Actions | `windows-latest` builds the installer. Linux runner builds the web Docker image and deploys over SSH |
+| CI and builds | GitHub Actions | `windows-latest` builds the installer. Linux runner builds the dashboard, then the Go binary, then the Docker image, and deploys over SSH |
 | Container registry | GitHub Container Registry (GHCR) | Free for private images, only stores build output |
-| Repo | pnpm monorepo | `apps/agent`, `apps/web`, `packages/shared` |
+| Repo layout | One git repo: `agent/` (Tauri), `server/` (Go), `web/` (React dashboard), `deploy/` (Compose, Caddyfile) | Each part builds on its own. pnpm workspace links `agent/` and `web/` for shared TypeScript types. |
 
-Not used anymore: Vercel, Neon, Cloudflare R2.
+Not used anymore: Vercel, Neon, Cloudflare R2, Next.js, Drizzle, Better Auth.
+
+### Why Go + React instead of Next.js
+
+- The dashboard is behind a login, so server rendering and SEO add nothing.
+- One Go binary holds the API and the dashboard files, so deploy is "copy one container and restart".
+- Go uses about 20 to 50 MB of RAM at this scale, which leaves room on a 4 GB VPS.
+- Plain SQL with `sqlc` keeps queries readable and fast, with type checking at compile time.
+
+### API contract between Go, React and the agent
+
+- Keep an `openapi.yaml` in `server/` as the single source of truth.
+- Generate TypeScript types for `web/` and the agent UI with `openapi-typescript`.
+- The Rust agent uses small hand-written `serde` structs for the 3 endpoints it calls.
 
 ### Hetzner layout
 
@@ -193,9 +217,9 @@ Not used anymore: Vercel, Neon, Cloudflare R2.
 ### Deployment flow
 
 1. Push to `main`.
-2. GitHub Actions builds the `web` Docker image and pushes it to GHCR.
+2. GitHub Actions builds the React dashboard, embeds it into the Go binary, builds a small Docker image (distroless or `scratch`), and pushes it to GHCR.
 3. The action SSHes into the VPS and runs `docker compose pull && docker compose up -d`.
-4. The web container runs Drizzle migrations on start.
+4. The Go server runs `goose` migrations on start.
 
 Agent release flow:
 1. Push a tag like `agent-v0.1.0`.
@@ -315,6 +339,8 @@ A new certificate still shows warnings until it builds reputation.
 ```text
 organizations   id, name, created_at
 users           id, org_id, email, name, role (owner|manager|worker), hourly_rate, created_at
+sessions        id, user_id, kind (browser|device), token_hash, device_id, expires_at, created_at
+invites         id, org_id, role, token_hash, expires_at, used_at
 devices         id, user_id, hostname, agent_version, last_seen_at
 blocks          id, user_id, device_id, start_at, active_seconds, idle_discarded, deleted_by_worker
 screenshots     id, block_id, object_key, taken_at, width, height, bytes
@@ -328,7 +354,9 @@ Hours = count of non-deleted blocks x 10 minutes.
 
 | Method | Path | Who | Purpose |
 |---|---|---|---|
-| POST | `/api/auth/*` | All | Better Auth login and session |
+| POST | `/api/auth/login` | All | Email and password. Dashboard gets a session cookie. Agent gets a device token. |
+| POST | `/api/auth/logout` | All | End the session or revoke the device token |
+| POST | `/api/auth/accept-invite` | New worker | Set password from an invite link |
 | POST | `/api/uploads/screenshot-url` | Agent | Returns a presigned Object Storage PUT URL |
 | POST | `/api/blocks` | Agent | Save one or more finished blocks |
 | DELETE | `/api/blocks/:id` | Worker | Delete own block and screenshot |
@@ -381,7 +409,7 @@ Open questions for the owner:
 ## 13. Next steps
 
 1. Confirm screenshot retention.
-2. Scaffold the monorepo (`apps/agent`, `apps/web`, `packages/shared`).
+2. Scaffold the repo (`agent/`, `server/`, `web/`, `deploy/`).
 3. Build the agent core: timer, blocks, idle, screenshot, SQLite buffer.
 4. Build the API and database schema.
 5. Build the dashboard timeline and CSV export.
