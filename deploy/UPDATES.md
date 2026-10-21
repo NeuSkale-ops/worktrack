@@ -2,7 +2,8 @@
 
 Status: plumbing only.
 No signing key, GitHub environment, public update directory, or production manifest is created by this change.
-The committed app remains version `0.1.1`, with an empty public key and updater artifact generation disabled.
+The source is prepared as version `0.1.2`, with an empty public key and updater artifact generation disabled until signing setup.
+This version change alone does not create a signed or published release.
 The release helper refuses legacy versions, missing keys, mismatched versions, changed identity/scope, unsigned-version signatures, and unexpected URLs.
 Ordinary unsigned Windows CI and its fresh-install smoke workflow are unchanged.
 
