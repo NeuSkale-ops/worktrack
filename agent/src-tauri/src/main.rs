@@ -58,6 +58,7 @@ type Shared = Arc<Mutex<Runtime>>;
 struct Status {
     authenticated: bool,
     tracking: bool,
+    stopping: bool,
     paused: bool,
     elapsed: f64,
     next_capture: f64,
@@ -99,6 +100,7 @@ fn snapshot_status(shared: &Shared) -> Result<Status, String> {
     Ok(Status {
         authenticated: r.token.is_some(),
         tracking: r.session.is_some(),
+        stopping: r.pending_stop.is_some(),
         paused: r.paused,
         elapsed: r.elapsed,
         next_capture: (r.next_capture - r.elapsed).max(0.0),
@@ -1000,6 +1002,20 @@ mod tests {
         assert_eq!(r.queue.count(), 2);
         stop_runtime(&mut r).unwrap();
         assert_eq!(r.queue.count(), 2);
+    }
+    #[test]
+    fn status_exposes_pending_stop_until_records_are_saved() {
+        let mut r = runtime();
+        let id = r.session.take().unwrap();
+        r.queue.set("active_session", &id).unwrap();
+        r.pending_stop = Some((id, utc_now()));
+        let shared = Arc::new(Mutex::new(r));
+        let status = snapshot_status(&shared).unwrap();
+        assert!(status.stopping);
+        assert!(!status.tracking);
+        assert_eq!(status.queued, 0);
+        stop_runtime(&mut shared.lock().unwrap()).unwrap();
+        assert!(!snapshot_status(&shared).unwrap().stopping);
     }
     #[test]
     fn failed_final_writes_stop_collection_and_retry_without_losing_time() {
