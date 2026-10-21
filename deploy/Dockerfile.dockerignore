@@ -1,0 +1,12 @@
+**
+!server/
+!server/**
+!web/
+!web/**
+!deploy/
+!deploy/Caddyfile
+**/node_modules
+**/dist
+**/.env*
+**/target
+**/.git
