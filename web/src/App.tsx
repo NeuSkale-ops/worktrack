@@ -432,7 +432,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
                 <p className="muted">
                   {busy
                     ? 'Loading…'
-                    : `${blocks.length} blocks · ${duration(ownBlocks)} tracked`}
+                    : `${blocks.length} ${blocks.length === 1 ? 'block' : 'blocks'} · ${duration(ownBlocks)} tracked`}
                 </p>
               </div>
               <label className="date-label">
