@@ -116,10 +116,50 @@ jobs:
       - name: Verify exact installer, trusted version, signature and checksum
         env:
           RELEASE_CHANNEL: ${{ inputs.channel }}
-        run: python scripts/updater_release.py verify --archive updater-candidate.tar --public-key updater-public-key.txt --channel "$RELEASE_CHANNEL"
-  publish:
+        run: |
+          python -c 'import json,pathlib; expected=json.loads(pathlib.Path("agent/src-tauri/tauri.conf.json").read_text())["plugins"]["updater"]["pubkey"]; actual=pathlib.Path("updater-public-key.txt").read_text().strip(); assert actual == expected, "Candidate key differs from committed trust anchor"'
+          python scripts/updater_release.py verify --archive updater-candidate.tar --public-key updater-public-key.txt --channel "$RELEASE_CHANNEL"
+  upgrade:
     needs: verify
-    if: inputs.publish && (inputs.channel == 'staging' || inputs.upgrade_evidence != '') && github.ref == 'refs/heads/main'
+    if: inputs.channel == 'production'
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: updater-candidate
+      - name: Download immutable signed baseline
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $baseline = Join-Path $env:RUNNER_TEMP 'worktrack-baseline-0.1.5.exe'
+          Invoke-WebRequest 'https://worktrack.178.156.213.40.sslip.io/downloads/0.1.5/WorkTrack_0.1.5_x64-setup.exe' -OutFile $baseline
+          if ((Get-FileHash $baseline -Algorithm SHA256).Hash.ToLowerInvariant() -ne '0ed92d211340e34d9228b5d3d434e6463ac8507102f3a2ac85ad633479935638') { throw 'Baseline differs from the previously verified signed installer' }
+      - name: Exercise actual installed Windows in-app upgrade and recovery
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        shell: pwsh
+        run: |
+          ./scripts/updater_upgrade_acceptance.ps1 -Candidate "$pwd/updater-candidate.tar" -Baseline "$env:RUNNER_TEMP/worktrack-baseline-0.1.5.exe" -ExpectedVersion $env:RELEASE_VERSION
+      - name: Retain native upgrade evidence without credentials or certificates
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-upgrade-evidence
+          path: ${{ runner.temp }}/worktrack-upgrade-evidence/upgrade-evidence.json
+          if-no-files-found: warn
+          retention-days: 30
+  publish:
+    needs: [verify, upgrade]
+    if: >-
+      !cancelled() && needs.verify.result == 'success' &&
+      (inputs.channel == 'staging' || needs.upgrade.result == 'success') &&
+      inputs.publish && (inputs.channel == 'staging' || inputs.upgrade_evidence != '') &&
+      github.ref == 'refs/heads/main'
     environment: ${{ inputs.channel == 'production' && 'updater-production' || 'updater-staging' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
