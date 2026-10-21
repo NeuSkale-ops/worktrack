@@ -12,6 +12,13 @@ The download path is public, versioned, and immutable.
 The private GitHub repository does not need to be made public.
 No credentials or worker data are stored in the download directory.
 
+## Standalone deployment
+
+The default `compose.yaml` mounts `/srv/worktrack-downloads` read-only, and its Caddy configuration serves `/downloads/*` as files rather than the React app.
+Place the verified installer and `SHA256SUMS` under `/srv/worktrack-downloads/0.1.2/` with mode 0755 directories and 0644 files.
+Use the standalone Compose commands in `README.md`. The shared-host image overlay below is not required.
+`deploy/test-web.sh` checks exact fixture bytes, attachment/cache headers, and 404 responses for missing, hidden, and directory paths against the standalone image.
+
 ## Shared host deployment
 
 Build the AMD64 web image away from the shared VM and load it as `worktrack-web:downloads-0.1.2`.

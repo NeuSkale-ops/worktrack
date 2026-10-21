@@ -17,6 +17,15 @@ http://{$APP_DOMAIN}:8080 {
 		Referrer-Policy same-origin
 		-Server
 	}
+	handle_path /downloads/* {
+		root * /srv/downloads
+		@download_hidden path_regexp download_hidden (^|/)\.[^/]*
+		respond @download_hidden 404
+		header Cache-Control "public, max-age=31536000, immutable"
+		@installer path *.exe
+		header @installer Content-Disposition "attachment"
+		file_server
+	}
 	@api path /api /api/* /healthz
 	handle @api {
 		reverse_proxy api:8080

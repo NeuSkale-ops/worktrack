@@ -72,6 +72,7 @@ services:
     volumes:
       - caddy_data:/data
       - caddy_config:/config
+      - /srv/worktrack-downloads:/srv/downloads:ro
     read_only: true
     tmpfs: ['/tmp:size=16m,mode=1777']
     cap_drop: [ALL]

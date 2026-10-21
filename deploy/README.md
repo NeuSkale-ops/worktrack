@@ -61,6 +61,15 @@ Do not print expanded `compose config` output because it includes credentials.
 Verify HTTPS, browser login, direct agent login, screenshot upload/download, restart persistence, and an off-host backup restore before production use.
 The web health check only checks Caddy liveness, so the external `/api/health` check is also required.
 
+## Standalone installer downloads
+
+The default web service mounts `/srv/worktrack-downloads` read-only at `/srv/downloads` and serves `/downloads/*` without the React fallback.
+Before offering downloads, place the independently verified production installer at `/srv/worktrack-downloads/0.1.2/WorkTrack_0.1.2_x64-setup.exe` and its `SHA256SUMS` alongside it.
+Directories must be traversable and files readable by UID 10001, for example mode 0755 directories and 0644 public installer files.
+These files are public and immutable. Never place secrets or worker data in this directory.
+Missing files return 404, including when no installer has been provisioned.
+See `DOWNLOADS.md` for signature verification and release acceptance.
+
 ## Backups
 
 Install `age` on the host and create an encryption key on a separate trusted recovery machine.
