@@ -171,6 +171,30 @@ input {
 .status-dot.active {
   background: #23835e;
 }
+.download-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px;
+  margin-bottom: 28px;
+  background: white;
+  border: 1px solid #d6e0e6;
+  border-radius: 7px;
+}
+.download-card > div {
+  flex: 1 1 360px;
+  min-width: 0;
+}
+.download-card ol {
+  padding-left: 20px;
+  margin: 14px 0;
+}
+.download-card .button {
+  max-width: 100%;
+  text-align: center;
+}
 .overview {
   display: flex;
   border: 1px solid #d6e0e6;

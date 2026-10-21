@@ -354,6 +354,32 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
             {error} Existing data may be out of date.
           </div>
         )}
+        <section className="download-card" aria-labelledby="download-heading">
+          <div>
+            <h2 id="download-heading">Get WorkTrack for Windows</h2>
+            <p className="muted">Windows 64-bit · v0.1.2</p>
+            <ol>
+              <li>Download and install WorkTrack.</li>
+              <li>Sign in with your existing account.</li>
+              <li>Select Start tracking.</li>
+            </ol>
+            <p className="muted">
+              This installer is updater-enabled and supports signed updates.
+              Future production updates require publishing the update feed.
+            </p>
+            <p className="muted">
+              Windows may show a publisher warning during installation. This is
+              separate from signed update verification.
+            </p>
+          </div>
+          <a
+            className="button primary"
+            href="/downloads/0.1.2/WorkTrack_0.1.2_x64-setup.exe"
+            download
+          >
+            Download for Windows 64-bit (v0.1.2)
+          </a>
+        </section>
         <section className="overview" aria-label="Work summary">
           <div>
             <span>
