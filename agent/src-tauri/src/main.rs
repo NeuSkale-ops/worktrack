@@ -194,18 +194,44 @@ fn stop(state: State<Shared>) -> Result<(), String> {
     updater::ensure_not_reserved(&r)?;
     stop_runtime(&mut r)
 }
-#[tauri::command]
-fn logout(state: State<Shared>) -> Result<(), String> {
-    let mut r = state.lock().map_err(|e| e.to_string())?;
-    updater::ensure_not_reserved(&r)?;
-    if r.session.is_some() || r.queue.count() > 0 {
-        return Err("Stop and sync before signing out".into());
+fn revoke_device(server: &str, token: &str) -> Result<(), String> {
+    let response = client()?
+        .post(format!("{server}/api/auth/logout"))
+        .bearer_auth(token)
+        .json(&json!({}))
+        .send()
+        .map_err(|_| {
+            "Cannot reach server. Sign-out was not completed. Retry when online.".to_string()
+        })?;
+    // A retry after successful revocation may already have an invalid token.
+    if !response.status().is_success() && response.status() != reqwest::StatusCode::UNAUTHORIZED {
+        return Err(format!(
+            "Sign-out rejected ({}). Saved sign-in retained for retry.",
+            response.status()
+        ));
     }
-    credential(&r.server)?
-        .delete_credential()
-        .map_err(|e| e.to_string())?;
-    r.token = None;
     Ok(())
+}
+#[tauri::command]
+async fn logout(state: State<'_, Shared>) -> Result<(), String> {
+    let shared = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut r = shared.lock().map_err(|e| e.to_string())?;
+        updater::ensure_not_reserved(&r)?;
+        if r.session.is_some() || r.queue.first()?.is_some() {
+            return Err("Stop and sync before signing out".into());
+        }
+        if let Some(token) = &r.token {
+            revoke_device(&r.server, token)?;
+        }
+        credential(&r.server)?
+            .delete_credential()
+            .map_err(|e| e.to_string())?;
+        r.token = None;
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 fn screenshot() -> Result<Vec<u8>, String> {
     if !platform::unlocked() {
@@ -571,6 +597,47 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn device_logout_revokes_token_and_handles_retries() {
+        use std::io::{Read, Write};
+        for (status, success) in [(200, true), (401, true), (503, false)] {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let server = format!("http://{}", listener.local_addr().unwrap());
+            let worker = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                let mut request = Vec::new();
+                let mut byte = [0u8; 1];
+                while !request.ends_with(b"\r\n\r\n") {
+                    stream.read_exact(&mut byte).unwrap();
+                    request.push(byte[0]);
+                }
+                let mut body = [0u8; 2];
+                stream.read_exact(&mut body).unwrap();
+                assert_eq!(&body, b"{}");
+                let text = String::from_utf8(request).unwrap();
+                assert!(text.starts_with("POST /api/auth/logout HTTP/1.1\r\n"));
+                assert!(text
+                    .to_ascii_lowercase()
+                    .contains("authorization: bearer test-device\r\n"));
+                write!(
+                    stream,
+                    "HTTP/1.1 {status} Test\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                )
+                .unwrap();
+            });
+            let result = revoke_device(&server, "test-device");
+            assert_eq!(result.is_ok(), success, "status {status}: {result:?}");
+            worker.join().unwrap();
+        }
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let server = format!("http://{}", listener.local_addr().unwrap());
+        drop(listener);
+        assert!(revoke_device(&server, "test-device").is_err());
+    }
 
     #[test]
     fn fixed_server_preserves_queue_ownership() {
