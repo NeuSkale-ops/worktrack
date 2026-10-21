@@ -129,14 +129,20 @@ Manager dashboard (web):
 
 ## 4. Architecture
 
+Everything server-side runs on Hetzner (decision 2026-10-21: no Vercel, no other cloud).
+
 ```mermaid
 flowchart LR
-  A[Windows agent<br/>Tauri + Rust] -->|1. request upload URL| B[Next.js API]
-  A -->|2. PUT screenshot| R[(Cloudflare R2)]
-  A -->|3. POST activity blocks| B
-  B --> P[(Postgres on Neon)]
-  D[Dashboard<br/>Next.js pages] --> B
-  D -->|signed GET URLs| R
+  A[Windows agent<br/>Tauri + Rust] -->|HTTPS| C[Caddy]
+  M[Manager browser] -->|HTTPS| C
+  subgraph VPS[Hetzner Cloud VPS - Docker Compose]
+    C --> W[Next.js app<br/>API + dashboard]
+    W --> P[(Postgres 17)]
+  end
+  A -->|PUT via presigned URL| S[(Hetzner Object Storage)]
+  W -->|presign + lifecycle| S
+  M -->|GET via presigned URL| S
+  P -.->|nightly pg_dump| S
 ```
 
 Three parts:
@@ -144,7 +150,7 @@ Three parts:
 2. **Backend API** that stores data.
 3. **Dashboard** for the manager.
 
-Parts 2 and 3 are one Next.js app.
+Parts 2 and 3 are one Next.js app, running in Docker on one Hetzner VPS.
 
 ## 5. Tech stack
 
@@ -159,13 +165,51 @@ Parts 2 and 3 are one Next.js app.
 | Local buffer | SQLite (`rusqlite`) | Survives crashes and offline periods |
 | Autostart | `tauri-plugin-autostart` | Official plugin, supports Windows |
 | Auto-update | `tauri-plugin-updater` | Official plugin, uses its own free signing key |
-| Backend + dashboard | Next.js (App Router) + TypeScript | One codebase for API and UI |
-| Database | Postgres on Neon + Drizzle ORM | Managed, typed queries, free tier to start |
-| File storage | Cloudflare R2 | S3-compatible, no egress fees |
-| Auth | Better Auth | Open source, roles and invites, also offered managed by Neon |
-| Hosting | Vercel | Simple deploys from git |
-| CI and builds | GitHub Actions `windows-latest` | Builds the Windows installer, since development is on a Mac |
+| Backend + dashboard | Next.js (App Router) + TypeScript, `output: "standalone"` | One codebase for API and UI, standalone mode makes a small Docker image |
+| Database | Postgres 17 in Docker + Drizzle ORM | Self-hosted on the same VPS, typed queries and migrations |
+| File storage | Hetzner Object Storage (S3-compatible) | Presigned URLs, built-in object expiry for screenshot retention, 1 TB included in base price |
+| Auth | Better Auth (self-hosted, tables in our Postgres) | Open source, sessions, roles, invites |
+| Reverse proxy + HTTPS | Caddy | Automatic Let's Encrypt certificates, one short config file |
+| Server | Hetzner Cloud VPS, Ubuntu 24.04 LTS, Docker Compose | One machine runs Caddy, Next.js, Postgres |
+| Firewall | Hetzner Cloud Firewall | Free, only ports 22 (SSH, your IP only), 80, 443 open |
+| Backups | Nightly `pg_dump` to Object Storage + Hetzner server backups | Two independent copies of the database |
+| Agent updates | `latest.json` + installer in an Object Storage bucket | Tauri updater reads it, stays inside Hetzner |
+| CI and builds | GitHub Actions | `windows-latest` builds the installer. Linux runner builds the web Docker image and deploys over SSH |
+| Container registry | GitHub Container Registry (GHCR) | Free for private images, only stores build output |
 | Repo | pnpm monorepo | `apps/agent`, `apps/web`, `packages/shared` |
+
+Not used anymore: Vercel, Neon, Cloudflare R2.
+
+### Hetzner layout
+
+| Item | Choice | Why |
+|---|---|---|
+| Location | eu-central (Falkenstein FSN1 or Nuremberg NBG1) | Object Storage exists only in FSN1, NBG1, HEL1. Keeping the VPS in the same zone makes VPS-to-storage traffic free. India to Germany latency (about 150 ms) is fine because uploads run in the background. |
+| VPS size | 2 vCPU, 4 GB RAM, 80 GB NVMe (CPX22, or CX23 / CAX11 if in stock) | Plenty for 25 workers. Postgres stays under 1 GB for a long time. Several types showed "not available" on 2026-10-21, so pick whatever 4 GB type is in stock. |
+| Object Storage | 1 bucket `worktrack-screenshots` (private), 1 bucket `worktrack-backups` (private, object lock), 1 bucket `worktrack-releases` (public read) | Separate rules per purpose |
+| Retention | Object expiry rule on `worktrack-screenshots` (default 90 days) | Hetzner deletes old screenshots for us, no cron job needed |
+| Domain | `app.<yourdomain>` A record to the VPS IP | Caddy gets the HTTPS certificate on first request |
+
+### Deployment flow
+
+1. Push to `main`.
+2. GitHub Actions builds the `web` Docker image and pushes it to GHCR.
+3. The action SSHes into the VPS and runs `docker compose pull && docker compose up -d`.
+4. The web container runs Drizzle migrations on start.
+
+Agent release flow:
+1. Push a tag like `agent-v0.1.0`.
+2. GitHub Actions on `windows-latest` builds the NSIS installer and the updater signature.
+3. The action uploads the installer and `latest.json` to the `worktrack-releases` bucket.
+4. Agents pick up the update on next check.
+
+### Things Hetzner does not do for us
+
+- **No managed Postgres.** We run it ourselves, so backups and upgrades are our job (covered above).
+- **Email.** Hetzner Cloud blocks outgoing mail ports 25 and 465 by default.
+  V1 avoids email: the dashboard creates an invite link that you copy and send on WhatsApp or Slack.
+  If email is needed later, use an SMTP provider on port 587 (for example Brevo or Amazon SES).
+- **No single-click rollbacks like Vercel.** Rollback means deploying the previous image tag.
 
 ### Why Tauri over the alternatives
 
@@ -185,7 +229,7 @@ Parts 2 and 3 are one Next.js app.
 | Activity % | Poll `GetLastInputInfo` every 1 second. If last input changed since the previous poll, count that second as active. |
 | Idle | If time since last input is more than 5 minutes, pause the block and show a prompt when the worker returns. |
 | Blocks | Fixed 10-minute windows aligned to the clock (10:00, 10:10, ...). Each block holds start time, active seconds, and screenshot key. |
-| Upload | Every block end: ask API for a presigned R2 URL, PUT the JPEG, POST block metadata. Retry from SQLite on failure. |
+| Upload | Every block end: ask API for a presigned Object Storage URL, PUT the JPEG, POST block metadata. Retry from SQLite on failure. |
 | Autostart | Registry Run key through the autostart plugin. The app opens to the tray, timer stays off until the worker starts it. |
 
 ### Notes from Microsoft docs
@@ -273,7 +317,7 @@ organizations   id, name, created_at
 users           id, org_id, email, name, role (owner|manager|worker), hourly_rate, created_at
 devices         id, user_id, hostname, agent_version, last_seen_at
 blocks          id, user_id, device_id, start_at, active_seconds, idle_discarded, deleted_by_worker
-screenshots     id, block_id, r2_key, taken_at, width, height, bytes
+screenshots     id, block_id, object_key, taken_at, width, height, bytes
 consents        id, user_id, version, accepted_at
 ```
 
@@ -285,7 +329,7 @@ Hours = count of non-deleted blocks x 10 minutes.
 | Method | Path | Who | Purpose |
 |---|---|---|---|
 | POST | `/api/auth/*` | All | Better Auth login and session |
-| POST | `/api/uploads/screenshot-url` | Agent | Returns a presigned R2 PUT URL |
+| POST | `/api/uploads/screenshot-url` | Agent | Returns a presigned Object Storage PUT URL |
 | POST | `/api/blocks` | Agent | Save one or more finished blocks |
 | DELETE | `/api/blocks/:id` | Worker | Delete own block and screenshot |
 | GET | `/api/timeline?user&date` | Manager | Blocks with signed screenshot URLs |
@@ -311,11 +355,14 @@ Multi-monitor workers add more.
 
 | Item | Cost |
 |---|---|
-| Cloudflare R2 | Free tier covers 10 GB and 1 million writes per month. At 12 GB, about $0.03 per month over the free tier. |
-| Neon Postgres | Free tier: 1 GB storage, 100 compute hours per month. Enough for a pilot. |
-| Vercel | Hobby plan is for non-commercial use. Plan for Pro at about $20 per month for business use (not re-verified). |
+| Hetzner VPS (4 GB) | About €6.49 to €10 per month excl. VAT (Regular Performance plans start at €6.49, exact price depends on type and stock) |
+| Hetzner server backups | 20% of the VPS price, about €1.50 to €2 per month (not re-verified) |
+| Hetzner Object Storage | €6.49 per month base, includes 1 TB storage and 1 TB egress. We use about 12 GB, so no extra cost. API calls are free. |
+| Domain | About €10 per year |
 | Code signing | $0 now (unsigned). Later about $200 to $500 per year. |
-| **Total** | **About $0 to $20 per month for the pilot** |
+| **Total** | **About €15 to €20 per month excl. VAT** |
+
+This is a flat cost that barely changes between 25 and 200 workers.
 
 ## 12. Risks and open questions
 
@@ -353,8 +400,9 @@ Open questions for the owner:
 - `Unblock-File`: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/unblock-file
 - `GetLastInputInfo`: https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getlastinputinfo
 - xcap: https://github.com/nashaofu/xcap
-- Cloudflare R2 pricing: https://developers.cloudflare.com/r2/pricing/
-- Neon pricing: https://neon.com/pricing
+- Hetzner Cloud: https://www.hetzner.com/cloud/
+- Hetzner Regular Performance plans: https://www.hetzner.com/cloud/regular-performance/
+- Hetzner Object Storage (pricing, locations, expiry, presigned URLs): https://www.hetzner.com/storage/object-storage/
 - SignPath Foundation: https://signpath.org/
 - Worksnaps pricing: https://www.worksnaps.net/www/pricing.shtml
 - Insightful pricing: https://www.insightful.io/pricing
