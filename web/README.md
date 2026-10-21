@@ -55,6 +55,7 @@ Workers see their own data; managers/owners can see team timelines. Deleting a s
 - Only owners see **Desktop diagnostic logs (owner only)** below the timesheet. Expand it and click **Load recent logs** for the newest 100 opted-in desktop events from the last seven days. It does not fetch automatically. Managers/workers have no diagnostic panel, and the API independently enforces owner access.
 - Workers see only their own timeline and hours.
 - Status, timeline URLs, and hours refresh every 30 seconds while the tab is visible.
+- Time-only blocks are not failed screenshots. Timeline labels distinguish no capture, deliberate deletion, and temporary storage unavailability; normal blocks upload about every 30 seconds, screenshots every ten running minutes. Location labels are omitted for time-only/deleted screenshots.
 - Reporting dates and timeline times are UTC, matching the API.
 - The selected date chooses the Monday-to-Sunday reporting week and CSV export range.
 - A stale unfinished session can be recovered for the signed-in user after two minutes without a heartbeat. This requires confirmation and is only for a lost computer or app data. Stop and sync the original computer if available, since recovery can prevent its remaining queued records from syncing.

@@ -31,6 +31,7 @@ export interface Block {
   duration_seconds: number
   active_seconds: number
   screenshot_url: string | null
+  screenshot_status?: 'not_captured' | 'deleted' | 'available' | 'unavailable'
   location?: ScreenshotLocation | null
   application_usage?: ApplicationUsage[]
 }

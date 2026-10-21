@@ -10,15 +10,20 @@ if (!['owner', 'manager', 'worker'].includes(role)) throw new Error('Unknown tes
 const user = { id: '00000000-0000-4000-8000-000000000001', email: 'fixture@example.test', name: 'Fixture', role };
 let logCalls = 0;
 let mode = 'events';
+const screenshotCanvas = document.createElement('canvas');
+screenshotCanvas.width = screenshotCanvas.height = 1;
+const screenshotImage = screenshotCanvas.toDataURL('image/jpeg');
 window.fetch = async input => {
   const path = String(input);
   if (path === '/api/auth/me') return Response.json(user);
   if (path === '/api/team') return Response.json([user]);
   if (path.startsWith('/api/reports/hours?')) return Response.json([]);
   if (path.startsWith('/api/timeline?')) return Response.json([
-    { id:'one', user_id:user.id, start_at:'2026-10-21T12:00:00Z', end_at:'2026-10-21T12:01:00Z', duration_seconds:60, active_seconds:30, screenshot_url:null, location:{status:'available',captured_at:'2026-10-21T12:01:00Z',latitude:0,longitude:0,accuracy_m:25,observed_at:'2026-10-21T12:01:01Z'}, application_usage:[{app:'chrome.exe',milliseconds:60000}] },
-    { id:'two', user_id:user.id, start_at:'2026-10-21T12:01:00Z', end_at:'2026-10-21T12:02:00Z', duration_seconds:60, active_seconds:30, screenshot_url:null, location:{status:'unavailable',captured_at:'2026-10-21T12:02:00Z'}, application_usage:[{app:'chrome.exe',milliseconds:30000},{app:'code.exe',milliseconds:30000}] },
-    { id:'three', user_id:user.id, start_at:'2026-10-21T12:02:00Z', end_at:'2026-10-21T12:02:30Z', duration_seconds:30, active_seconds:10, screenshot_url:null, location:{status:'disabled',captured_at:'2026-10-21T12:02:30Z'}, application_usage:[] },
+    { id:'one', user_id:user.id, start_at:'2026-10-21T12:00:00Z', end_at:'2026-10-21T12:01:00Z', duration_seconds:60, active_seconds:30, screenshot_url:screenshotImage, screenshot_status:'available', location:{status:'available',captured_at:'2026-10-21T12:01:00Z',latitude:0,longitude:0,accuracy_m:25,observed_at:'2026-10-21T12:01:01Z'}, application_usage:[{app:'chrome.exe',milliseconds:60000}] },
+    { id:'two', user_id:user.id, start_at:'2026-10-21T12:01:00Z', end_at:'2026-10-21T12:02:00Z', duration_seconds:60, active_seconds:30, screenshot_url:null, screenshot_status:'unavailable', location:{status:'unavailable',captured_at:'2026-10-21T12:02:00Z'}, application_usage:[{app:'chrome.exe',milliseconds:30000},{app:'code.exe',milliseconds:30000}] },
+    { id:'three', user_id:user.id, start_at:'2026-10-21T12:02:00Z', end_at:'2026-10-21T12:02:30Z', duration_seconds:30, active_seconds:10, screenshot_url:screenshotImage, screenshot_status:'available', location:{status:'disabled',captured_at:'2026-10-21T12:02:30Z'}, application_usage:[] },
+    { id:'four', user_id:user.id, start_at:'2026-10-21T12:02:30Z', end_at:'2026-10-21T12:03:00Z', duration_seconds:30, active_seconds:10, screenshot_url:null, screenshot_status:'not_captured', location:null, application_usage:[] },
+    { id:'five', user_id:user.id, start_at:'2026-10-21T12:03:00Z', end_at:'2026-10-21T12:03:30Z', duration_seconds:30, active_seconds:10, screenshot_url:null, screenshot_status:'deleted', location:null, application_usage:[] },
   ]);
   if (path === '/api/sessions/current') return Response.json(null);
   if (path === '/api/agent/logs') {
@@ -51,8 +56,15 @@ try {
   await check('real dashboard loaded', () => Boolean(document.querySelector('.page-heading')));
   await check('foreground minutes aggregate for selected worker/day', () => [...document.querySelectorAll('[aria-labelledby="applications-heading"] tbody tr')].some(row => row.innerText.includes('chrome.exe') && row.innerText.includes('1.50')));
   await check('location shows zero coordinates, accuracy and honest missing states', () => document.body.innerText.includes('0.00000, 0.00000 (accuracy ±25 m)') && document.body.innerText.includes('Screenshot location: unavailable') && document.body.innerText.includes('Screenshot location: sharing off'));
+  await check('stored screenshot image decodes and renders', () => document.querySelector('.screenshot img')?.naturalWidth === 1);
+  await check('ordinary time blocks explain screenshot scheduling', () => document.body.innerText.includes('No screenshot captured (30s time block).') && document.body.innerText.includes('every 10 running minutes'));
+  await check('deleted screenshots and storage unavailability have distinct labels', () => document.body.innerText.includes('Screenshot deleted.') && document.body.innerText.includes('Screenshot temporarily unavailable.'));
   document.querySelector('.screenshot').click();
   await check('screenshot dialog includes associated location', () => document.querySelector('dialog[open]')?.innerText.includes('accuracy ±25 m'));
+  document.querySelector('dialog button').click();
+  await wait(100);
+  document.querySelectorAll('.screenshot')[3].click();
+  await check('time-only block dialog does not claim an image is unavailable', () => document.querySelector('dialog[open]')?.innerText.includes('No screenshot captured (30s time block).') && !document.querySelector('dialog[open]')?.innerText.includes('Screenshot location:'));
   document.querySelector('dialog button').click();
   if (role === 'owner') {
     const panel = document.querySelector('.diagnostic-logs');

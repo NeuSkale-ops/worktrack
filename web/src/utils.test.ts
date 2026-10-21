@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { activity, applicationTotals, duration, locationText, utcDate, weekRange } from './utils.ts'
+import { activity, applicationTotals, duration, locationText, screenshotPlaceholder, utcDate, weekRange } from './utils.ts'
 
+test('time-only and deleted blocks are not mislabeled as unavailable screenshots', () => {
+  assert.equal(screenshotPlaceholder({ screenshot_status: 'not_captured', duration_seconds: 30 }), 'No screenshot captured (30s time block).')
+  assert.equal(screenshotPlaceholder({ screenshot_status: 'deleted', duration_seconds: 30 }), 'Screenshot deleted.')
+  assert.equal(screenshotPlaceholder({ screenshot_status: 'unavailable', duration_seconds: 30 }), 'Screenshot temporarily unavailable.')
+  assert.equal(screenshotPlaceholder({ duration_seconds: 30 }), 'No screenshot attached to this time block.')
+})
 test('foreground milliseconds aggregate by app without inventing older-client data', () => {
   assert.deepEqual(applicationTotals([{}, { application_usage: [{ app: 'chrome.exe', milliseconds: 60000 }] }, { application_usage: [{ app: 'chrome.exe', milliseconds: 30000 }, { app: 'code.exe', milliseconds: 10000 }] }]), [{ app: 'chrome.exe', milliseconds: 90000 }, { app: 'code.exe', milliseconds: 10000 }])
 })

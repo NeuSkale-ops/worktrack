@@ -25,7 +25,7 @@ Agent requests use Authorization: Bearer <device_token>.
 | POST | /api/blocks | {blocks:[{id:UUID,session_id:UUID,start_at,end_at,active_seconds:integer,screenshot_key?:string}]} | {ok:true} |
 | DELETE | /api/blocks/{id}/screenshot | | {ok:true}, preserves tracked time |
 | DELETE | /api/blocks/{id} | | {ok:true} |
-| GET | /api/timeline?user=UUID&date=YYYY-MM-DD | | array of {id,user_id,session_id,start_at,end_at,duration_seconds,active_seconds,screenshot_url} |
+| GET | /api/timeline?user=UUID&date=YYYY-MM-DD | | array of {id,user_id,session_id,start_at,end_at,duration_seconds,active_seconds,screenshot_url,screenshot_status} |
 | GET | /api/reports/hours?from=YYYY-MM-DD&to=YYYY-MM-DD | | array of {user_id,name,date,seconds,hours} |
 | GET | /api/reports/hours.csv?from=YYYY-MM-DD&to=YYYY-MM-DD | | CSV |
 | GET | /api/health | | {ok:true} |
@@ -43,6 +43,8 @@ Session start and stop accept client timestamps for offline buffering, no more t
 Recovery is for a lost computer or lost app data, not ordinary offline delivery. Stop and sync the original computer whenever possible.
 The dashboard requires confirmation. The API only recovers the explicitly supplied session ID belonging to the caller, with no heartbeat in the last two minutes. It closes at the latest uploaded block end (including deleted blocks), or the session start if empty, without adding tracked time. Recovery also works for sessions older than seven days. Active, foreign, closed, or stale-ID requests return 409. Unsynced records beyond the recovered endpoint may be rejected if the original computer later reconnects.
 Deleting one's block excludes its time and makes its screenshot inaccessible through this API.
+
+Timeline `screenshot_status` distinguishes `not_captured` (no screenshot attached), `deleted` (intentionally removed), `available` (a five-minute download URL was issued), and `unavailable` (an attached screenshot currently has no download URL). An issued URL is not a storage existence check. Ordinary time blocks usually upload every 30 seconds; screenshots occur only at ten running-minute boundaries. No screenshot on an ordinary block is not an upload failure. Clients should distinguish these states instead of labeling every time-only block unavailable.
 Date report ranges include both dates and default to today UTC.
 Timeline dates select whole blocks by their UTC start date, preserving the original block duration and activity without clipping.
 Hours reports and CSV split blocks crossing midnight into exact seconds on each UTC calendar date.

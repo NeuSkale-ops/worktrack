@@ -14,7 +14,7 @@ npm --prefix agent run dev -- --port 1427
 ```
 
 Open `http://127.0.0.1:1427/tests/updater.html` in a normal browser.
-Wait for `PASS: 26 synthetic browser checks` above the app.
+Wait for `PASS: 27 synthetic browser checks` above the app.
 A failed check prints `FAIL` with its description and stack trace.
 Reload the page to rerun.
 Keep the tab visible to avoid background timer throttling.

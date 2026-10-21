@@ -11,6 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -124,17 +127,30 @@ func TestMonitoringHTTP(t *testing.T) {
 	path := "/api/timeline?user=" + ids["worker"] + "&date=" + b.Start.Format("2006-01-02")
 	for _, role := range []string{"worker", "owner", "manager"} {
 		var rows []struct {
-			Location     *screenshotLocation `json:"location"`
-			Applications []applicationUsage  `json:"application_usage"`
+			Location         *screenshotLocation `json:"location"`
+			Applications     []applicationUsage  `json:"application_usage"`
+			ScreenshotStatus string              `json:"screenshot_status"`
 		}
-		if err = json.Unmarshal(request("GET", path, role, nil, 200).Body.Bytes(), &rows); err != nil || len(rows) != 1 || rows[0].Location == nil || *rows[0].Location.Latitude != 0 || len(rows[0].Applications) != 2 {
+		if err = json.Unmarshal(request("GET", path, role, nil, 200).Body.Bytes(), &rows); err != nil || len(rows) != 1 || rows[0].Location == nil || *rows[0].Location.Latitude != 0 || len(rows[0].Applications) != 2 || rows[0].ScreenshotStatus != "unavailable" {
 			t.Fatalf("monitoring timeline lost: %v %v", rows, err)
 		}
 	}
 	request("GET", path, "other", nil, 403)
+	a.signer = s3.NewPresignClient(s3.New(s3.Options{Region: "auto", BaseEndpoint: aws.String("https://storage.invalid"), UsePathStyle: true, Credentials: credentials.NewStaticCredentialsProvider("fixture", "fixture", "")}))
+	a.bucket = "fixture"
+	var screenshots []struct {
+		Status string `json:"screenshot_status"`
+		URL    string `json:"screenshot_url"`
+	}
+	if err = json.Unmarshal(request("GET", path, "worker", nil, 200).Body.Bytes(), &screenshots); err != nil || len(screenshots) != 1 || screenshots[0].Status != "available" || screenshots[0].URL == "" {
+		t.Fatalf("available screenshot state lost: %v %v", screenshots, err)
+	}
 	request("DELETE", "/api/blocks/"+b.ID+"/screenshot", "other", nil, 404)
 	request("DELETE", "/api/blocks/"+b.ID+"/screenshot", "worker", nil, 200)
 	request("POST", "/api/blocks", "worker", payload, 200)
+	if err = json.Unmarshal(request("GET", path, "worker", nil, 200).Body.Bytes(), &screenshots); err != nil || len(screenshots) != 1 || screenshots[0].Status != "deleted" || screenshots[0].URL != "" {
+		t.Fatalf("deleted screenshot state lost: %v %v", screenshots, err)
+	}
 	var erased bool
 	if err = db.QueryRow(ctx, "SELECT location IS NULL AND jsonb_array_length(application_usage)=2 FROM blocks WHERE id=$1", b.ID).Scan(&erased); err != nil || !erased {
 		t.Fatalf("screenshot deletion did not clear only location: %v", err)
@@ -143,5 +159,15 @@ func TestMonitoringHTTP(t *testing.T) {
 	request("POST", "/api/blocks", "worker", payload, 200)
 	if err = db.QueryRow(ctx, "SELECT location IS NULL AND application_usage='[]'::jsonb FROM blocks WHERE id=$1", b.ID).Scan(&erased); err != nil || !erased {
 		t.Fatalf("block deletion retained monitoring metadata: %v", err)
+	}
+	b.ID = uuid.NewString()
+	b.Start = b.End
+	b.End = b.End.Add(30 * time.Second)
+	path = "/api/timeline?user=" + ids["worker"] + "&date=" + b.Start.Format("2006-01-02")
+	b.Screenshot = ""
+	b.Location = nil
+	request("POST", "/api/blocks", "worker", map[string]any{"blocks": []block{b}}, 200)
+	if err = json.Unmarshal(request("GET", path, "worker", nil, 200).Body.Bytes(), &screenshots); err != nil || len(screenshots) != 1 || screenshots[0].Status != "not_captured" || screenshots[0].URL != "" {
+		t.Fatalf("time-only block mislabeled as unavailable screenshot: %v %v", screenshots, err)
 	}
 }

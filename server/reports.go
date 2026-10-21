@@ -36,7 +36,7 @@ func (a *app) timeline(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid date")
 		return
 	}
-	rows, e := a.db.Query(r.Context(), "SELECT id::text,user_id::text,session_id::text,start_at,end_at,duration_seconds,active_seconds,CASE WHEN screenshot_deleted_at IS NULL THEN screenshot_key ELSE '' END,location,application_usage FROM blocks WHERE user_id=$1 AND start_at>=$2 AND start_at<$3 AND deleted_at IS NULL ORDER BY start_at", uid, date, date.AddDate(0, 0, 1))
+	rows, e := a.db.Query(r.Context(), "SELECT id::text,user_id::text,session_id::text,start_at,end_at,duration_seconds,active_seconds,screenshot_key,screenshot_deleted_at IS NOT NULL,location,application_usage FROM blocks WHERE user_id=$1 AND start_at>=$2 AND start_at<$3 AND deleted_at IS NULL ORDER BY start_at", uid, date, date.AddDate(0, 0, 1))
 	if e != nil {
 		fail(w, 500, "timeline unavailable")
 		return
@@ -47,14 +47,15 @@ func (a *app) timeline(w http.ResponseWriter, r *http.Request) {
 		var id, userID, sid, key string
 		var start, end time.Time
 		var duration, active int
+		var screenshotDeleted bool
 		var location *screenshotLocation
 		var applications []applicationUsage
-		if e = rows.Scan(&id, &userID, &sid, &start, &end, &duration, &active, &key, &location, &applications); e != nil {
+		if e = rows.Scan(&id, &userID, &sid, &start, &end, &duration, &active, &key, &screenshotDeleted, &location, &applications); e != nil {
 			fail(w, 500, "timeline unavailable")
 			return
 		}
 		signedURL := ""
-		if key != "" && a.signer != nil {
+		if key != "" && !screenshotDeleted && a.signer != nil {
 			signed, e := a.signer.PresignGetObject(r.Context(), &s3.GetObjectInput{Bucket: aws.String(a.bucket), Key: aws.String(key)}, func(o *s3.PresignOptions) { o.Expires = 5 * time.Minute })
 			if e != nil {
 				fail(w, 503, "could not sign screenshot")
@@ -62,7 +63,16 @@ func (a *app) timeline(w http.ResponseWriter, r *http.Request) {
 			}
 			signedURL = signed.URL
 		}
-		out = append(out, map[string]any{"id": id, "user_id": userID, "session_id": sid, "start_at": start, "end_at": end, "duration_seconds": duration, "active_seconds": active, "screenshot_url": signedURL, "location": location, "application_usage": applications})
+		screenshotStatus := "not_captured"
+		if key != "" {
+			screenshotStatus = "unavailable"
+			if screenshotDeleted {
+				screenshotStatus = "deleted"
+			} else if signedURL != "" {
+				screenshotStatus = "available"
+			}
+		}
+		out = append(out, map[string]any{"id": id, "user_id": userID, "session_id": sid, "start_at": start, "end_at": end, "duration_seconds": duration, "active_seconds": active, "screenshot_url": signedURL, "screenshot_status": screenshotStatus, "location": location, "application_usage": applications})
 	}
 	if rows.Err() != nil {
 		fail(w, 500, "timeline unavailable")

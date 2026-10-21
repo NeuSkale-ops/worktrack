@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, ApiError, post } from './api'
 import type { Block, Hours, Invite, OpenSession, User, Worker } from './api'
-import { activity, applicationTotals, duration, locationText, utcDate, weekRange } from './utils'
+import { activity, applicationTotals, duration, locationText, screenshotPlaceholder, utcDate, weekRange } from './utils'
 import AgentLogs from './AgentLogs'
 
 const time = (value: string) =>
@@ -524,6 +524,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
                 />
               </label>
             </div>
+            <p className="muted">Time uploads about every 30 seconds. Screenshots are taken every 10 running minutes, so most time blocks have no scheduled screenshot.</p>
             {!busy && !blocks.length ? (
               <div className="empty timeline-empty">
                 <span className="empty-icon">◷</span>
@@ -550,7 +551,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
                           alt={`Work screenshot at ${time(block.start_at)} UTC`}
                         />
                       ) : (
-                        <span>Screenshot unavailable</span>
+                        <span>{screenshotPlaceholder(block)}</span>
                       )}
                     </button>
                     <div className="block-info">
@@ -714,7 +715,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
             alt="Full work screenshot"
           />
         ) : (
-          <p className="empty">No screenshot is available for this block.</p>
+          <p className="empty">{expanded ? screenshotPlaceholder(expanded) : 'No time block selected.'}</p>
         )}
         {expanded?.location && <p>{locationText(expanded.location)}</p>}
         {expanded && (

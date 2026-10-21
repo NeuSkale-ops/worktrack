@@ -1,5 +1,13 @@
 import type { Block, ScreenshotLocation } from './api.ts'
 
+export function screenshotPlaceholder(block: Pick<Block, 'screenshot_status' | 'duration_seconds'>): string {
+  switch (block.screenshot_status) {
+    case 'not_captured': return `No screenshot captured (${block.duration_seconds}s time block).`
+    case 'deleted': return 'Screenshot deleted.'
+    case 'unavailable': return 'Screenshot temporarily unavailable.'
+    default: return 'No screenshot attached to this time block.'
+  }
+}
 export function applicationTotals(blocks: Pick<Block, 'application_usage'>[]) {
   const totals = new Map<string, number>()
   for (const block of blocks) for (const usage of block.application_usage || []) {
