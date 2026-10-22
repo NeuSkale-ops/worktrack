@@ -27,6 +27,9 @@ let available = offer;
 let checkError = null;
 let rejectInstall;
 let statusGate = null;
+let diagnosticResolve;
+let diagnosticReject;
+const report = { status: 'available', requested_at: '2026-10-22T05:00:00Z', latitude: 12.34, longitude: 56.78, accuracy_m: 42, observed_at: '2026-10-22T04:59:59Z', position_source: 'IPAddress', is_remote_source: true };
 let locationGrant = false;
 window.__TAURI_INTERNALS__ = {
   async invoke(command, args) {
@@ -39,6 +42,10 @@ window.__TAURI_INTERNALS__ = {
     }
     if (command === 'install_update') return new Promise((resolve, reject) => { rejectInstall = reject; });
     if (command === 'request_location') { state.location_enabled = locationGrant; return; }
+    if (command === 'diagnose_location') {
+      if (!state.location_enabled) throw 'Sign in and allow location before diagnosing';
+      return new Promise((resolve, reject) => { diagnosticResolve = resolve; diagnosticReject = reject; });
+    }
     if (command === 'open_location_settings') return;
     if (['start', 'stop', 'login', 'logout'].includes(command)) return;
     throw new Error(`Unexpected IPC command: ${command}`);
@@ -85,6 +92,10 @@ try {
   await check('no opt-out controls exist for location or diagnostics', () => !document.querySelector('#location-consent') && !document.querySelector('#diagnostic-consent') && !calls.some(call => ['set_location', 'set_diagnostics'].includes(call.command)));
   await check('signed-in app requests Windows location automatically', () => calls.some(call => call.command === 'request_location'));
   await check('denied location blocks Start and explains the fix', () => text().includes('Turn on Windows location to start') && button('Start tracking')?.disabled && text().includes('Blocked by Windows'));
+  await check('location diagnostic never runs automatically', () => !calls.some(call => call.command === 'diagnose_location'));
+  click('Run local location diagnostic');
+  await check('missing permission reaches native gate and shows safe actionable error', () => text().includes('Sign in and allow location before diagnosing.') && !text().includes('secret-token') && !button('Run local location diagnostic').disabled);
+  click('Clear location diagnostic');
   document.querySelector('.consent input').click();
   await check('consent alone cannot start without location', () => button('Start tracking')?.disabled);
   click('Open location settings');
@@ -94,6 +105,44 @@ try {
   click('Try again');
   await check('granted location unlocks Start', () => !button('Start tracking')?.disabled && text().includes('Windows location permission granted') && !text().includes('Turn on Windows location'));
   await check('disclosure names mandatory location and diagnostics', () => document.querySelector('.win').textContent.includes('Location at each screenshot') && document.querySelector('.win').textContent.includes('Diagnostic logs are required') && text().includes('Diagnostic logs'));
+  await check('manual location warning explains local-only sensitive data', () => text().includes('Sensitive coordinates stay local, are not queued or uploaded') && text().includes('not added to diagnostic logs') && text().includes('no separate IP fallback'));
+  const diagnosticCount = () => calls.filter(call => call.command === 'diagnose_location').length;
+  const beforeDiagnostic = diagnosticCount();
+  const diagnosticButton = button('Run local location diagnostic');
+  diagnosticButton.click(); diagnosticButton.click();
+  await check('diagnostic single flight gates Start, account and updater actions', () => diagnosticCount() === beforeDiagnostic + 1 && button('Run local location diagnostic').disabled && button('Start tracking').disabled && button('Sign out').disabled && button('Renew sign-in').disabled && button('Update now').disabled && button('Check for updates').disabled && text().includes('Requesting local location'));
+  diagnosticReject('secret-token native failure');
+  await check('diagnostic error recovers without exposing native strings', () => text().includes('Location diagnostic failed: The local test could not complete. Try again.') && !text().includes('secret-token') && !button('Start tracking').disabled);
+  click('Run local location diagnostic');
+  diagnosticResolve(report);
+  await check('report displays status source remote coordinates accuracy and timestamps', () => text().includes('Status: available') && text().includes('Source: IPAddress') && text().includes('Remote source: Yes') && text().includes('Latitude: 12.34') && text().includes('Longitude: 56.78') && text().includes('Accuracy (meters): 42') && text().includes(report.requested_at) && text().includes(report.observed_at));
+  click('Clear location diagnostic');
+  await check('report can be dismissed', () => !document.querySelector('[aria-label="Local location report"]'));
+  click('Run local location diagnostic'); diagnosticResolve({ ...report, status: 'unavailable', latitude: null, longitude: null, accuracy_m: null, observed_at: null, position_source: null, is_remote_source: null });
+  await check('unavailable report distinguishes unknown values', () => text().includes('Status: unavailable') && text().includes('Latitude: Unavailable') && text().includes('Remote source: Unknown'));
+  click('Renew sign-in'); await until(() => button('Cancel'), 'renew form'); click('Cancel');
+  await until(() => button('Run local location diagnostic'), 'renew cancelled');
+  await check('renewal clears report', () => !document.querySelector('[aria-label="Local location report"]'));
+  click('Run local location diagnostic'); diagnosticResolve(report);
+  await until(() => text().includes('Latitude: 12.34'), 'report before start');
+  click('Start tracking');
+  await check('start clears report', () => !document.querySelector('[aria-label="Local location report"]'));
+  await until(() => !button('Run local location diagnostic').disabled, 'start complete');
+  click('Run local location diagnostic');
+  state.tracking = true; await refresh();
+  await check('external tracking keeps Stop usable during diagnostic', () => !button('Stop tracking').disabled && button('Run local location diagnostic').disabled);
+  diagnosticResolve(report); await wait(100);
+  state.tracking = false; await refresh();
+  await check('stale diagnostic cannot return after tracking starts', () => !document.querySelector('[aria-label="Local location report"]'));
+  click('Run local location diagnostic'); diagnosticResolve(report);
+  await until(() => text().includes('Latitude: 12.34'), 'report before logout');
+  click('Sign out');
+  await check('logout clears report', () => !document.querySelector('[aria-label="Local location report"]'));
+  await until(() => !button('Run local location diagnostic').disabled, 'logout complete');
+  click('Run local location diagnostic');
+  state.authenticated = false; await refresh(); diagnosticResolve(report); await wait(100);
+  state.authenticated = true; await refresh();
+  await check('auth loss discards in-flight report across accounts', () => !document.querySelector('[aria-label="Local location report"]'));
   state.diagnostics_enabled = true;
   state.diagnostics_queued = 2;
   state.diagnostics_error = 'Diagnostic upload failed. Retrying in the background.';
@@ -106,10 +155,12 @@ try {
   state.tracking = true;
   await refresh();
   await check('tracking blocks Update now but allows Stop', () => button('Update now')?.disabled && !button('Stop tracking')?.disabled);
+  await check('tracking blocks diagnostic', () => button('Run local location diagnostic').disabled);
   state.tracking = false;
   state.stopping = true;
   await refresh();
   await check('unsaved final interval blocks update, Start and sign-out but permits sign-in renewal', () => button('Update now')?.disabled && button('Start tracking')?.disabled && button('Sign out')?.disabled && !button('Renew sign-in')?.disabled && text().includes('Saving the final interval') && !text().includes('All records synced'));
+  await check('stopping blocks diagnostic', () => button('Run local location diagnostic').disabled);
   state.stopping = false;
   state.queued = 1;
   await refresh();
@@ -138,6 +189,7 @@ try {
   await refresh();
   await check('backend download progress renders', () => document.querySelector('progress')?.value === 50 && text().includes('50%'));
   await check('reservation disables location retry controls', () => !button('Try again') || button('Try again').disabled);
+  await check('install reservation blocks diagnostic', () => button('Run local location diagnostic').disabled);
   state.update.total = null;
   await refresh();
   await check('unknown download size renders indeterminate progress', () => document.querySelector('progress') && !document.querySelector('progress').hasAttribute('value'));

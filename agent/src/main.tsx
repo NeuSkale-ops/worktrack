@@ -9,6 +9,7 @@ import '@fontsource/barlow-semi-condensed/300.css';
 import '@fontsource/barlow-semi-condensed/600.css';
 import './style.css';
 
+type LocationReport = { status: 'available' | 'unavailable'; requested_at: string; latitude: number | null; longitude: number | null; accuracy_m: number | null; observed_at: string | null; position_source: string | null; is_remote_source: boolean | null };
 type Update = { version: string; current_version: string; body: string | null; date: string | null };
 type UpdateStatus = { phase: 'idle' | 'checking' | 'available' | 'downloading' | 'installing' | 'installed' | 'error' | 'unavailable'; downloaded: number; total: number | null; error: string | null };
 type Status = { authenticated: boolean; tracking: boolean; stopping: boolean; paused: boolean; elapsed: number; next_capture: number; queued: number; rejected: number; error: string | null; server: string; update: UpdateStatus; update_reserved: boolean; diagnostics_enabled: boolean; diagnostics_queued: number; diagnostics_error: string | null; location_enabled: boolean; location_pending: boolean; location_error: string | null };
@@ -26,13 +27,36 @@ function App() {
   const [unavailable, setUnavailable] = useState('');
   const [deferred, setDeferred] = useState(false);
   const [installing, setInstalling] = useState(false);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [locationReport, setLocationReport] = useState<LocationReport | null>(null);
+  const [locationDiagnosticError, setLocationDiagnosticError] = useState('');
+  const diagnosticPending = useRef(false);
+  const diagnosticEpoch = useRef(0);
+  function clearLocationReport() {
+    diagnosticEpoch.current += 1;
+    setLocationReport(null); setLocationDiagnosticError('');
+  }
+  async function diagnoseLocation() {
+    if (diagnosticPending.current || !status?.authenticated || renew || status.tracking || status.stopping || reserved.current || busy) return;
+    diagnosticPending.current = true; setDiagnosing(true); setLocationReport(null); setLocationDiagnosticError('');
+    const epoch = diagnosticEpoch.current;
+    try {
+      const report = await invoke<LocationReport>('diagnose_location');
+      if (epoch === diagnosticEpoch.current) setLocationReport(report);
+    } catch (error) {
+      const knownErrors = ['Sign in and allow location before diagnosing.', 'Unlock the desktop and stop tracking before diagnosing.', 'Location diagnostic already running.', 'Location diagnostic cancelled because state changed.'];
+      const nativeError = typeof error === 'string' ? error.replace(/\.$/, '') + '.' : '';
+      const message = knownErrors.includes(nativeError) ? nativeError : 'The local test could not complete. Try again.';
+      if (epoch === diagnosticEpoch.current) setLocationDiagnosticError(`Location diagnostic failed: ${message}`);
+    } finally { diagnosticPending.current = false; setDiagnosing(false); }
+  }
   const refreshPending = useRef(false);
   const checkPending = useRef(false);
   const installPending = useRef(false);
   const reserved = useRef(false);
   reserved.current = Boolean(status?.update_reserved) || installing;
   async function checkUpdate() {
-    if (checkPending.current || reserved.current) return;
+    if (checkPending.current || reserved.current || diagnosticPending.current) return;
     checkPending.current = true; setChecking(true); setUpdateError(''); setUnavailable(''); setAvailable(null); setChecked(false);
     try {
       const update = await invoke<Update | null>('check_update');
@@ -54,18 +78,23 @@ function App() {
   async function refresh() {
     if (refreshPending.current) return;
     refreshPending.current = true;
-    try { setStatus(await invoke<Status>('status')); }
+    try {
+      const next = await invoke<Status>('status');
+      if (!next.authenticated || next.tracking) clearLocationReport();
+      setStatus(next);
+    }
     catch (e) { setError(String(e)); }
     finally { refreshPending.current = false; }
   }
   useEffect(() => { void refresh(); const id = setInterval(() => void refresh(), 1000); return () => clearInterval(id); }, []);
   async function run(command: string, args?: Record<string, unknown>) {
-    if (reserved.current) return;
+    if (reserved.current || (diagnosticPending.current && command !== 'stop')) return;
+    if (['login', 'logout', 'start'].includes(command)) clearLocationReport();
     setBusy(true); setError('');
     try { await invoke(command, args); if (command === 'login') setRenew(false); await refresh(); } catch (e) { setError(String(e)); } finally { setBusy(false); }
   }
   async function installUpdate() {
-    if (!available || installPending.current || reserved.current || busy || checking) return;
+    if (!available || diagnosticPending.current || installPending.current || reserved.current || busy || checking) return;
     installPending.current = true; reserved.current = true; setInstalling(true); setUpdateError('');
     try { await invoke('install_update', { version: available.version }); }
     catch (e) { setUpdateError(`Update could not be installed: ${String(e)}. Resolve the issue, then try Update now again.`); }
@@ -98,13 +127,13 @@ function App() {
     <summary>What WorkTrack records</summary>
     <div className="cols">
       <div><h3>Only while tracking</h3><ul><li>Elapsed time</li><li>Input activity level</li><li>App names and time in each</li><li>Screenshot every 10 minutes</li><li>Location at each screenshot</li></ul></div>
-      <div><h3>Never</h3><ul><li>Typed text or keys</li><li>Window titles or websites</li><li>Screen, input or location while stopped</li><li>Random captures</li></ul></div>
+      <div><h3>Never</h3><ul><li>Typed text or keys</li><li>Window titles or websites</li><li>Automatic screen, input or location collection while stopped</li><li>Random captures</li></ul></div>
     </div>
     <details className="full-notice"><summary>Read the full notice</summary>
       <p>Only while you choose Start, WorkTrack measures elapsed time, input activity, foreground application names and estimated time in each, and takes a compressed screenshot of your primary display at each exact 10-minute elapsed boundary. No random captures.</p>
-      <p>Location is required. At each screenshot WorkTrack asks Windows for one location fix and stores coordinates, accuracy and fix time with that screenshot. Windows may use Wi-Fi or GPS and accuracy varies. There is no continuous location tracking and no IP-based guess. Tracking cannot start without Windows location permission.</p>
+      <p>Location is required. At each screenshot WorkTrack asks Windows for one location fix and stores coordinates, accuracy and fix time with that screenshot. Windows may use Wi-Fi, GPS, IP or a default location, and can be wrong. WorkTrack has no separate IP fallback. Tracking cannot start without Windows location permission.</p>
       <p>Diagnostic logs are required while you are signed in. They contain fixed error codes, HTTP status, app version and timestamps, and may upload while tracking is stopped. They never contain error text, screenshots, typed content, passwords or tokens, and expire after seven days.</p>
-      <p>No typed text, keys, window titles or websites are recorded. Locking or suspending pauses monitoring. Stop ends screen, input and location collection. Queued records and diagnostics may still upload while stopped.</p>
+      <p>No typed text, keys, window titles or websites are recorded. Locking or suspending pauses monitoring. Stop ends automatic screen, input and location collection. A manual local location diagnostic makes one location request while stopped. Its sensitive coordinates stay local, are not queued or uploaded, and are not added to diagnostic logs. Queued records and diagnostics may still upload while stopped.</p>
       <p>You, your managers and the owner can view these work records. No application file paths are sent. Deleting a screenshot removes its location from the live database. Backups follow separate retention. Screenshots can contain private information, so close private content before starting. This app stays visible in the tray and never starts tracking automatically.</p>
     </details>
   </details>;
@@ -113,7 +142,7 @@ function App() {
     <p>Stop tracking and let records sync, then update. Your sign-in and records are kept.</p>
     {unsafeInstall && <p>Update now is available once tracking is stopped and the sync queue is empty.</p>}
     <details open><summary>Release notes</summary><p className="release-notes">{available.body || 'No release notes provided.'}</p></details>
-    <div className="acts"><button className="primary" disabled={busy || updateBusy || installReserved || unsafeInstall || update?.phase === 'installed'} onClick={() => void installUpdate()}>Update now</button><button disabled={installReserved} onClick={() => setDeferred(true)}>Later</button></div>
+    <div className="acts"><button className="primary" disabled={diagnosing || busy || updateBusy || installReserved || unsafeInstall || update?.phase === 'installed'} onClick={() => void installUpdate()}>Update now</button><button disabled={installReserved} onClick={() => setDeferred(true)}>Later</button></div>
   </section>;
   return <div className="win">
     <main className="body">
@@ -131,9 +160,9 @@ function App() {
         <form className="signin" onSubmit={e => { e.preventDefault(); const data = new FormData(e.currentTarget); void run('login', { email: data.get('email'), password: data.get('password') }); }}>
           <h1>Sign in</h1>
           <p className="lead">Use the account from your invitation email.</p>
-          <label>Email<input name="email" type="email" autoComplete="username" required disabled={installReserved} /></label>
-          <label>Password<input name="password" type="password" autoComplete="current-password" required disabled={installReserved} /></label>
-          <button className="primary big" disabled={busy || installReserved}>Sign in</button>
+          <label>Email<input name="email" type="email" autoComplete="username" required disabled={diagnosing || installReserved} /></label>
+          <label>Password<input name="password" type="password" autoComplete="current-password" required disabled={diagnosing || installReserved} /></label>
+          <button className="primary big" disabled={diagnosing || busy || installReserved}>Sign in</button>
           {renew && <button type="button" disabled={busy} onClick={() => setRenew(false)}>Cancel</button>}
         </form>
         {(error || status?.error) && <p role="alert" className="error">{error || status?.error}</p>}
@@ -149,10 +178,10 @@ function App() {
         {!status?.tracking && !locationReady && <div className="blocked" role="status">
           <h2>{status?.location_pending ? 'Waiting for Windows location permission' : 'Turn on Windows location to start'}</h2>
           <p>Location is required with every screenshot. Open Settings, then Privacy and security, then Location, and allow desktop apps. Then select Try again.</p>
-          <div className="acts"><button disabled={busy || installReserved} onClick={() => void run('open_location_settings')}>Open location settings</button><button disabled={busy || installReserved || status?.location_pending} onClick={() => void run('request_location')}>Try again</button></div>
+          <div className="acts"><button disabled={diagnosing || busy || installReserved} onClick={() => void run('open_location_settings')}>Open location settings</button><button disabled={diagnosing || busy || installReserved || status?.location_pending} onClick={() => void run('request_location')}>Try again</button></div>
         </div>}
         {!status?.tracking && <label className="consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /><span>I understand what is recorded, including location with each screenshot and diagnostic logs, and agree to it. Close private content before starting.</span></label>}
-        <button className={status?.tracking ? 'big stop' : 'primary big'} disabled={busy || installReserved || (!status?.tracking && (!consent || !locationReady || status?.stopping))} onClick={() => void run(status?.tracking ? 'stop' : 'start', { consent })}>{status?.tracking ? 'Stop tracking' : 'Start tracking'}</button>
+        <button className={status?.tracking ? 'big stop' : 'primary big'} disabled={busy || installReserved || (!status?.tracking && (diagnosing || !consent || !locationReady || status?.stopping))} onClick={() => void run(status?.tracking ? 'stop' : 'start', { consent })}>{status?.tracking ? 'Stop tracking' : 'Start tracking'}</button>
         <p className="sync-line"><span>{syncText}</span></p>
         {Boolean(status?.rejected) && <p role="status" className="note">{status?.rejected} records refused by the server were set aside on this PC. Contact your manager.</p>}
         {(error || status?.error) && <p role="alert" className="error">{error || status?.error}</p>}
@@ -160,8 +189,25 @@ function App() {
           <div className="row"><span className={`req ${locationReady ? 'ok' : 'bad'}`} aria-hidden="true" /><div>Location with screenshots<small>{status?.location_pending ? 'Waiting for Windows permission.' : locationReady ? (status?.location_error || 'Required. Windows location permission granted.') : 'Blocked by Windows. Tracking cannot start.'}</small></div></div>
           <div className="row"><span className={`req ${status?.diagnostics_error ? 'warn' : 'ok'}`} aria-hidden="true" /><div>Diagnostic logs<small>Required. {status?.diagnostics_queued ?? 0} diagnostic events waiting. {status?.diagnostics_error || 'Error codes only, kept 7 days.'}</small></div></div>
         </section>
+        <section className="facts" aria-labelledby="location-diagnostic-title">
+          <h2 id="location-diagnostic-title">Local location diagnostic</h2>
+          <p>Makes one location request while stopped, only when you select Run. Sensitive coordinates stay local, are not queued or uploaded, and are not added to diagnostic logs.</p>
+          <p>Windows may use Wi-Fi, GPS, IP or a default location and can be wrong. WorkTrack has no separate IP fallback.</p>
+          <button disabled={diagnosing || busy || installReserved || status?.tracking || status?.stopping} onClick={() => void diagnoseLocation()}>Run local location diagnostic</button>
+          <div role="status" aria-live="polite">{diagnosing && <p>Requesting local location…</p>}</div>
+          {locationDiagnosticError && <p role="alert" className="error">{locationDiagnosticError}</p>}
+          {locationReport && <div aria-label="Local location report" style={{ overflowWrap: 'anywhere', userSelect: 'text' }}>
+            <h3>Location diagnostic result</h3>
+            <p>Status: {locationReport.status}</p>
+            <p>Source: {locationReport.position_source ?? 'Unknown'}. Remote source: {locationReport.is_remote_source === null ? 'Unknown' : locationReport.is_remote_source ? 'Yes' : 'No'}.</p>
+            <p>Latitude: {locationReport.latitude ?? 'Unavailable'}. Longitude: {locationReport.longitude ?? 'Unavailable'}.</p>
+            <p>Accuracy (meters): {locationReport.accuracy_m ?? 'Unknown'}</p>
+            <p>Requested at: {locationReport.requested_at}. Observed at: {locationReport.observed_at ?? 'Unknown'}.</p>
+          </div>}
+          {(locationReport || locationDiagnosticError) && <button onClick={clearLocationReport}>Clear location diagnostic</button>}
+        </section>
         {notice}
-        <div className="account-actions"><button disabled={busy || installReserved || status?.tracking} onClick={() => setRenew(true)}>Renew sign-in</button><button disabled={busy || installReserved || status?.tracking || status?.stopping || (status?.queued ?? 0) > 0} onClick={() => void run('logout')}>Sign out</button></div>
+        <div className="account-actions"><button disabled={diagnosing || busy || installReserved || status?.tracking} onClick={() => { clearLocationReport(); setRenew(true); }}>Renew sign-in</button><button disabled={diagnosing || busy || installReserved || status?.tracking || status?.stopping || (status?.queued ?? 0) > 0} onClick={() => void run('logout')}>Sign out</button></div>
       </>}
       <section className="updates" aria-labelledby="updates-title">
         <h2 id="updates-title" className="sr-only">App updates</h2>
@@ -175,7 +221,7 @@ function App() {
         {updateFailure && <p className="error" role="alert">{updateFailure}</p>}
       </section>
     </main>
-    <footer className="foot"><span>{version ? `Version ${version}` : 'WorkTrack'}{status?.tracking ? '. Closing this window stops tracking.' : ''}</span><button className="link" disabled={updateBusy || installReserved} onClick={() => void checkUpdate()}>Check for updates</button></footer>
+    <footer className="foot"><span>{version ? `Version ${version}` : 'WorkTrack'}{status?.tracking ? '. Closing this window stops tracking.' : ''}</span><button className="link" disabled={diagnosing || updateBusy || installReserved} onClick={() => void checkUpdate()}>Check for updates</button></footer>
   </div>;
 }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);
