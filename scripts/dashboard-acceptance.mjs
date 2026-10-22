@@ -59,9 +59,11 @@ try {
     }
     await ribbons.filter({ hasText: seeded[0].name }).click()
     await page.getByRole('heading', { name: new RegExp(seeded[0].name) }).waitFor()
-    // Selection clears and refetches; wait for the selected worker's tiles rather than a busy flag.
-    await page.waitForFunction(() => document.querySelectorAll('.tile').length === 2, null, { timeout: 15000 })
-    assert.equal(await page.locator('.tile').count(), 2, 'selected worker shows both blocks')
+    // Selection clears and refetches; wait for the selected worker's compact records.
+    await page.waitForFunction(() => document.querySelectorAll('.time-row').length === 2, null, { timeout: 15000 })
+    assert.equal(await page.locator('.tile').count(), 0, 'time-only blocks do not create image cards')
+    for (const details of await page.locator('.time-only').all()) await details.locator('summary').click()
+    assert.equal(await page.locator('.time-row:visible').count(), 2, 'selected worker shows both blocks')
     assert.match(await page.locator('[aria-labelledby="day-heading"]').innerText(), /0h 20m tracked, 50% input activity/)
     assert((await page.locator('.hourgrp h3').count()) >= 1)
     const week = page.locator('[aria-labelledby="week-heading"] tbody tr').filter({ hasText: seeded[0].name })
@@ -78,7 +80,7 @@ try {
   await page.getByLabel('Password').fill(password)
   await page.getByRole('button', { name: 'Sign in' }).click()
   await page.getByRole('heading', { name: /Your day/ }).waitFor()
-  await page.waitForFunction(() => document.querySelectorAll('.tile').length === 1)
+  await page.waitForFunction(() => document.querySelectorAll('.time-row').length === 1)
   assert.equal(await page.locator('.rrow').count(), 0, 'worker has no team ribbon')
 } finally {
   await browser.close()

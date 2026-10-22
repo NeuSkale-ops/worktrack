@@ -448,6 +448,44 @@ input {
   margin-bottom: 10px;
   color: var(--quiet);
 }
+.time-only {
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.time-only summary {
+  padding: 10px 12px;
+  color: var(--stamp);
+  font-weight: 600;
+}
+.time-only ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 12px;
+}
+.time-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  border-top: 1px solid var(--rule);
+  padding: 8px 0;
+  font-variant-numeric: tabular-nums;
+}
+.time-range {
+  font-weight: 600;
+}
+.time-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+.time-actions button {
+  padding: 3px 8px;
+  font-size: 12px;
+}
 .shots {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));

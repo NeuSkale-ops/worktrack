@@ -7,7 +7,7 @@
 const params = new URLSearchParams(location.search);
 const role = params.get('role') || 'owner';
 const today = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-const at = (h, m) => { const d = new Date(`${today}T00:00:00`); d.setHours(h, m); return d.toISOString(); };
+const at = (h, m, s = 0) => { const d = new Date(`${today}T00:00:00`); d.setHours(h, m, s); return d.toISOString(); };
 const me = { id: 'u1', email: 'priya@company.com', name: role === 'owner' ? 'Priya Raman' : 'Arjun Kumar', role };
 const people = [
   { id: 'u1', email: 'priya@company.com', name: me.name, role, working: role !== 'owner', last_seen_at: null },
@@ -25,9 +25,11 @@ const images = [shot(false), shot(true)];
 const blocks = [];
 for (let t = 13 * 60; t < 14 * 60 + 60; t += 10) {
   const i = blocks.length;
-  const status = i === 3 ? 'deleted' : i === 7 ? 'not_captured' : 'available';
+  const status = i === 3 ? 'deleted' : i === 7 ? 'not_captured' : i === 8 ? 'unavailable' : 'available';
   blocks.push({ id: `b${i}`, user_id: 'u1', session_id: 's', start_at: at(0, t), end_at: at(0, t + 10), duration_seconds: 600, active_seconds: 300 + (i * 37) % 290, screenshot_url: status === 'available' ? images[i % 2] : null, screenshot_status: status, location: i === 2 ? { status: 'available', captured_at: at(0, t), latitude: 12.97, longitude: 77.59, accuracy_m: 40 } : null, application_usage: [{ app: 'Code.exe', milliseconds: 320000 }, { app: 'chrome.exe', milliseconds: 180000 }, { app: 'Teams.exe', milliseconds: 60000 }] });
 }
+for (let i = 0; i < 120; i++) blocks.push({ id: `time-${i}`, user_id: 'u1', session_id: 's', start_at: at(12, 0, i * 30), end_at: at(12, 0, (i + 1) * 30), duration_seconds: 30, active_seconds: 15, screenshot_url: null, ...(i === 0 ? {} : { screenshot_status: 'not_captured' }), application_usage: [{ app: 'Code.exe', milliseconds: 30000 }] });
+blocks.sort((a, b) => a.start_at.localeCompare(b.start_at));
 const hours = people.map(p => ({ user_id: p.id, name: p.name, date: today, seconds: runs[p.id].reduce((s, [a, b, c, d]) => s + ((c * 60 + d) - (a * 60 + b)) * 60, 0), hours: 0 }));
 window.fetch = async (input) => {
   const path = String(input);

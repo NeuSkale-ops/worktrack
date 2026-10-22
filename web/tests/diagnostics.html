@@ -5,6 +5,7 @@
 <aside><h1>Diagnostic log UI checks (mock API)</h1><pre id="results">Running…</pre></aside>
 <div id="root"></div>
 <script type="module">
+const today = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 const role = new URLSearchParams(location.search).get('role') || 'owner';
 if (!['owner', 'manager', 'worker'].includes(role)) throw new Error('Unknown test role');
 const user = { id: '00000000-0000-4000-8000-000000000001', email: 'fixture@example.test', name: 'Fixture', role };
@@ -18,14 +19,14 @@ window.fetch = async input => {
   const path = String(input);
   if (path === '/api/auth/me') return Response.json(user);
   if (path === '/api/team') return Response.json([user, { id: '00000000-0000-4000-8000-000000000009', email: 'w@example.test', name: 'Second Worker', role: 'worker', working: true, last_seen_at: null }]);
-  if (path.startsWith('/api/reports/day?')) { dayCalls++; if (role === 'worker') throw new Error('Workers must not fetch the team day report'); return Response.json([{ user_id: user.id, start_at: '2026-10-21T12:00:00Z', end_at: '2026-10-21T12:10:00Z', screenshot: true }, { user_id: '00000000-0000-4000-8000-000000000009', start_at: '2026-10-21T09:00:00Z', end_at: '2026-10-21T09:30:00Z', screenshot: false }]); }
+  if (path.startsWith('/api/reports/day?')) { dayCalls++; if (role === 'worker') throw new Error('Workers must not fetch the team day report'); return Response.json([{ user_id: user.id, start_at: `${today}T12:00:00Z`, end_at: `${today}T12:10:00Z`, screenshot: true }, { user_id: '00000000-0000-4000-8000-000000000009', start_at: `${today}T09:00:00Z`, end_at: `${today}T09:30:00Z`, screenshot: false }]); }
   if (path.startsWith('/api/reports/hours?')) return Response.json([]);
   if (path.startsWith('/api/timeline?')) return Response.json([
-    { id:'one', user_id:user.id, start_at:'2026-10-21T12:00:00Z', end_at:'2026-10-21T12:01:00Z', duration_seconds:60, active_seconds:30, screenshot_url:screenshotImage, screenshot_status:'available', location:{status:'available',captured_at:'2026-10-21T12:01:00Z',latitude:0,longitude:0,accuracy_m:25,observed_at:'2026-10-21T12:01:01Z'}, application_usage:[{app:'chrome.exe',milliseconds:60000}] },
-    { id:'two', user_id:user.id, start_at:'2026-10-21T12:01:00Z', end_at:'2026-10-21T12:02:00Z', duration_seconds:60, active_seconds:30, screenshot_url:null, screenshot_status:'unavailable', location:{status:'unavailable',captured_at:'2026-10-21T12:02:00Z'}, application_usage:[{app:'chrome.exe',milliseconds:30000},{app:'code.exe',milliseconds:30000}] },
-    { id:'three', user_id:user.id, start_at:'2026-10-21T12:02:00Z', end_at:'2026-10-21T12:02:30Z', duration_seconds:30, active_seconds:10, screenshot_url:screenshotImage, screenshot_status:'available', location:{status:'disabled',captured_at:'2026-10-21T12:02:30Z'}, application_usage:[] },
-    { id:'four', user_id:user.id, start_at:'2026-10-21T12:02:30Z', end_at:'2026-10-21T12:03:00Z', duration_seconds:30, active_seconds:10, screenshot_url:null, screenshot_status:'not_captured', location:null, application_usage:[] },
-    { id:'five', user_id:user.id, start_at:'2026-10-21T12:03:00Z', end_at:'2026-10-21T12:03:30Z', duration_seconds:30, active_seconds:10, screenshot_url:null, screenshot_status:'deleted', location:null, application_usage:[] },
+    { id:'one', user_id:user.id, start_at:`${today}T12:00:00Z`, end_at:`${today}T12:01:00Z`, duration_seconds:60, active_seconds:30, screenshot_url:screenshotImage, screenshot_status:'available', location:{status:'available',captured_at:`${today}T12:01:00Z`,latitude:0,longitude:0,accuracy_m:25,observed_at:`${today}T12:01:01Z`}, application_usage:[{app:'chrome.exe',milliseconds:60000}] },
+    { id:'two', user_id:user.id, start_at:`${today}T12:01:00Z`, end_at:`${today}T12:02:00Z`, duration_seconds:60, active_seconds:30, screenshot_url:null, screenshot_status:'unavailable', location:{status:'unavailable',captured_at:`${today}T12:02:00Z`}, application_usage:[{app:'chrome.exe',milliseconds:30000},{app:'code.exe',milliseconds:30000}] },
+    { id:'three', user_id:user.id, start_at:`${today}T12:02:00Z`, end_at:`${today}T12:02:30Z`, duration_seconds:30, active_seconds:10, screenshot_url:screenshotImage, screenshot_status:'available', location:{status:'disabled',captured_at:`${today}T12:02:30Z`}, application_usage:[] },
+    { id:'four', user_id:user.id, start_at:`${today}T12:02:30Z`, end_at:`${today}T12:03:00Z`, duration_seconds:30, active_seconds:10, screenshot_url:null, screenshot_status:'not_captured', location:null, application_usage:[] },
+    { id:'five', user_id:user.id, start_at:`${today}T12:03:00Z`, end_at:`${today}T12:03:30Z`, duration_seconds:30, active_seconds:10, screenshot_url:null, screenshot_status:'deleted', location:null, application_usage:[] },
   ]);
   if (path === '/api/sessions/current') return Response.json(null);
   if (path === '/api/agent/logs') {
@@ -34,7 +35,7 @@ window.fetch = async input => {
     if (mode === 'error') return Response.json({ error: 'Diagnostics unavailable' }, { status: 503 });
     return Response.json(mode === 'empty' ? [] : [{
       id: '00000000-0000-4000-8000-000000000002', user_id: user.id,
-      name: '<img src=x onerror=alert(1)>', occurred_at: '2026-10-21T12:00:00Z',
+      name: '<img src=x onerror=alert(1)>', occurred_at: `${today}T12:00:00Z`,
       version: '0.1.2', code: 'sync_failed', level: 'warn',
       message: 'Tracking data could not be synced.', status: 503,
     }]);
@@ -57,26 +58,28 @@ try {
   await import('/src/main.tsx');
   await check('real dashboard loaded', () => Boolean(document.querySelector('.page-heading')));
   await check('foreground minutes aggregate for selected worker/day', () => [...document.querySelectorAll('[aria-labelledby="applications-heading"] .app-row')].some(row => row.innerText.includes('chrome.exe') && row.innerText.includes('1.50')));
-  await check('screenshot tiles are grouped under an hour heading', () => [...document.querySelectorAll('.hourgrp h3')].some(h => /\d\d:00/.test(h.textContent)) && document.querySelectorAll('.tile').length === 5);
+  await check('screenshot tiles are grouped under an hour heading', () => [...document.querySelectorAll('.hourgrp h3')].some(h => /\d\d:00/.test(h.textContent)) && document.querySelectorAll('.tile').length === 4);
   if (role === 'worker') {
     await check('worker sees no team ribbon and makes no team day request', () => !document.querySelector('.ribbons') && dayCalls === 0);
   } else {
     await check('manager ribbon renders one row per person with tracked segments and screenshot ticks', () => document.querySelectorAll('.rrow').length === 2 && document.querySelectorAll('.rrow .seg').length >= 2 && document.querySelectorAll('.rrow .shot').length === 1);
     await check('ribbon row is keyboard-operable and selects the person', () => { const row = [...document.querySelectorAll('.rrow')].find(r => r.innerText.includes('Second Worker')); row?.click(); return row?.getAttribute('aria-pressed') === 'true'; });
     [...document.querySelectorAll('.rrow')].find(r => r.innerText.includes('Fixture')).click();
-    await check('selection returns to own row', () => [...document.querySelectorAll('.rrow')].find(r => r.innerText.includes('Fixture'))?.getAttribute('aria-pressed') === 'true' && document.querySelectorAll('.tile').length === 5);
-    await check('selected day finished reloading', () => document.querySelector('[aria-labelledby="day-heading"]')?.getAttribute('aria-busy') === 'false' && document.querySelectorAll('.tile').length === 5);
+    await check('selection returns to own row', () => [...document.querySelectorAll('.rrow')].find(r => r.innerText.includes('Fixture'))?.getAttribute('aria-pressed') === 'true' && document.querySelectorAll('.tile').length === 4);
+    await check('selected day finished reloading', () => document.querySelector('[aria-labelledby="day-heading"]')?.getAttribute('aria-busy') === 'false' && document.querySelectorAll('.tile').length === 4);
     await wait(150);
   }
   await check('location shows zero coordinates, accuracy and honest missing states', () => document.body.innerText.includes('0.00000, 0.00000 (accuracy ±25 m)') && document.body.innerText.includes('Screenshot location: unavailable') && document.body.innerText.includes('Screenshot location: sharing off'));
   await check('stored screenshot image decodes and renders', () => document.querySelector('.screenshot img')?.naturalWidth === 1);
-  await check('ordinary time blocks explain screenshot scheduling', () => document.body.innerText.includes('No screenshot captured (30s time block).') && document.body.innerText.includes('every 10 running minutes'));
+  await check('ordinary time blocks collapse without image placeholders', () => document.querySelectorAll('.time-row').length === 1 && !document.querySelector('.time-only').open && !document.querySelector('.time-row .screenshot') && document.body.innerText.includes('every 10 running minutes'));
+  document.querySelector('.time-only summary').click();
+  await check('compact row preserves seconds, exact duration and owner actions', () => /\d\d:\d\d:\d\d/.test(document.querySelector('.time-row').innerText) && document.querySelector('.time-row').innerText.includes('30s') && document.querySelector('.time-row').innerText.includes('33% input activity') && Boolean(document.querySelector('.time-row .delete')));
   await check('deleted screenshots and storage unavailability have distinct labels', () => document.body.innerText.includes('Screenshot deleted.') && document.body.innerText.includes('Screenshot temporarily unavailable.'));
   document.querySelector('.screenshot').click();
   await check('screenshot dialog includes associated location', () => document.querySelector('dialog[open]')?.innerText.includes('accuracy ±25 m'));
   document.querySelector('dialog button').click();
   await wait(100);
-  document.querySelectorAll('.screenshot')[3].click();
+  document.querySelector('.time-row button').click();
   await check('time-only block dialog does not claim an image is unavailable', () => document.querySelector('dialog[open]')?.innerText.includes('No screenshot captured (30s time block).') && !document.querySelector('dialog[open]')?.innerText.includes('Screenshot location:'));
   document.querySelector('dialog button').click();
   if (role === 'owner') {

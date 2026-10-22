@@ -1,5 +1,16 @@
 import type { Block, ScreenshotLocation } from './api.ts'
 
+export function isTimeOnly(block: Pick<Block, 'screenshot_url' | 'screenshot_status' | 'location'>): boolean {
+  // Legacy blocks without screenshot evidence are time-only. Keep explicit image states as cards.
+  return !block.screenshot_url && (block.screenshot_status === 'not_captured' || (!block.screenshot_status && !block.location))
+}
+export function blockDuration(seconds: number): string {
+  const whole = Math.floor(Math.max(0, seconds))
+  const hours = Math.floor(whole / 3600)
+  const minutes = Math.floor(whole % 3600 / 60)
+  return [hours ? `${hours}h` : '', minutes ? `${minutes}m` : '', whole % 60 || !whole ? `${whole % 60}s` : ''].filter(Boolean).join(' ')
+}
+
 export function screenshotPlaceholder(block: Pick<Block, 'screenshot_status' | 'duration_seconds'>): string {
   switch (block.screenshot_status) {
     case 'not_captured': return `No screenshot captured (${block.duration_seconds}s time block).`

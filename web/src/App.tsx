@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, ApiError, post } from './api'
 import type { Block, DaySpan, Hours, Invite, OpenSession, User, Worker } from './api'
-import { activity, applicationTotals, duration, localDate, locationText, minuteOfDay, ribbon, screenshotPlaceholder, utcDate, weekRange, zone } from './utils'
+import { activity, applicationTotals, blockDuration, duration, isTimeOnly, localDate, locationText, minuteOfDay, ribbon, screenshotPlaceholder, utcDate, weekRange, zone } from './utils'
 import AgentLogs from './AgentLogs'
 import DownloadCard from './DownloadCard'
 import { canManage, MemberAdmin, PasswordForm, ResetPassword } from './Admin'
@@ -13,6 +13,9 @@ const time = (value: string) =>
     minute: '2-digit',
     timeZone: zone,
   })
+const blockTime = (value: string) => new Date(value).toLocaleTimeString(undefined, {
+  hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: zone,
+})
 const message = (error: unknown) =>
   error instanceof Error
     ? error.message
@@ -542,11 +545,32 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
                 <p>There are no uploaded work blocks for this date. Choose another day or wait for the desktop app to sync.</p>
               </div>
             ) : (
-              hourGroups.map((group) => (
+              hourGroups.map((group) => {
+                const timeOnly = group.items.filter(isTimeOnly)
+                const timeSeconds = timeOnly.reduce((sum, block) => sum + block.duration_seconds, 0)
+                return (
                 <div className="hourgrp" key={group.hour}>
                   <h3>{group.hour}</h3>
+                  {timeOnly.length > 0 && (
+                    <details className="time-only">
+                      <summary>{timeOnly.length} time-only {timeOnly.length === 1 ? 'block' : 'blocks'} · {blockDuration(timeSeconds)} tracked</summary>
+                      <ul>
+                        {timeOnly.map((block) => (
+                          <li className="time-row" key={block.id}>
+                            <span className="time-range"><time dateTime={block.start_at}>{blockTime(block.start_at)}</time> to <time dateTime={block.end_at}>{blockTime(block.end_at)}</time></span>
+                            <span>{blockDuration(block.duration_seconds)}</span>
+                            <span>{activity(block.active_seconds, block.duration_seconds)}% input activity</span>
+                            <div className="time-actions">
+                              <button onClick={() => setExpanded(block)} aria-label={`View work block at ${blockTime(block.start_at)}`}>View work block</button>
+                              {selected === user.id && <button className="delete" onClick={() => void remove(block)} disabled={actionBusy}>Delete time block</button>}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
                   <div className="shots">
-                    {group.items.map((block) => {
+                    {group.items.filter((block) => !isTimeOnly(block)).map((block) => {
                       const pct = activity(block.active_seconds, block.duration_seconds)
                       return (
                         <article className="tile" key={block.id}>
@@ -568,7 +592,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
                               <span>{pct}%<span className="sr-only"> input activity</span></span>
                             </span>
                           </div>
-                          <p className="sub">{duration(block.duration_seconds)} to {time(block.end_at)}</p>
+                          <p className="sub">{blockDuration(block.duration_seconds)} to {time(block.end_at)}</p>
                           {block.location && <p className="sub">{locationText(block.location)}</p>}
                           {selected === user.id && (
                             <div className="block-actions">
@@ -587,7 +611,8 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
                     })}
                   </div>
                 </div>
-              ))
+                )
+              })
             )}
           </section>
           <div className="side">
@@ -692,7 +717,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
         {expanded?.location && <p>{locationText(expanded.location)}</p>}
         {expanded && (
           <p>
-            {duration(expanded.duration_seconds)} tracked,{' '}
+            {blockDuration(expanded.duration_seconds)} tracked,{' '}
             {activity(expanded.active_seconds, expanded.duration_seconds)}%
             activity
           </p>

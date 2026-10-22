@@ -1,6 +1,20 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { activity, applicationTotals, duration, localDate, locationText, ribbon, screenshotPlaceholder, utcDate, weekRange } from './utils.ts'
+import { activity, applicationTotals, blockDuration, duration, isTimeOnly, localDate, locationText, ribbon, screenshotPlaceholder, utcDate, weekRange } from './utils.ts'
+
+test('time-only policy preserves screenshot evidence including legacy location', () => {
+  assert.equal(isTimeOnly({ screenshot_url: null, screenshot_status: 'not_captured' }), true)
+  assert.equal(isTimeOnly({ screenshot_url: null }), true)
+  for (const screenshot_status of ['available', 'deleted', 'unavailable'] as const) {
+    assert.equal(isTimeOnly({ screenshot_url: null, screenshot_status }), false)
+  }
+  assert.equal(isTimeOnly({ screenshot_url: 'image', screenshot_status: 'not_captured' }), false)
+  assert.equal(isTimeOnly({ screenshot_url: null, location: { status: 'disabled', captured_at: '' } }), false)
+})
+test('block duration preserves seconds without changing payroll rounding', () => {
+  for (const [seconds, text] of [[0, '0s'], [30, '30s'], [60, '1m'], [90, '1m 30s'], [3659, '1h 59s'], [3661, '1h 1m 1s']] as const) assert.equal(blockDuration(seconds), text)
+  assert.equal(duration(30), '0h 00m')
+})
 
 test('time-only and deleted blocks are not mislabeled as unavailable screenshots', () => {
   assert.equal(screenshotPlaceholder({ screenshot_status: 'not_captured', duration_seconds: 30 }), 'No screenshot captured (30s time block).')
