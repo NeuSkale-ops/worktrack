@@ -30,11 +30,18 @@ function Logo() {
 }
 
 function Screenshot({ url, alt }: { url: string; alt: string }) {
-  const [failed, setFailed] = useState(false)
-  return failed ? (
-    <span>Screenshot expired or unavailable. Refresh to retry.</span>
-  ) : (
-    <img src={url} alt={alt} loading="lazy" onError={() => setFailed(true)} />
+  const [state, setState] = useState<'loading' | 'loaded' | 'failed'>('loading')
+  useEffect(() => {
+    setState('loading')
+    const timeout = window.setTimeout(() => setState(current => current === 'loading' ? 'failed' : current), 15000)
+    return () => window.clearTimeout(timeout)
+  }, [url])
+  return (
+    <span className={`image-preview ${state}`}>
+      {state === 'loading' && <span role="status">Loading screenshot…</span>}
+      {state === 'failed' && <span role="status">Screenshot expired or unavailable. Refresh to retry.</span>}
+      <img src={url} alt={alt} onLoad={() => setState('loaded')} onError={() => setState('failed')} />
+    </span>
   )
 }
 
@@ -245,6 +252,8 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
   const [hours, setHours] = useState<Hours[]>([])
   const [spans, setSpans] = useState<DaySpan[]>([])
   const [workingFirst, setWorkingFirst] = useState(true)
+  const [view, setView] = useState<'Day view' | 'Weekly report' | 'Settings'>('Day view')
+  const [tab, setTab] = useState<'Screenshots' | 'Activity details' | 'Applications'>('Screenshots')
   const [openSession, setOpenSession] = useState<OpenSession | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(true)
@@ -287,6 +296,9 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
     setBusy(true)
     setBlocks([])
     setHours([])
+    setSpans([])
+    setExpanded(null)
+    dialog.current?.close()
     void load()
     const timer = window.setInterval(() => {
       if (!document.hidden) void load()
@@ -299,9 +311,6 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
   useEffect(() => {
     if (expanded) dialog.current?.showModal()
   }, [expanded])
-  const daySeconds = hours
-    .filter((row) => row.date.slice(0, 10) === date)
-    .reduce((sum, row) => sum + row.seconds, 0)
   const weekSeconds = hours.reduce((sum, row) => sum + row.seconds, 0)
   const ownBlocks = blocks.reduce(
     (sum, block) => sum + block.duration_seconds,
@@ -360,7 +369,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
     }
   }
   const selectedPerson = team.find((person) => person.id === selected)
-  const selectedLabel = selected === user.id ? (manager ? `${user.name || 'You'}` : 'Your day') : selectedPerson?.name || selectedPerson?.email || 'Worker'
+  const selectedLabel = selected === user.id ? (user.name || user.email) : selectedPerson?.name || selectedPerson?.email || 'Worker'
   const blockActive = blocks.reduce((sum, block) => sum + block.active_seconds, 0)
   const dayLabel = new Date(`${date}T12:00:00Z`).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
   const shiftDate = (days: number) => {
@@ -380,12 +389,26 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
     return personSeconds(person.id) > 0 ? 'Not tracking now' : 'No time this day'
   }
   const hourGroups = blocks.reduce<{ hour: string; items: Block[] }[]>((groups, block) => {
-    const hour = `${time(block.start_at).slice(0, 2)}:00`
+    const hour = new Date(block.start_at).toLocaleTimeString(undefined, { hour: '2-digit', timeZone: zone })
     const group = groups[groups.length - 1]
     if (group?.hour === hour) group.items.push(block)
     else groups.push({ hour, items: [block] })
     return groups
   }, [])
+  const selectedSpans = manager ? spans.filter(span => span.user_id === selected) : blocks
+  const segments = ribbon(selectedSpans, date)
+  const screenshots = blocks.filter(block => !isTimeOnly(block))
+  const dateControls = (
+    <div className="datenav">
+      <button aria-label="Previous day" onClick={() => shiftDate(-1)}>‹</button>
+      <label className="date-label">
+        <span className="sr-only">Date ({zone})</span>
+        <input type="date" value={date} required onChange={event => { if (event.target.value) setDate(event.target.value) }} />
+      </label>
+      <button aria-label="Next day" onClick={() => shiftDate(1)} disabled={isToday}>›</button>
+      {!isToday && <button onClick={() => setDate(localDate())}>Today</button>}
+    </div>
+  )
   const appMax = applications[0]?.milliseconds || 1
   const weekDays = Array.from({ length: 7 }, (_, index) => {
     const day = new Date(`${range.from}T00:00:00Z`)
@@ -398,6 +421,11 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
         <a className="brand" href="/">
           <Logo /> WorkTrack
         </a>
+        <nav className="global-nav" aria-label="Main navigation">
+          {(['Day view', 'Weekly report', 'Settings'] as const).map(item => (
+            <button key={item} aria-current={view === item ? 'page' : undefined} onClick={() => setView(item)}>{item}</button>
+          ))}
+        </nav>
         <div className="account">
           <span>
             {user.name}
@@ -410,24 +438,12 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
         </div>
       </header>
       <main className="workspace">
-        <div className="page-heading">
-          <div>
-            <h1>{manager ? (isToday ? 'Team today' : 'Team on this day') : isToday ? 'Your day' : 'Your day on this date'}</h1>
-            <p className="muted">{dayLabel}, times in {zone}</p>
-          </div>
-          <div className="datenav">
-            <span className="sync">
-              <span className={error ? 'status-dot' : 'live-dot'} />
-              {updated ? `Updated ${updated.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}` : 'Connecting…'}
-            </span>
-            <button onClick={() => { setBusy(true); void load() }} disabled={busy}>Refresh</button>
-            <button aria-label="Previous day" onClick={() => shiftDate(-1)}>‹</button>
-            <label className="date-label">
-              <span className="sr-only">Date ({zone})</span>
-              <input type="date" value={date} required onChange={(e) => { if (e.target.value) setDate(e.target.value) }} />
-            </label>
-            <button aria-label="Next day" onClick={() => shiftDate(1)} disabled={isToday}>›</button>
-          </div>
+        <div className="workspace-status">
+          <span className="sync" role="status">
+            <span className={error ? 'status-dot' : 'live-dot'} aria-hidden="true" />
+            {busy ? 'Loading day…' : updated ? `Updated ${updated.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}` : 'Connecting…'}
+          </span>
+          <button onClick={() => { setBusy(true); void load() }} disabled={busy}>Refresh</button>
         </div>
         {error && (
           <div className="error" role="alert">
@@ -458,201 +474,126 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
             </button>
           </section>
         )}
-        <section className="totals" aria-label="Work summary">
-          <div>
-            <strong>{busy ? '…' : duration(daySeconds)}</strong>
-            <span>{manager ? 'Team hours this day' : 'Hours this day'}</span>
-          </div>
-          <div>
-            <strong>{busy ? '…' : duration(weekSeconds)}</strong>
-            <span>{manager ? 'Team hours this week' : 'Hours this week'}</span>
-          </div>
-          {manager && (
-            <div>
-              <strong>
-                {team.filter((person) => person.working).length}
-                <em> of {team.length}</em>
-              </strong>
-              <span>Working now</span>
-            </div>
-          )}
-        </section>
-        {manager && (
-          <section className="card" aria-labelledby="ribbon-heading">
-            <div className="card-h">
-              <h2 id="ribbon-heading">Who worked when</h2>
-              <p className="muted">Violet is tracked time, green is running now. Ticks mark screenshots.</p>
-              <label className="inline-check">
-                <input type="checkbox" checked={workingFirst} onChange={(e) => setWorkingFirst(e.target.checked)} />
-                Working now first
-              </label>
-            </div>
-            <div className="ribbons" role="list">
-              <div className="hours" aria-hidden="true">
-                <span />
-                <div className="scale">{['00', '03', '06', '09', '12', '15', '18', '21', '24'].map((h) => <span key={h}>{h}</span>)}</div>
-                <span>Total</span>
-              </div>
-              {people.map((person) => {
-                const own = spans.filter((span) => span.user_id === person.id)
-                const segments = ribbon(own, date)
-                return (
-                  <button
-                    key={person.id}
-                    role="listitem"
-                    className={`rrow ${selected === person.id ? 'sel' : ''}`}
-                    aria-pressed={selected === person.id}
-                    aria-label={`${person.name || person.email}, ${statusLine(person)}, ${duration(personSeconds(person.id))} tracked. Show their day.`}
-                    onClick={() => setSelected(person.id)}
-                  >
-                    <span className="who">
-                      <span className={`avatar ${person.working ? 'on' : ''}`} aria-hidden="true">{initials(person)}</span>
-                      <span>
-                        <b>{person.name || person.email}</b>
-                        <small>{statusLine(person)}</small>
-                      </span>
-                    </span>
-                    <span className="track" aria-hidden="true">
-                      {segments.map((segment, index) => {
-                        const live = person.working && isToday && index === segments.length - 1 && nowPercent !== null && segment.left + segment.width >= nowPercent - 1
-                        return <i key={index} className={`seg ${live ? 'now' : ''}`} style={{ left: `${segment.left}%`, width: `${segment.width}%` }} />
-                      })}
-                      {ribbon(own.filter((span) => span.screenshot).map((span) => ({ start_at: span.end_at, end_at: span.end_at })), date).map((tick, index) => (
-                        <i key={`s${index}`} className="shot" style={{ left: `${tick.left}%` }} />
-                      ))}
-                      {nowPercent !== null && <i className="nowline" style={{ left: `${nowPercent}%` }} />}
-                    </span>
-                    <span className={`tot ${personSeconds(person.id) ? '' : 'zero'}`}>{busy ? '…' : duration(personSeconds(person.id))}</span>
-                  </button>
-                )
-              })}
-              {!busy && !team.length && <p className="empty">No workers yet. Create an invite below to add your team.</p>}
-            </div>
-          </section>
-        )}
-        <div className="split">
-          <section className="card" aria-busy={busy} aria-labelledby="day-heading">
-            <div className="card-h">
-              <h2 id="day-heading">{manager ? `${selectedLabel}, ${date}` : 'Screenshots and time'}</h2>
-              <p className="muted">
-                {busy ? 'Loading…' : `${duration(ownBlocks)} tracked, ${activity(blockActive, ownBlocks)}% input activity`}
-              </p>
-            </div>
-            <p className="muted pad">Time uploads about every 30 seconds. Screenshots are taken every 10 running minutes, so most time blocks have no scheduled screenshot.</p>
-            {!busy && !blocks.length ? (
-              <div className="empty timeline-empty">
-                <h3>No time recorded</h3>
-                <p>There are no uploaded work blocks for this date. Choose another day or wait for the desktop app to sync.</p>
-              </div>
-            ) : (
-              hourGroups.map((group) => {
-                const timeOnly = group.items.filter(isTimeOnly)
-                const timeSeconds = timeOnly.reduce((sum, block) => sum + block.duration_seconds, 0)
-                return (
-                <div className="hourgrp" key={group.hour}>
-                  <h3>{group.hour}</h3>
-                  {timeOnly.length > 0 && (
-                    <details className="time-only">
-                      <summary>{timeOnly.length} time-only {timeOnly.length === 1 ? 'block' : 'blocks'} · {blockDuration(timeSeconds)} tracked</summary>
-                      <ul>
-                        {timeOnly.map((block) => (
-                          <li className="time-row" key={block.id}>
-                            <span className="time-range"><time dateTime={block.start_at}>{blockTime(block.start_at)}</time> to <time dateTime={block.end_at}>{blockTime(block.end_at)}</time></span>
-                            <span>{blockDuration(block.duration_seconds)}</span>
-                            <span>{activity(block.active_seconds, block.duration_seconds)}% input activity</span>
-                            <div className="time-actions">
-                              <button onClick={() => setExpanded(block)} aria-label={`View work block at ${blockTime(block.start_at)}`}>View work block</button>
-                              {selected === user.id && <button className="delete" onClick={() => void remove(block)} disabled={actionBusy}>Delete time block</button>}
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </details>
-                  )}
-                  <div className="shots">
-                    {group.items.filter((block) => !isTimeOnly(block)).map((block) => {
-                      const pct = activity(block.active_seconds, block.duration_seconds)
-                      return (
-                        <article className="tile" key={block.id}>
-                          <button
-                            className={`screenshot ${block.screenshot_url ? '' : 'none'}`}
-                            onClick={() => setExpanded(block)}
-                            aria-label={`View work block at ${time(block.start_at)}`}
-                          >
-                            {block.screenshot_url ? (
-                              <Screenshot key={block.screenshot_url} url={block.screenshot_url} alt={`Work screenshot at ${time(block.start_at)}`} />
-                            ) : (
-                              <span>{screenshotPlaceholder(block)}</span>
-                            )}
-                          </button>
-                          <div className="meta">
-                            <b>{time(block.start_at)}</b>
-                            <span className="act">
-                              <span className="bar" aria-hidden="true"><i style={{ width: `${pct}%` }} /></span>
-                              <span>{pct}%<span className="sr-only"> input activity</span></span>
-                            </span>
-                          </div>
-                          <p className="sub">{blockDuration(block.duration_seconds)} to {time(block.end_at)}</p>
-                          {block.location && <p className="sub">{locationText(block.location)}</p>}
-                          {selected === user.id && (
-                            <div className="block-actions">
-                              {block.screenshot_url && (
-                                <button className="delete" onClick={() => void remove(block, true)} disabled={actionBusy}>
-                                  Delete screenshot
-                                </button>
-                              )}
-                              <button className="delete" onClick={() => void remove(block)} disabled={actionBusy}>
-                                Delete time block
-                              </button>
-                            </div>
-                          )}
-                        </article>
-                      )
-                    })}
-                  </div>
-                </div>
-                )
-              })
-            )}
-          </section>
-          <div className="side">
-            <section className="card" aria-labelledby="applications-heading">
-              <div className="card-h">
-                <h2 id="applications-heading">Applications</h2>
-                <p className="muted">Estimated foreground time</p>
-              </div>
-              {applications.length ? (
-                <ul className="apps">
-                  {applications.map((app) => (
-                    <li className="app-row" key={app.app}>
-                      <span>{app.app}</span>
-                      <span>{(app.milliseconds / 60000).toFixed(2)} min</span>
-                      <span className="fill" aria-hidden="true"><i style={{ width: `${(app.milliseconds / appMax) * 100}%` }} /></span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="muted pad">No application usage recorded. Install the latest desktop app and start tracking to collect it.</p>
-              )}
-              <p className="muted pad">Selected person, {date} ({zone}). Includes idle time. Input activity is not proof of productivity.</p>
-            </section>
-            <DownloadCard />
+        {view === 'Day view' && (
+          <div className={`day-layout ${manager ? '' : 'personal'}`}>
             {manager && (
-              <section className="card manage">
-                <InviteForm />
-                {selectedPerson && canManage(user, selectedPerson) && (
-                  <MemberAdmin key={selectedPerson.id} person={selectedPerson} onChange={() => void load()} />
-                )}
-              </section>
+              <aside className="people-rail" aria-labelledby="people-heading">
+                <div className="rail-heading"><h2 id="people-heading">People</h2><span className="muted">{team.length}</span></div>
+                <label className="inline-check desktop-people">
+                  <input type="checkbox" checked={workingFirst} onChange={event => setWorkingFirst(event.target.checked)} />Working now first
+                </label>
+                <label className="mobile-person">Person
+                  <select value={selected} onChange={event => setSelected(event.target.value)}>
+                    {!people.some(person => person.id === user.id) && <option value={user.id}>{user.name || user.email}</option>}
+                    {people.map(person => <option key={person.id} value={person.id}>{person.name || person.email} · {statusLine(person)} · {duration(personSeconds(person.id))}</option>)}
+                  </select>
+                </label>
+                <div className="people-list desktop-people">
+                  {people.map(person => (
+                    <button className={`rrow ${selected === person.id ? 'sel' : ''}`} key={person.id}
+                      aria-pressed={selected === person.id}
+                      aria-label={`${person.name || person.email}, ${statusLine(person)}, ${duration(personSeconds(person.id))} tracked. Show their day.`}
+                      onClick={() => setSelected(person.id)}>
+                      <span className="who">
+                        <span className={`avatar ${person.working ? 'on' : ''}`} aria-hidden="true">{initials(person)}</span>
+                        <span><b>{person.name || person.email}</b><small>{statusLine(person)}</small></span>
+                      </span>
+                      <span className="tot">{busy ? '…' : duration(personSeconds(person.id))}</span>
+                    </button>
+                  ))}
+                  {!busy && !team.length && <p className="empty">No team members yet. Invite a worker in Settings.</p>}
+                </div>
+              </aside>
             )}
+            <section className="day-workspace" aria-busy={busy} aria-labelledby="day-heading">
+              <div className="page-heading">
+                <div><p className="eyebrow">Day review</p><h1 id="day-heading">{selectedLabel}</h1><p className="muted">{dayLabel}</p></div>
+                {dateControls}
+              </div>
+              <div className="day-summary">
+                <p><strong>{busy ? '…' : duration(ownBlocks)}</strong> tracked <span className="summary-divider">/</span> <strong>{busy ? '…' : `${activity(blockActive, ownBlocks)}%`}</strong> input activity</p>
+                <span className="muted">Times in {zone}</span>
+              </div>
+              <div className="day-timeline" aria-label={`${selectedLabel}'s recorded time across 24 hours`}>
+                <div className="track" aria-hidden="true">
+                  {segments.map((segment, index) => <i className="seg" key={index} style={{ left: `${segment.left}%`, width: `${segment.width}%` }} />)}
+                  {nowPercent !== null && <i className="nowline" style={{ left: `${nowPercent}%` }} />}
+                </div>
+                <div className="scale" aria-hidden="true">{['00:00', '06:00', '12:00', '18:00', '24:00'].map(hour => <span key={hour}>{hour}</span>)}</div>
+                <p className="muted">Blue marks recorded time.{isToday ? ' The marker shows now.' : ''}</p>
+              </div>
+              <div className="task-tabs" role="tablist" aria-label="Day review">
+                {(['Screenshots', 'Activity details', 'Applications'] as const).map((item, index) => (
+                  <button key={item} role="tab" id={`day-tab-${index}`} aria-selected={tab === item} aria-controls="day-panel"
+                    tabIndex={tab === item ? 0 : -1} onClick={() => setTab(item)}
+                    onKeyDown={event => {
+                      const tabs = ['Screenshots', 'Activity details', 'Applications'] as const
+                      const next = event.key === 'ArrowRight' ? (index + 1) % 3 : event.key === 'ArrowLeft' ? (index + 2) % 3 : event.key === 'Home' ? 0 : event.key === 'End' ? 2 : null
+                      if (next !== null) {
+                        event.preventDefault()
+                        setTab(tabs[next])
+                        document.getElementById(`day-tab-${next}`)?.focus()
+                      }
+                    }}>{item}</button>
+                ))}
+              </div>
+              <div id="day-panel" className="task-panel" role="tabpanel" aria-labelledby={`day-tab-${['Screenshots', 'Activity details', 'Applications'].indexOf(tab)}`}>
+                {busy ? <p className="empty" role="status">Loading {selectedLabel}'s day…</p> : (
+                  <>
+                    {!blocks.length && <div className="empty no-time"><h2>No time recorded</h2><p>Choose another day or wait for the desktop app to sync.</p></div>}
+                    {tab === 'Screenshots' && (
+                      <>
+                        <div className="section-intro"><h2>Screenshots</h2><p className="muted">{screenshots.length} screenshot {screenshots.length === 1 ? 'record' : 'records'}. Captured every 10 running minutes.</p></div>
+                        {screenshots.length ? <div className="shots">
+                          {screenshots.map(block => (
+                            <article className={`tile ${block.screenshot_url ? '' : 'status-tile'}`} key={block.id}>
+                              {block.screenshot_url ? (
+                                <button className="screenshot" onClick={() => setExpanded(block)} aria-label={`View work block at ${time(block.start_at)}`}>
+                                  <Screenshot key={block.screenshot_url} url={block.screenshot_url} alt={`Work screenshot at ${time(block.start_at)}`} />
+                                </button>
+                              ) : <p className="screenshot-status">{screenshotPlaceholder(block)}</p>}
+                              <div className="meta"><time dateTime={block.start_at}>{time(block.start_at)}</time><button onClick={() => setExpanded(block)} aria-label={`View details at ${time(block.start_at)}`}>View details</button></div>
+                            </article>
+                          ))}
+                        </div> : <div className="empty screenshot-empty"><h3>No screenshots for this day</h3><p>{blocks.length ? 'Recorded activity is available in Activity details. Screenshots appear after 10 running minutes.' : 'Screenshots will appear here when the desktop app uploads them.'}</p></div>}
+                      </>
+                    )}
+                    {tab === 'Activity details' && (
+                      <>
+                        <div className="section-intro"><h2>Recorded activity</h2><p className="muted">Exact uploaded intervals. Input activity is not proof of productivity.</p></div>
+                        {hourGroups.map((group, index) => <section className="hourgrp" key={`${group.hour}-${index}`}>
+                          <h3>{group.hour}</h3>
+                          <ul className="activity-list">{group.items.map(block => <li className="time-row" key={block.id}>
+                            <span className="time-range"><time dateTime={block.start_at}>{blockTime(block.start_at)}</time> to <time dateTime={block.end_at}>{blockTime(block.end_at)}</time></span>
+                            <span className="record-duration">{blockDuration(block.duration_seconds)} <small>{block.duration_seconds} seconds</small></span>
+                            <span>{activity(block.active_seconds, block.duration_seconds)}% input activity</span>
+                            <button onClick={() => setExpanded(block)} aria-label={`View work block at ${blockTime(block.start_at)}`}>View details</button>
+                          </li>)}</ul>
+                        </section>)}
+                      </>
+                    )}
+                    {tab === 'Applications' && (
+                      <>
+                        <div className="section-intro"><h2 id="applications-heading">Applications</h2><p className="muted">Estimated foreground time. Includes idle time.</p></div>
+                        {applications.length ? <ul className="apps">{applications.map(app => <li className="app-row" key={app.app}>
+                          <span>{app.app}</span><span>{(app.milliseconds / 60000).toFixed(2)} min</span>
+                          <span className="fill" aria-hidden="true"><i style={{ width: `${(app.milliseconds / appMax) * 100}%` }} /></span>
+                        </li>)}</ul> : <p className="empty">No application usage recorded. Install the latest desktop app and start tracking to collect it.</p>}
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+            </section>
           </div>
-        </div>
-        <section className="card" aria-labelledby="week-heading">
-          <div className="card-h">
-            <h2 id="week-heading">This week</h2>
-            <p className="muted">{range.from} to {range.to}, recorded time only</p>
-            <a className="button" href={`/api/reports/hours.csv?${new URLSearchParams({ ...range, tz: zone })}`} download>Export CSV</a>
+        )}
+        {view === 'Weekly report' && (
+        <section className="report-view" aria-labelledby="week-heading">
+          <div className="page-heading">
+            <div><p className="eyebrow">Recorded time</p><h1 id="week-heading">Weekly report</h1><p className="muted">{range.from} to {range.to} · {duration(weekSeconds)} {manager ? 'team' : 'total'} tracked</p></div>
+            {dateControls}
           </div>
+          <div className="report-actions"><p className="muted">Times in {zone}. Totals include recorded time only.</p><a className="button" href={`/api/reports/hours.csv?${new URLSearchParams({ ...range, tz: zone })}`} download>Export CSV</a></div>
           <div className="table-scroll">
             <table>
               <caption className="sr-only">Daily and weekly tracked hours per worker</caption>
@@ -683,10 +624,26 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
           </div>
           {!busy && !hours.length && <p className="empty">No recorded hours this week.</p>}
         </section>
-        {user.role === 'owner' && <AgentLogs />}
-        <section className="card account-card">
-          <PasswordForm />
-        </section>
+        )}
+        {view === 'Settings' && (
+          <section className="settings-view" aria-labelledby="settings-heading">
+            <div className="page-heading"><div><p className="eyebrow">Workspace</p><h1 id="settings-heading">Settings</h1><p className="muted">Desktop app, team access and your account.</p></div></div>
+            <DownloadCard />
+            {manager && <section className="settings-section" aria-labelledby="team-settings-heading">
+              <h2 id="team-settings-heading">Team members</h2>
+              <label className="member-chooser">Person
+                <select value={selected} onChange={event => setSelected(event.target.value)}>
+                  {!people.some(person => person.id === user.id) && <option value={user.id}>{user.name || user.email}</option>}
+                  {people.map(person => <option key={person.id} value={person.id}>{person.name || person.email}{person.disabled ? ' (disabled)' : ''}</option>)}
+                </select>
+              </label>
+              {selectedPerson && canManage(user, selectedPerson) ? <MemberAdmin key={selectedPerson.id} person={selectedPerson} onChange={() => void load()} /> : <p className="muted">{selected === user.id ? 'Manage your own password below. Choose another member to manage their access.' : 'You do not have permission to manage this member.'}</p>}
+              <InviteForm />
+            </section>}
+            <section className="settings-section"><h2>Your account</h2><PasswordForm /></section>
+            {user.role === 'owner' && <AgentLogs />}
+          </section>
+        )}
         <footer>
           Screenshots, activity and location are recorded only while the
           desktop timer is running.
@@ -694,33 +651,36 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
       </main>
       <dialog
         ref={dialog}
+        aria-labelledby="block-dialog-heading"
         onClose={() => setExpanded(null)}
         onClick={(event) => {
           if (event.target === dialog.current) dialog.current?.close()
         }}
       >
         <div className="dialog-heading">
-          <h2>Work block {expanded && time(expanded.start_at)}</h2>
+          <h2 id="block-dialog-heading">Work block {expanded && time(expanded.start_at)}</h2>
           <button onClick={() => dialog.current?.close()} autoFocus>
             Close
           </button>
         </div>
         {expanded?.screenshot_url ? (
-          <img
-            className="full-screenshot"
-            src={expanded.screenshot_url}
-            alt="Full work screenshot"
-          />
+          <div className="full-screenshot"><Screenshot key={expanded.screenshot_url} url={expanded.screenshot_url} alt="Full work screenshot" /></div>
         ) : (
           <p className="empty">{expanded ? screenshotPlaceholder(expanded) : 'No time block selected.'}</p>
         )}
         {expanded?.location && <p>{locationText(expanded.location)}</p>}
         {expanded && (
           <p>
-            {blockDuration(expanded.duration_seconds)} tracked,{' '}
+            {blockDuration(expanded.duration_seconds)} tracked ({expanded.duration_seconds} seconds),{' '}
             {activity(expanded.active_seconds, expanded.duration_seconds)}%
-            activity
+            input activity. {blockTime(expanded.start_at)} to {blockTime(expanded.end_at)}.
           </p>
+        )}
+        {expanded && expanded.user_id === user.id && (
+          <div className="block-actions">
+            {expanded.screenshot_url && <button className="delete" onClick={() => void remove(expanded, true)} disabled={actionBusy}>Delete screenshot</button>}
+            <button className="delete" onClick={() => void remove(expanded)} disabled={actionBusy}>Delete time block</button>
+          </div>
         )}
       </dialog>
     </div>
