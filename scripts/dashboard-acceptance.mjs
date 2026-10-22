@@ -58,7 +58,7 @@ try {
       }
       await people.filter({ hasText: seeded[0].name }).click()
     } else {
-      await page.getByLabel('Person', { exact: true }).selectOption(seeded[0].id)
+      await page.getByRole('combobox', { name: 'Person', exact: true }).selectOption(seeded[0].id)
     }
     await page.waitForFunction(() => document.querySelector('[aria-labelledby="day-heading"]')?.getAttribute('aria-busy') === 'false')
     assert.match(await page.locator('#day-heading').innerText(), new RegExp(seeded[0].name))
