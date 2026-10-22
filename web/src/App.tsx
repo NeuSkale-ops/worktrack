@@ -4,6 +4,7 @@ import { api, ApiError, post } from './api'
 import type { Block, DaySpan, Hours, Invite, OpenSession, User, Worker } from './api'
 import { activity, applicationTotals, duration, localDate, locationText, minuteOfDay, ribbon, screenshotPlaceholder, utcDate, weekRange, zone } from './utils'
 import AgentLogs from './AgentLogs'
+import DownloadCard from './DownloadCard'
 import { canManage, MemberAdmin, PasswordForm, ResetPassword } from './Admin'
 
 const time = (value: string) =>
@@ -610,22 +611,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
               )}
               <p className="muted pad">Selected person, {date} ({zone}). Includes idle time. Input activity is not proof of productivity.</p>
             </section>
-            <section className="card download" aria-labelledby="download-heading">
-              <div>
-                <h2 id="download-heading">WorkTrack for Windows</h2>
-                <p className="muted">Version 0.1.5, 64-bit</p>
-              </div>
-              <a className="button" href="/downloads/0.1.5/WorkTrack_0.1.5_x64-setup.exe" download>Download</a>
-              <details>
-                <summary>Install steps</summary>
-                <ol>
-                  <li>If upgrading, stop tracking and wait until queued records have synced. Do not uninstall or remove app data.</li>
-                  <li>Download and install WorkTrack. Windows may show a publisher warning.</li>
-                  <li>Sign in, allow Windows location, then select Start tracking.</li>
-                </ol>
-                <p className="muted"><a href="/downloads/0.1.5/SHA256SUMS">View SHA-256 checksums</a></p>
-              </details>
-            </section>
+            <DownloadCard />
             {manager && (
               <section className="card manage">
                 <InviteForm />

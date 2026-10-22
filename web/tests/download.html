@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Download card checks</title></head>
+<body><pre id="results">Running…</pre><div id="root"></div>
+<script type="module">
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import DownloadCard from '/src/DownloadCard.tsx';
+let version = '0.1.6';
+let mode = 'valid';
+let pending;
+let calls = 0;
+const checks = [];
+window.fetch = async (path, options) => {
+  calls++;
+  if (path !== '/updates/windows/x86_64/latest.json' || options.cache !== 'no-store' || options.redirect !== 'error') throw new Error('Wrong public request');
+  if (mode === 'pending') return new Promise(resolve => { pending = resolve; });
+  if (mode === 'missing') return new Response('', { status: 404 });
+  return Response.json({ version, platforms: { 'windows-x86_64': { url: `${mode === 'evil' ? 'https://evil.example' : location.origin}/updates/windows/x86_64/releases/${version}/worktrack-setup.exe` } } });
+};
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function check(name, predicate) {
+  const deadline = Date.now() + 5000;
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error(name);
+    await wait(20);
+  }
+  checks.push(name);
+  document.querySelector('#results').textContent = checks.map(name => `PASS ${name}`).join('\n');
+}
+const card = () => document.querySelector('.download');
+const download = () => card()?.querySelector('a[download]');
+const refresh = () => window.dispatchEvent(new Event('focus'));
+try {
+  createRoot(document.querySelector('#root')).render(React.createElement(DownloadCard));
+  await check('mount loads canonical installer and adjacent checksums', () => download()?.getAttribute('href') === '/updates/windows/x86_64/releases/0.1.6/worktrack-setup.exe' && card().querySelector('details a')?.getAttribute('href') === '/updates/windows/x86_64/releases/0.1.6/SHA256SUMS');
+  mode = 'pending'; refresh();
+  await check('refresh removes stale installer and checksum while loading', () => pending && !download() && !card().querySelector('details a') && card().getAttribute('aria-busy') === 'true');
+  pending(new Response('', { status: 404 }));
+  await check('unpublished release offers retry without fallback', () => card().querySelector('button') && !download());
+  mode = 'valid'; version = '0.1.7'; card().querySelector('button').click();
+  await check('retry publishes new version and URL', () => download()?.getAttribute('href').includes('/0.1.7/') && card().textContent.includes('Version 0.1.7'));
+  mode = 'evil'; refresh();
+  await check('external installer removes all download links', () => card().querySelector('button') && !card().querySelector('a'));
+  mode = 'valid'; refresh();
+  await check('focus recovers after invalid feed', () => download() && calls >= 5);
+  await check('install instructions remain available', () => card().querySelectorAll('li').length === 3 && card().querySelector('[role=status]'));
+  document.title = 'PASS download card';
+} catch (error) {
+  document.querySelector('#results').textContent += `\nFAIL ${error.stack}`;
+  document.title = 'FAIL download card';
+  throw error;
+}
+</script>
+</body>
+</html>

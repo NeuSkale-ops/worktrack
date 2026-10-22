@@ -32,6 +32,7 @@ const hours = people.map(p => ({ user_id: p.id, name: p.name, date: today, secon
 window.fetch = async (input) => {
   const path = String(input);
   if (path === '/api/auth/me') return params.get('auth') ? Response.json({ error: 'auth' }, { status: 401 }) : Response.json(me);
+  if (path === '/updates/windows/x86_64/latest.json') return Response.json({ version: '0.1.6', platforms: { 'windows-x86_64': { url: `${location.origin}/updates/windows/x86_64/releases/0.1.6/worktrack-setup.exe` } } });
   if (path === '/api/team') return Response.json(people);
   if (path.startsWith('/api/reports/day?')) return Response.json(spans);
   if (path.startsWith('/api/reports/hours?')) return Response.json(role === 'worker' ? hours.filter(h => h.user_id === 'u1') : hours);
