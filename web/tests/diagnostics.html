@@ -65,7 +65,7 @@ try {
     if (!button) throw new Error(`Missing button: ${text}`);
     button.click();
   };
-  await check('real dashboard loaded in screenshot-first day view', () => Boolean(document.querySelector('.page-heading')) && document.querySelector('[role=tab][aria-selected=true]')?.textContent.trim() === 'Screenshots');
+  await check('real dashboard loaded in screenshot-first day view with named timeline graphic', () => Boolean(document.querySelector('.page-heading')) && Boolean(document.querySelector('.day-timeline[role=img][aria-label]')) && document.querySelector('[role=tab][aria-selected=true]')?.textContent.trim() === 'Screenshots');
   await check('screenshot evidence stays separate from ordinary activity', () => document.querySelectorAll('.tile').length === 4 && document.querySelectorAll('.time-row').length === 0);
   await check('coordinates and technical records are not exposed in main gallery', () => !document.body.innerText.includes('0.00000, 0.00000') && !document.body.innerText.includes('time-only blocks'));
   await check('stored screenshot image decodes and renders', () => document.querySelector('.screenshot img')?.naturalWidth === 1);
