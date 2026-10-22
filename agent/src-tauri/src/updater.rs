@@ -98,6 +98,9 @@ impl Drop for Reservation {
 }
 
 fn configured_updater(app: &tauri::AppHandle) -> Result<tauri_plugin_updater::Updater, String> {
+    if cfg!(target_os = "macos") {
+        return Err("UPDATER_UNAVAILABLE: This Mac preview uses manual updates. Download the next approved Mac build from the WorkTrack website.".into());
+    }
     if !cfg!(windows) {
         return Err("UPDATER_UNAVAILABLE: In-app updates are supported only on Windows.".into());
     }
