@@ -90,9 +90,11 @@ input, select {
 .mobile-person { display: none; }
 .day-workspace { min-width: 0; padding-bottom: 30px; }
 .page-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+.page-heading > div { min-width: 0; }
+.page-heading h1 { overflow-wrap: anywhere; }
 .page-heading .muted { margin-top: 7px; }
 .eyebrow { margin-bottom: 5px; font-size: 14px; color: var(--quiet); }
-.datenav { display: flex; align-items: center; gap: 5px; max-width: 100%; }
+.datenav { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; max-width: 100%; }
 .datenav > button { min-height: 40px; min-width: 38px; padding: 6px 10px; }
 .date-label input { min-height: 40px; width: 155px; max-width: 100%; border-color: var(--rule); font-size: 14px; }
 .day-summary { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 20px; margin-top: 28px; }
@@ -224,22 +226,29 @@ dialog > * + * { margin-top: 16px; }
   .global-nav { order: 3; width: 100%; min-height: 47px; gap: 26px; margin-top: 10px; }
   .global-nav button { font-size: 14px; }
   .workspace { padding: 0 18px 24px; }
-  .workspace-status { min-height: 48px; }
+  .workspace-status { min-height: 40px; }
+  .workspace-status button { min-height: 36px; }
   .day-layout { display: block; }
-  .people-rail { padding: 14px; margin-bottom: 25px; background: var(--paper); border: 0; border-radius: 5px; }
+  .people-rail { padding: 10px; margin-bottom: 18px; background: var(--paper); border: 0; border-radius: 5px; }
   .rail-heading, .desktop-people { display: none; }
   .mobile-person { display: flex; }
   .mobile-person select { width: 100%; font-size: 14px; }
-  .page-heading { align-items: start; gap: 18px; }
+  .page-heading { align-items: start; gap: 12px; }
+  .page-heading .muted { margin-top: 4px; }
+  .datenav > button, .date-label input, .mobile-person select { min-height: 44px; }
   h1 { font-size: 28px; }
-  .day-summary { margin-top: 23px; }
+  .day-summary { margin-top: 16px; gap: 4px 16px; }
   .summary-divider { margin: 0 9px; }
   .day-summary strong { font-size: 23px; }
-  .day-timeline { margin-bottom: 22px; }
+  .day-timeline { margin-top: 16px; margin-bottom: 16px; }
+  .day-timeline .track { height: 32px; }
   .task-tabs { gap: 22px; }
   .task-tabs button { font-size: 14px; }
   .shots { grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); gap: 20px; }
-  .task-panel { padding-top: 20px; }
+  .task-panel { padding-top: 16px; }
+  .screenshot-intro { margin-bottom: 12px; }
+  .meta button { min-height: 44px; }
+  .meta { padding-top: 4px; padding-bottom: 4px; }
   .time-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
   .time-row > :nth-child(3) { font-size: 12px; }
   .record-duration { text-align: right; }

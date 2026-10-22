@@ -398,6 +398,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
   const selectedSpans = manager ? spans.filter(span => span.user_id === selected) : blocks
   const segments = ribbon(selectedSpans, date)
   const screenshots = blocks.filter(block => !isTimeOnly(block))
+  const screenshotCount = screenshots.filter(block => block.screenshot_url).length
   const dateControls = (
     <div className="datenav">
       <button aria-label="Previous day" onClick={() => shiftDate(-1)}>‹</button>
@@ -507,7 +508,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
             )}
             <section className="day-workspace" aria-busy={busy} aria-labelledby="day-heading">
               <div className="page-heading">
-                <div><p className="eyebrow">Day review</p><h1 id="day-heading">{selectedLabel}</h1><p className="muted">{dayLabel}</p></div>
+                <div><h1 id="day-heading">{selectedLabel}</h1><p className="muted">{dayLabel}</p></div>
                 {dateControls}
               </div>
               <div className="day-summary">
@@ -543,7 +544,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
                     {!blocks.length && <div className="empty no-time"><h2>No time recorded</h2><p>Choose another day or wait for the desktop app to sync.</p></div>}
                     {tab === 'Screenshots' && (
                       <>
-                        <div className="section-intro"><h2>Screenshots</h2><p className="muted">{screenshots.length} screenshot {screenshots.length === 1 ? 'record' : 'records'}. Captured every 10 running minutes.</p></div>
+                        <div className="section-intro screenshot-intro"><p className="muted">{screenshotCount} {screenshotCount === 1 ? 'screenshot' : 'screenshots'} available. Screenshots are taken every 10 minutes while tracking.</p></div>
                         {screenshots.length ? <div className="shots">
                           {screenshots.map(block => (
                             <article className={`tile ${block.screenshot_url ? '' : 'status-tile'}`} key={block.id}>
