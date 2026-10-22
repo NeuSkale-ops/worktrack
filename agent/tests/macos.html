@@ -18,6 +18,8 @@ window.__TAURI_INTERNALS__ = { async invoke(command) {
 const button = label => [...document.querySelectorAll('button')].find(node => node.textContent === label);
 const checks = [];
 async function until(predicate) {
+  // Let React commit disabled/busy state before checking the next action.
+  await new Promise(resolve => setTimeout(resolve, 30));
   const end = Date.now() + 10000;
   while (!predicate()) {
     if (Date.now() > end) throw new Error('Timed out waiting for UI');
