@@ -32,7 +32,6 @@ function Logo() {
 function Screenshot({ url, alt }: { url: string; alt: string }) {
   const [state, setState] = useState<'loading' | 'loaded' | 'failed'>('loading')
   useEffect(() => {
-    setState('loading')
     const timeout = window.setTimeout(() => setState(current => current === 'loading' ? 'failed' : current), 15000)
     return () => window.clearTimeout(timeout)
   }, [url])
