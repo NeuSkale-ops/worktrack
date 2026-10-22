@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>macOS permission UI tests</title></head>
+<body><pre id="results">Running synthetic IPC tests...</pre><div id="root"></div>
+<script type="module">
+// All IPC is mocked. This page never requests native consent or collects data.
+const calls = [];
+const state = { platform: 'macos', screen_capture_allowed: false, authenticated: true, tracking: false, stopping: false, paused: false, elapsed: 0, next_capture: 600, queued: 0, rejected: 0, error: null, server: 'mock', update_reserved: false, diagnostics_enabled: true, diagnostics_queued: 0, diagnostics_error: null, location_enabled: false, location_pending: false, location_error: null, update: { phase: 'unavailable', downloaded: 0, total: null, error: null } };
+window.__TAURI_INTERNALS__ = { async invoke(command) {
+  calls.push(command);
+  if (command === 'plugin:app|version') return '0.1.7';
+  if (command === 'status') return structuredClone(state);
+  if (command === 'check_update') return null;
+  if (command === 'request_location' || command === 'open_location_settings' || command === 'open_screen_settings') return;
+  if (command === 'request_screen_capture') { state.screen_capture_allowed = true; return; }
+  throw new Error(`Unexpected command: ${command}`);
+} };
+const button = label => [...document.querySelectorAll('button')].find(node => node.textContent === label);
+const checks = [];
+async function until(predicate) {
+  const end = Date.now() + 10000;
+  while (!predicate()) {
+    if (Date.now() > end) throw new Error('Timed out waiting for UI');
+    await new Promise(resolve => setTimeout(resolve, 30));
+  }
+}
+function check(name, condition) { if (!condition) throw new Error(name); checks.push(name); }
+try {
+  await import('/src/main.tsx');
+  await until(() => button('Start tracking') && button('Allow screen recording'));
+  check('Mac copy replaces Windows', document.body.textContent.includes('Turn on macOS location to start') && !document.body.textContent.includes('Windows'));
+  check('Location consent requested, screen consent explicit only', calls.includes('request_location') && !calls.includes('request_screen_capture'));
+  check('Start blocked without consent and permissions', button('Start tracking').disabled);
+  document.querySelector('label.consent input').click();
+  button('Open screen recording settings').click();
+  await until(() => calls.includes('open_screen_settings') && !button('Allow screen recording').disabled);
+  check('Settings shortcut is explicit', !calls.includes('request_screen_capture'));
+  button('Allow screen recording').click();
+  await until(() => !button('Allow screen recording'));
+  check('Screen access alone does not unblock Start', button('Start tracking').disabled);
+  state.location_enabled = true;
+  button('Try again').click();
+  await until(() => !button('Start tracking').disabled);
+  check('Both permissions and disclosure unblock Start', !button('Start tracking').disabled);
+  check('Honest unknown source disclosure', document.body.textContent.includes('CoreLocation does not report whether Wi-Fi, GPS or another positioning source was used'));
+  document.documentElement.dataset.testResult = 'passed';
+  document.querySelector('#results').textContent = `PASS: ${checks.length} synthetic macOS permission checks\n${checks.join('\n')}`;
+} catch (error) {
+  document.documentElement.dataset.testResult = 'failed';
+  document.querySelector('#results').textContent = `FAIL: ${error.stack || error}`;
+}
+</script></body></html>

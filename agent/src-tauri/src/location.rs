@@ -3,6 +3,16 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tauri::{AppHandle, State};
+#[cfg(target_os = "macos")]
+#[path = "location_macos.rs"]
+mod macos;
+#[cfg(target_os = "macos")]
+use macos::{position, request_access};
+#[cfg(target_os = "macos")]
+const PERMISSION_UNAVAILABLE: &str = "Location permission unavailable. Enable WorkTrack in System Settings > Privacy & Security > Location Services and try again.";
+#[cfg(not(target_os = "macos"))]
+const PERMISSION_UNAVAILABLE: &str =
+    "Location permission unavailable. Enable Windows location services and try again.";
 
 #[derive(Default)]
 pub struct Consent {
@@ -181,7 +191,7 @@ impl Snapshot {
 }
 #[tauri::command]
 // Location is mandatory: there is no command to turn it off. The UI requests
-// Windows permission after sign-in and Start stays blocked until it is granted.
+// System permission is required after sign-in before Start is allowed.
 pub fn request_location(app: AppHandle, state: State<Shared>) -> Result<(), String> {
     let shared = state.inner().clone();
     let generation = {
@@ -201,21 +211,26 @@ pub fn request_location(app: AppHandle, state: State<Shared>) -> Result<(), Stri
         let callback_shared = shared.clone();
         let result = request_access(move |allowed| {
             if let Ok(mut r) = callback_shared.lock() {
-                if r.location.generation != generation { return; }
+                if r.location.generation != generation {
+                    return;
+                }
                 r.location.pending = false;
                 r.location.enabled = allowed && r.token.is_some() && !r.update_reserved;
-                if !r.location.enabled { r.location.error = Some("Location permission unavailable. Enable Windows location services and try again."); }
+                if !r.location.enabled {
+                    r.location.error = Some(PERMISSION_UNAVAILABLE);
+                }
             }
         });
         if result.is_err() {
             if let Ok(mut r) = shared.lock() {
                 if r.location.generation == generation {
                     r.location.pending = false;
-                    r.location.error = Some("Windows location permission could not be requested.");
+                    r.location.error = Some("System location permission could not be requested.");
                 }
             }
         }
-    }).map_err(|e| e.to_string())
+    })
+    .map_err(|e| e.to_string())
 }
 #[tauri::command]
 pub fn open_location_settings() -> Result<(), String> {
@@ -228,8 +243,16 @@ pub fn open_location_settings() -> Result<(), String> {
             .map(|_| ())
             .map_err(|_| "Could not open Windows location settings".to_string())
     }
-    #[cfg(not(windows))]
-    Err("Location settings are available only on Windows".into())
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices")
+            .spawn()
+            .map(|_| ())
+            .map_err(|_| "Could not open macOS location settings".to_string())
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    Err("Location settings are unavailable on this platform".into())
 }
 #[cfg(windows)]
 fn request_access(done: impl FnOnce(bool) + Send + 'static) -> Result<(), ()> {
@@ -241,7 +264,7 @@ fn request_access(done: impl FnOnce(bool) + Send + 'static) -> Result<(), ()> {
         })
         .map_err(|_| ())
 }
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 fn request_access(done: impl FnOnce(bool) + Send + 'static) -> Result<(), ()> {
     done(false);
     Ok(())
@@ -325,7 +348,7 @@ fn position_source_label(source: Option<i32>) -> &'static str {
         _ => "unknown",
     }
 }
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 fn position(_allowed: impl Fn() -> bool) -> Option<Fix> {
     None
 }

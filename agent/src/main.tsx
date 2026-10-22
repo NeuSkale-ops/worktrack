@@ -12,7 +12,7 @@ import './style.css';
 type LocationReport = { status: 'available' | 'unavailable'; requested_at: string; latitude: number | null; longitude: number | null; accuracy_m: number | null; observed_at: string | null; position_source: string | null; is_remote_source: boolean | null };
 type Update = { version: string; current_version: string; body: string | null; date: string | null };
 type UpdateStatus = { phase: 'idle' | 'checking' | 'available' | 'downloading' | 'installing' | 'installed' | 'error' | 'unavailable'; downloaded: number; total: number | null; error: string | null };
-type Status = { authenticated: boolean; tracking: boolean; stopping: boolean; paused: boolean; elapsed: number; next_capture: number; queued: number; rejected: number; error: string | null; server: string; update: UpdateStatus; update_reserved: boolean; diagnostics_enabled: boolean; diagnostics_queued: number; diagnostics_error: string | null; location_enabled: boolean; location_pending: boolean; location_error: string | null };
+type Status = { platform?: string; screen_capture_allowed?: boolean; authenticated: boolean; tracking: boolean; stopping: boolean; paused: boolean; elapsed: number; next_capture: number; queued: number; rejected: number; error: string | null; server: string; update: UpdateStatus; update_reserved: boolean; diagnostics_enabled: boolean; diagnostics_queued: number; diagnostics_error: string | null; location_enabled: boolean; location_pending: boolean; location_error: string | null };
 function App() {
   const [status, setStatus] = useState<Status>();
   const [error, setError] = useState('');
@@ -100,7 +100,7 @@ function App() {
     catch (e) { setUpdateError(`Update could not be installed: ${String(e)}. Resolve the issue, then try Update now again.`); }
     finally { await refresh(); installPending.current = false; setInstalling(false); }
   }
-  // Location is required. Ask Windows once per sign-in; the worker can retry from the blocked state.
+  // Location is required. Ask the operating system once per sign-in; the worker can retry from the blocked state.
   const locationAsked = useRef(false);
   useEffect(() => {
     if (!status?.authenticated) { locationAsked.current = false; return; }
@@ -116,6 +116,10 @@ function App() {
   const updateFailure = updateError || (update?.phase !== 'unavailable' ? update?.error : null);
   const unsafeInstall = !status || status.tracking || status.stopping || status.queued > 0;
   const signedIn = Boolean(status?.authenticated) && !renew;
+  const isMac = status?.platform === 'macos';
+  const platformName = isMac ? 'macOS' : 'Windows';
+  const screenReady = !isMac || status?.screen_capture_allowed === true;
+  const sourceDisclosure = isMac ? 'macOS Location Services determines the location and can be wrong. CoreLocation does not report whether Wi-Fi, GPS or another positioning source was used. WorkTrack has no separate IP fallback.' : 'Windows may use Wi-Fi, GPS, IP or a default location and can be wrong. WorkTrack has no separate IP fallback.';
   const locationReady = Boolean(status?.location_enabled);
   const clock = [elapsed / 3600, elapsed / 60 % 60, elapsed % 60].map(n => Math.floor(n).toString().padStart(2, '0')).join(':');
   const cycleDone = status?.tracking ? Math.min(10, Math.max(0, 10 - (status.next_capture / 60))) : 0;
@@ -131,7 +135,7 @@ function App() {
     </div>
     <details className="full-notice"><summary>Read the full notice</summary>
       <p>Only while you choose Start, WorkTrack measures elapsed time, input activity, foreground application names and estimated time in each, and takes a compressed screenshot of your primary display at each exact 10-minute elapsed boundary. No random captures.</p>
-      <p>Location is required. At each screenshot WorkTrack asks Windows for one location fix and stores coordinates, accuracy and fix time with that screenshot. Windows may use Wi-Fi, GPS, IP or a default location, and can be wrong. WorkTrack has no separate IP fallback. Tracking cannot start without Windows location permission.</p>
+      <p>Location is required. At each screenshot WorkTrack asks {platformName} for one location fix and stores coordinates, accuracy and fix time with that screenshot. {sourceDisclosure} Tracking cannot start without {platformName} location permission.</p>
       <p>Diagnostic logs are required while you are signed in. They contain fixed error codes, HTTP status, app version and timestamps, and may upload while tracking is stopped. They never contain error text, screenshots, typed content, passwords or tokens, and expire after seven days.</p>
       <p>No typed text, keys, window titles or websites are recorded. Locking or suspending pauses monitoring. Stop ends automatic screen, input and location collection. A manual local location diagnostic makes one location request while stopped. Its sensitive coordinates stay local, are not queued or uploaded, and are not added to diagnostic logs. Queued records and diagnostics may still upload while stopped.</p>
       <p>You, your managers and the owner can view these work records. No application file paths are sent. Deleting a screenshot removes its location from the live database. Backups follow separate retention. Screenshots can contain private information, so close private content before starting. This app stays visible in the tray and never starts tracking automatically.</p>
@@ -176,23 +180,28 @@ function App() {
         </div>}
         {status?.tracking && status.paused && <p className="note paused-note">Nothing is recorded while the screen is locked or the PC sleeps. Tracking resumes when you unlock.</p>}
         {!status?.tracking && !locationReady && <div className="blocked" role="status">
-          <h2>{status?.location_pending ? 'Waiting for Windows location permission' : 'Turn on Windows location to start'}</h2>
-          <p>Location is required with every screenshot. Open Settings, then Privacy and security, then Location, and allow desktop apps. Then select Try again.</p>
+          <h2>{status?.location_pending ? `Waiting for ${platformName} location permission` : `Turn on ${platformName} location to start`}</h2>
+          <p>{isMac ? 'Location is required with every screenshot. Open System Settings, then Privacy & Security, then Location Services, and allow WorkTrack. Then select Try again.' : 'Location is required with every screenshot. Open Settings, then Privacy and security, then Location, and allow desktop apps. Then select Try again.'}</p>
           <div className="acts"><button disabled={diagnosing || busy || installReserved} onClick={() => void run('open_location_settings')}>Open location settings</button><button disabled={diagnosing || busy || installReserved || status?.location_pending} onClick={() => void run('request_location')}>Try again</button></div>
         </div>}
+        {!status?.tracking && !screenReady && <div className="blocked" role="status">
+          <h2>Allow macOS screen recording to start</h2>
+          <p>WorkTrack needs Screen Recording access for scheduled screenshots. Allow WorkTrack in System Settings, then Privacy &amp; Security, then Screen Recording. Restart WorkTrack if macOS asks you to.</p>
+          <div className="acts"><button disabled={diagnosing || busy || installReserved} onClick={() => void run('request_screen_capture')}>Allow screen recording</button><button disabled={diagnosing || busy || installReserved} onClick={() => void run('open_screen_settings')}>Open screen recording settings</button></div>
+        </div>}
         {!status?.tracking && <label className="consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /><span>I understand what is recorded, including location with each screenshot and diagnostic logs, and agree to it. Close private content before starting.</span></label>}
-        <button className={status?.tracking ? 'big stop' : 'primary big'} disabled={busy || installReserved || (!status?.tracking && (diagnosing || !consent || !locationReady || status?.stopping))} onClick={() => void run(status?.tracking ? 'stop' : 'start', { consent })}>{status?.tracking ? 'Stop tracking' : 'Start tracking'}</button>
+        <button className={status?.tracking ? 'big stop' : 'primary big'} disabled={busy || installReserved || (!status?.tracking && (diagnosing || !consent || !locationReady || !screenReady || status?.stopping))} onClick={() => void run(status?.tracking ? 'stop' : 'start', { consent })}>{status?.tracking ? 'Stop tracking' : 'Start tracking'}</button>
         <p className="sync-line"><span>{syncText}</span></p>
         {Boolean(status?.rejected) && <p role="status" className="note">{status?.rejected} records refused by the server were set aside on this PC. Contact your manager.</p>}
         {(error || status?.error) && <p role="alert" className="error">{error || status?.error}</p>}
         <section className="facts rows" aria-label="Required monitoring">
-          <div className="row"><span className={`req ${locationReady ? 'ok' : 'bad'}`} aria-hidden="true" /><div>Location with screenshots<small>{status?.location_pending ? 'Waiting for Windows permission.' : locationReady ? (status?.location_error || 'Required. Windows location permission granted.') : 'Blocked by Windows. Tracking cannot start.'}</small></div></div>
+          <div className="row"><span className={`req ${locationReady ? 'ok' : 'bad'}`} aria-hidden="true" /><div>Location with screenshots<small>{status?.location_pending ? `Waiting for ${platformName} permission.` : locationReady ? (status?.location_error || `Required. ${platformName} location permission granted.`) : `Blocked by ${platformName}. Tracking cannot start.`}</small></div></div>
           <div className="row"><span className={`req ${status?.diagnostics_error ? 'warn' : 'ok'}`} aria-hidden="true" /><div>Diagnostic logs<small>Required. {status?.diagnostics_queued ?? 0} diagnostic events waiting. {status?.diagnostics_error || 'Error codes only, kept 7 days.'}</small></div></div>
         </section>
         <section className="facts" aria-labelledby="location-diagnostic-title">
           <h2 id="location-diagnostic-title">Local location diagnostic</h2>
           <p>Makes one location request while stopped, only when you select Run. Sensitive coordinates stay local, are not queued or uploaded, and are not added to diagnostic logs.</p>
-          <p>Windows may use Wi-Fi, GPS, IP or a default location and can be wrong. WorkTrack has no separate IP fallback.</p>
+          <p>{sourceDisclosure}</p>
           <button disabled={diagnosing || busy || installReserved || status?.tracking || status?.stopping} onClick={() => void diagnoseLocation()}>Run local location diagnostic</button>
           <div role="status" aria-live="polite">{diagnosing && <p>Requesting local location…</p>}</div>
           {locationDiagnosticError && <p role="alert" className="error">{locationDiagnosticError}</p>}

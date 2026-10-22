@@ -1,5 +1,19 @@
 # Updater UI browser tests
 
+## macOS permission checks
+
+Open `http://127.0.0.1:1427/tests/macos.html` with the same Vite server for seven synthetic permission checks. These mock every native IPC call and verify Mac disclosure, explicit-only screen recording consent, settings actions, and Start gating. They do not request real consent or collect a device location.
+
+Run the native delegate fixtures from the repository root:
+
+```sh
+xcrun clang -fobjc-arc -fblocks -Wall -Werror -framework Foundation -framework CoreLocation agent/src-tauri/src/location_macos_test.m -o "$JCODE_SCRATCH_DIR/location_macos_test"
+"$JCODE_SCRATCH_DIR/location_macos_test"
+```
+
+These fixtures construct only synthetic `CLLocation` values and a delegate, never `CLLocationManager`. They check stale, future and inaccurate fixes, permission-only and cancelled states, and recoverable versus denied errors. Rust location tests cover state-change cancellation and diagnostic privacy. Real consent, packaged app identity, revocation and device positioning require a separately approved acceptance run. The provider uses the main run loop, stops after five seconds, and reports unknown source metadata instead of inferring Wi-Fi, GPS or IP.
+
+
 This dependency-free harness runs the actual React app against mocked Tauri IPC.
 It never contacts the update server, signs in a worker, or installs an update.
 It is a separate Vite development entry point and is not imported by the production app or included in the normal production build.
