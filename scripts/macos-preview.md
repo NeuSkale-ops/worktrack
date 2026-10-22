@@ -48,6 +48,26 @@ then place the approved DMG on a versioned Mac-specific download path and label 
 Never point Mac downloads or Mac updater code at `/updates/windows/x86_64/latest.json` or the Windows updater receiver.
 Do not describe availability on the website before the file is present and its download checksum is verified.
 
+## Published preview acceptance, October 22, 2026
+
+The approved Apple Silicon preview is available in website Settings under **Download Mac preview**.
+Version 0.1.7 requires macOS 11 or later and uses manual updates.
+The published DMG is `/downloads/macos/0.1.7/WorkTrack_0.1.7_aarch64.dmg` (5,016,299 bytes).
+Its SHA-256 is `feed10d0277498ade7d7a6cbdb0f30d6bd0873aae61d210a91110809fb9aee8d`.
+Application source is `dd9f9c787406bfd58c05e68575c85aafdff30722`.
+
+Requirement-to-check evidence:
+
+- **Installable Mac build:** the exact published DMG passed `hdiutil verify`, mounted read-only, and supplied an ARM64 app whose ad-hoc signature passed verification. The copied app displayed its real signed-out native window and version, explained manual updates, and quit through its native menu with exit code zero. An isolated offline queue retained its record and the original user queue checksum stayed unchanged.
+- **Website availability:** real public HTTPS GETs verified the exact DMG SHA-256, checksum file, attachment header, immutable versioned download caching, and non-cacheable latest manifest. Missing files, hidden paths and directory listing requests returned 404. A real production caching defect discovered by this check was corrected with disjoint Caddy matchers.
+- **Usable download path:** actual public Settings pages at 1440px and 375px displayed the preview version, signing limitations and canonical link. Clicking the download in Chromium produced bytes matching the published checksum at both widths. Windows downloads remained available and neither viewport overflowed. The exact temporary browser credential was removed afterwards. No tracking records changed.
+- **Future release pipeline:** Mac workflow run `39797486682` completed successfully for the same application source. Its downloaded `macos-preview` artifact contains the DMG, app ZIP, checksums and BUILD provenance. Both artifact checksums passed. The Windows release workflow requires this reusable Mac job to succeed before publication. CI artifacts are not automatically published to the website and need separate operator approval.
+- **Deployment isolation:** only the WorkTrack web container was recreated. API and database container identities and start times remained unchanged. Windows release paths were not modified.
+
+Limits: this is not a Developer ID signed or notarized release. Intel builds, browser-quarantined Gatekeeper installation, connected login/sync, real screen recording and location consent, physical location accuracy, and lock/sleep recovery have not passed end-user acceptance. Synthetic permission tests do not replace these checks. Mac automatic updates remain disabled. The CI build is independently generated and does not replace the immutable approved local DMG.
+
+Velvet logging was blocked because this checkout has no usable repository key. No project binding or credentials were changed.
+
 ## Gate for a supported signed Mac release
 
 1. Obtain a real Developer ID Application identity and notarization access through the owner's Apple Developer account.
