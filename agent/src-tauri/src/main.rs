@@ -145,6 +145,9 @@ async fn login(state: State<'_, Shared>, email: String, password: String) -> Res
     }).await.map_err(|e| e.to_string())?
 }
 fn require_location(r: &Runtime) -> Result<(), String> {
+    if r.location.diagnosing {
+        return Err("Wait for the location diagnostic to finish before starting".into());
+    }
     if r.location.enabled {
         Ok(())
     } else {
@@ -755,7 +758,7 @@ fn main() {
                 let _ = window.hide();
             }
         })
-        .invoke_handler(tauri::generate_handler![status, login, start, stop, logout, location::request_location, location::open_location_settings, updater::check_update, updater::install_update])
+        .invoke_handler(tauri::generate_handler![status, login, start, stop, logout, location::request_location, location::diagnose_location, location::open_location_settings, updater::check_update, updater::install_update])
         .build(tauri::generate_context!())
         .expect("WorkTrack failed to start")
         .run(|app, event| {
