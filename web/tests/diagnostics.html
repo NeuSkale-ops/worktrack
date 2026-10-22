@@ -12,15 +12,19 @@ const user = { id: '00000000-0000-4000-8000-000000000001', email: 'fixture@examp
 let logCalls = 0;
 let dayCalls = 0;
 let mode = 'events';
+let timelineError = false;
 const screenshotCanvas = document.createElement('canvas');
 screenshotCanvas.width = screenshotCanvas.height = 1;
-const screenshotImage = screenshotCanvas.toDataURL('image/jpeg');
+let screenshotImage = screenshotCanvas.toDataURL('image/jpeg');
 window.fetch = async input => {
   const path = String(input);
   if (path === '/api/auth/me') return Response.json(user);
+  if (path === '/updates/windows/x86_64/latest.json') return Response.json({version:'0.1.7', platforms:{'windows-x86_64':{url:`${location.origin}/updates/windows/x86_64/releases/0.1.7/worktrack-setup.exe`}}});
   if (path === '/api/team') return Response.json([user, { id: '00000000-0000-4000-8000-000000000009', email: 'w@example.test', name: 'Second Worker', role: 'worker', working: true, last_seen_at: null }]);
   if (path.startsWith('/api/reports/day?')) { dayCalls++; if (role === 'worker') throw new Error('Workers must not fetch the team day report'); return Response.json([{ user_id: user.id, start_at: `${today}T12:00:00Z`, end_at: `${today}T12:10:00Z`, screenshot: true }, { user_id: '00000000-0000-4000-8000-000000000009', start_at: `${today}T09:00:00Z`, end_at: `${today}T09:30:00Z`, screenshot: false }]); }
   if (path.startsWith('/api/reports/hours?')) return Response.json([]);
+  if (path.startsWith('/api/timeline?') && timelineError) return Response.json({error:'Day could not be loaded'}, {status:503});
+  if (path.startsWith('/api/timeline?') && new URLSearchParams(path.split('?')[1]).get('user') !== user.id) return Response.json([]);
   if (path.startsWith('/api/timeline?')) return Response.json([
     { id:'one', user_id:user.id, start_at:`${today}T12:00:00Z`, end_at:`${today}T12:01:00Z`, duration_seconds:60, active_seconds:30, screenshot_url:screenshotImage, screenshot_status:'available', location:{status:'available',captured_at:`${today}T12:01:00Z`,latitude:0,longitude:0,accuracy_m:25,observed_at:`${today}T12:01:01Z`}, application_usage:[{app:'chrome.exe',milliseconds:60000}] },
     { id:'two', user_id:user.id, start_at:`${today}T12:01:00Z`, end_at:`${today}T12:02:00Z`, duration_seconds:60, active_seconds:30, screenshot_url:null, screenshot_status:'unavailable', location:{status:'unavailable',captured_at:`${today}T12:02:00Z`}, application_usage:[{app:'chrome.exe',milliseconds:30000},{app:'code.exe',milliseconds:30000}] },
@@ -56,32 +60,52 @@ async function check(description, predicate) {
 }
 try {
   await import('/src/main.tsx');
-  await check('real dashboard loaded', () => Boolean(document.querySelector('.page-heading')));
-  await check('foreground minutes aggregate for selected worker/day', () => [...document.querySelectorAll('[aria-labelledby="applications-heading"] .app-row')].some(row => row.innerText.includes('chrome.exe') && row.innerText.includes('1.50')));
-  await check('screenshot tiles are grouped under an hour heading', () => [...document.querySelectorAll('.hourgrp h3')].some(h => /\d\d:00/.test(h.textContent)) && document.querySelectorAll('.tile').length === 4);
-  if (role === 'worker') {
-    await check('worker sees no team ribbon and makes no team day request', () => !document.querySelector('.ribbons') && dayCalls === 0);
-  } else {
-    await check('manager ribbon renders one row per person with tracked segments and screenshot ticks', () => document.querySelectorAll('.rrow').length === 2 && document.querySelectorAll('.rrow .seg').length >= 2 && document.querySelectorAll('.rrow .shot').length === 1);
-    await check('ribbon row is keyboard-operable and selects the person', () => { const row = [...document.querySelectorAll('.rrow')].find(r => r.innerText.includes('Second Worker')); row?.click(); return row?.getAttribute('aria-pressed') === 'true'; });
-    [...document.querySelectorAll('.rrow')].find(r => r.innerText.includes('Fixture')).click();
-    await check('selection returns to own row', () => [...document.querySelectorAll('.rrow')].find(r => r.innerText.includes('Fixture'))?.getAttribute('aria-pressed') === 'true' && document.querySelectorAll('.tile').length === 4);
-    await check('selected day finished reloading', () => document.querySelector('[aria-labelledby="day-heading"]')?.getAttribute('aria-busy') === 'false' && document.querySelectorAll('.tile').length === 4);
-    await wait(150);
-  }
-  await check('location shows zero coordinates, accuracy and honest missing states', () => document.body.innerText.includes('0.00000, 0.00000 (accuracy ±25 m)') && document.body.innerText.includes('Screenshot location: unavailable') && document.body.innerText.includes('Screenshot location: sharing off'));
+  const click = text => {
+    const button = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === text);
+    if (!button) throw new Error(`Missing button: ${text}`);
+    button.click();
+  };
+  await check('real dashboard loaded in screenshot-first day view', () => Boolean(document.querySelector('.page-heading')) && document.querySelector('[role=tab][aria-selected=true]')?.textContent.trim() === 'Screenshots');
+  await check('screenshot evidence stays separate from ordinary activity', () => document.querySelectorAll('.tile').length === 4 && document.querySelectorAll('.time-row').length === 0);
+  await check('coordinates and technical records are not exposed in main gallery', () => !document.body.innerText.includes('0.00000, 0.00000') && !document.body.innerText.includes('time-only blocks'));
   await check('stored screenshot image decodes and renders', () => document.querySelector('.screenshot img')?.naturalWidth === 1);
-  await check('ordinary time blocks collapse without image placeholders', () => document.querySelectorAll('.time-row').length === 1 && !document.querySelector('.time-only').open && !document.querySelector('.time-row .screenshot') && document.body.innerText.includes('every 10 running minutes'));
-  document.querySelector('.time-only summary').click();
-  await check('compact row preserves seconds, exact duration and owner actions', () => /\d\d:\d\d:\d\d/.test(document.querySelector('.time-row').innerText) && document.querySelector('.time-row').innerText.includes('30s') && document.querySelector('.time-row').innerText.includes('33% input activity') && Boolean(document.querySelector('.time-row .delete')));
   await check('deleted screenshots and storage unavailability have distinct labels', () => document.body.innerText.includes('Screenshot deleted.') && document.body.innerText.includes('Screenshot temporarily unavailable.'));
+  document.querySelector('[role=tab][aria-selected=true]').focus();
+  document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key:'End', bubbles:true}));
+  await check('keyboard End selects and focuses Applications tab', () => document.activeElement?.textContent.trim() === 'Applications' && document.activeElement.getAttribute('aria-selected') === 'true');
+  document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key:'Home', bubbles:true}));
+  await check('keyboard Home returns to Screenshots tab', () => document.activeElement?.textContent.trim() === 'Screenshots' && document.activeElement.getAttribute('aria-selected') === 'true');
   document.querySelector('.screenshot').click();
-  await check('screenshot dialog includes associated location', () => document.querySelector('dialog[open]')?.innerText.includes('accuracy ±25 m'));
+  await check('screenshot details retain zero coordinates and accuracy', () => document.querySelector('dialog[open]')?.innerText.includes('0.00000, 0.00000 (accuracy ±25 m)'));
   document.querySelector('dialog button').click();
   await wait(100);
-  document.querySelector('.time-row button').click();
-  await check('time-only block dialog does not claim an image is unavailable', () => document.querySelector('dialog[open]')?.innerText.includes('No screenshot captured (30s time block).') && !document.querySelector('dialog[open]')?.innerText.includes('Screenshot location:'));
+  click('Applications');
+  await check('applications tab aggregates selected worker/day foreground minutes', () => [...document.querySelectorAll('.app-row')].some(row => row.innerText.includes('chrome.exe') && row.innerText.includes('1.50')));
+  click('Activity details');
+  await check('activity tab preserves every record without image placeholders', () => document.querySelectorAll('.time-row').length === 5 && !document.querySelector('.time-row .screenshot'));
+  await check('activity rows preserve seconds, duration and owner controls', () => [...document.querySelectorAll('.time-row')].some(row => /\d\d:\d\d:\d\d/.test(row.innerText) && row.innerText.includes('30s') && row.innerText.includes('33%') && row.querySelector('button')));
+  const ordinary = document.querySelectorAll('.time-row')[3];
+  ordinary.querySelector('button').click();
+  await check('ordinary activity details preserve seconds without claiming missing storage', () => document.querySelector('dialog[open]')?.innerText.includes('30s') && document.querySelector('dialog[open]')?.innerText.includes('No screenshot captured') && !document.querySelector('dialog[open]')?.innerText.includes('temporarily unavailable'));
   document.querySelector('dialog button').click();
+  await wait(100);
+  click('Screenshots');
+  if (role === 'worker') {
+    await check('worker has no team chooser and makes no team day request', () => !document.querySelector('.rrow') && !document.querySelector('select[aria-label=Person]') && dayCalls === 0);
+  } else {
+    await check('people rail uses semantic keyboard-operable buttons', () => document.querySelectorAll('button.rrow').length === 2 && !document.querySelector('button.rrow[role=listitem]'));
+    const worker = [...document.querySelectorAll('button.rrow')].find(r => r.innerText.includes('Second Worker'));
+    worker.click();
+    await check('person selection loads a clear empty day instead of stale screenshots', () => worker.getAttribute('aria-pressed') === 'true' && document.querySelector('[aria-labelledby=day-heading]')?.getAttribute('aria-busy') === 'false' && document.querySelectorAll('.tile').length === 0 && /No (time|screenshots)/i.test(document.body.innerText));
+    [...document.querySelectorAll('button.rrow')].find(r => r.innerText.includes('Fixture')).click();
+    await check('returning to own person restores their screenshots', () => document.querySelector('[aria-labelledby=day-heading]')?.getAttribute('aria-busy') === 'false' && document.querySelectorAll('.tile').length === 4);
+    await check('day timeline represents only the selected person', () => document.querySelectorAll('.day-timeline .seg').length === 1);
+  }
+  click('Weekly report');
+  await check('weekly report and CSV export remain available', () => Boolean(document.querySelector('[aria-labelledby=week-heading] table')) && Boolean(document.querySelector('a[download][href*="/api/reports/hours.csv"]')));
+  click('Settings');
+  await check('desktop download is moved to settings and uses published version', () => document.body.innerText.includes('Version 0.1.7') && Boolean(document.querySelector('a[download][href*="/updates/windows/x86_64/releases/0.1.7/"]')));
+  await check('password change remains available in settings', () => Boolean(document.querySelector('input[autocomplete=current-password]')));
   if (role === 'owner') {
     const panel = document.querySelector('.diagnostic-logs');
     await check('owner panel is collapsed and does not fetch automatically', () => panel && !panel.querySelector('details').open && logCalls === 0);
@@ -101,6 +125,20 @@ try {
   } else {
     await check('non-owner has neither diagnostic panel nor diagnostic requests', () => !document.querySelector('.diagnostic-logs') && logCalls === 0);
   }
+  click('Day view');
+  await check('navigation returns to the same person and task', () => document.querySelector('#day-heading')?.textContent.includes('Fixture') && document.querySelectorAll('.tile').length === 4);
+  timelineError = true;
+  click('Refresh');
+  await check('day read failure explains stale data and preserves previous screenshots', () => [...document.querySelectorAll('[role=alert]')].some(e => e.innerText.includes('Day could not be loaded') && e.innerText.includes('out of date')) && document.querySelectorAll('.tile').length === 4);
+  timelineError = false;
+  click('Refresh');
+  await check('refresh recovers day read and clears stale-data warning', () => !document.querySelector('[role=alert]') && document.querySelector('[aria-labelledby=day-heading]')?.getAttribute('aria-busy') === 'false' && document.querySelectorAll('.tile').length === 4);
+  screenshotImage = '/tests/not-an-image';
+  click('Refresh');
+  await check('failed image fetch explains how to retry instead of leaving an empty preview', () => Boolean(document.querySelector('.image-preview.failed')) && document.querySelector('.image-preview.failed').innerText.includes('Refresh to retry'));
+  screenshotImage = screenshotCanvas.toDataURL('image/jpeg');
+  click('Refresh');
+  await check('refresh can recover an expired image preview', () => document.querySelectorAll('.image-preview.loaded').length === 2 && !document.querySelector('.image-preview.failed'));
   document.documentElement.dataset.testResult = 'passed';
   results.textContent += `\nPASS: ${checks.length} ${role} UI checks. API responses were mocked.`;
 } catch (error) {

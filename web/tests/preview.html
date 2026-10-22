@@ -16,7 +16,7 @@ const people = [
   { id: 'u4', email: 'sofia@company.com', name: 'Sofia Lindqvist', role: 'worker', working: false, last_seen_at: null },
   { id: 'u5', email: 'ben@company.com', name: 'Ben Carter', role: 'worker', working: false, last_seen_at: null },
 ];
-const runs = { u1: [[8, 40, 11, 50], [12, 30, 14, 55]], u2: [[10, 5, 14, 55]], u3: [[6, 0, 8, 0], [13, 10, 14, 55]], u4: [[7, 0, 12, 30]], u5: [] };
+const runs = { u1: [[12, 0, 15, 0]], u2: [[10, 5, 14, 55]], u3: [[6, 0, 8, 0], [13, 10, 14, 55]], u4: [[7, 0, 12, 30]], u5: [] };
 const spans = Object.entries(runs).flatMap(([id, list]) => list.flatMap(([h1, m1, h2, m2]) => { const out = []; for (let t = h1 * 60 + m1; t < h2 * 60 + m2; t += 10) out.push({ user_id: id, start_at: at(0, t), end_at: at(0, t + 10), screenshot: true }); return out; }));
 const canvas = document.createElement('canvas'); canvas.width = 320; canvas.height = 200;
 const g = canvas.getContext('2d');
@@ -34,7 +34,7 @@ const hours = people.map(p => ({ user_id: p.id, name: p.name, date: today, secon
 window.fetch = async (input) => {
   const path = String(input);
   if (path === '/api/auth/me') return params.get('auth') ? Response.json({ error: 'auth' }, { status: 401 }) : Response.json(me);
-  if (path === '/updates/windows/x86_64/latest.json') return Response.json({ version: '0.1.6', platforms: { 'windows-x86_64': { url: `${location.origin}/updates/windows/x86_64/releases/0.1.6/worktrack-setup.exe` } } });
+  if (path === '/updates/windows/x86_64/latest.json') return Response.json({ version: '0.1.7', platforms: { 'windows-x86_64': { url: `${location.origin}/updates/windows/x86_64/releases/0.1.7/worktrack-setup.exe` } } });
   if (path === '/api/team') return Response.json(people);
   if (path.startsWith('/api/reports/day?')) return Response.json(spans);
   if (path.startsWith('/api/reports/hours?')) return Response.json(role === 'worker' ? hours.filter(h => h.user_id === 'u1') : hours);
