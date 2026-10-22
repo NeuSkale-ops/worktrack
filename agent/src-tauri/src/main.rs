@@ -56,6 +56,8 @@ struct Runtime {
 type Shared = Arc<Mutex<Runtime>>;
 #[derive(Serialize)]
 struct Status {
+    platform: &'static str,
+    screen_capture_allowed: bool,
     authenticated: bool,
     tracking: bool,
     stopping: bool,
@@ -98,6 +100,8 @@ async fn status(state: State<'_, Shared>) -> Result<Status, String> {
 fn snapshot_status(shared: &Shared) -> Result<Status, String> {
     let r = shared.lock().map_err(|e| e.to_string())?;
     Ok(Status {
+        platform: std::env::consts::OS,
+        screen_capture_allowed: platform::screen_capture_allowed(),
         authenticated: r.token.is_some(),
         tracking: r.session.is_some(),
         stopping: r.pending_stop.is_some(),
@@ -117,6 +121,29 @@ fn snapshot_status(shared: &Shared) -> Result<Status, String> {
         location_pending: r.location.pending,
         location_error: r.location.error,
     })
+}
+#[tauri::command]
+fn request_screen_capture(state: State<Shared>) -> Result<bool, String> {
+    let r = state.lock().map_err(|e| e.to_string())?;
+    updater::ensure_not_reserved(&r)?;
+    if r.token.is_none() || r.session.is_some() || r.pending_stop.is_some() {
+        return Err("Sign in and stop tracking before changing screen recording permission".into());
+    }
+    drop(r);
+    Ok(platform::request_screen_capture())
+}
+#[tauri::command]
+fn open_screen_settings() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("/usr/bin/open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
+            .spawn()
+            .map(|_| ())
+            .map_err(|_| "Could not open screen recording settings".into())
+    }
+    #[cfg(not(target_os = "macos"))]
+    Err("Screen recording settings are available only on macOS".into())
 }
 #[tauri::command]
 async fn login(state: State<'_, Shared>, email: String, password: String) -> Result<(), String> {
@@ -151,7 +178,7 @@ fn require_location(r: &Runtime) -> Result<(), String> {
     if r.location.enabled {
         Ok(())
     } else {
-        Err("Allow WorkTrack to use Windows location before starting. Location is required with every screenshot.".into())
+        Err("Allow WorkTrack to use system location before starting. Location is required with every screenshot.".into())
     }
 }
 #[tauri::command]
@@ -161,8 +188,8 @@ fn start(state: State<Shared>, consent: bool) -> Result<(), String> {
     if r.pending_stop.is_some() {
         return Err("The previous stop is still being saved. Records are retained and will retry automatically.".into());
     }
-    if !cfg!(windows) {
-        return Err("Tracking is supported only on Windows in V1".into());
+    if !cfg!(any(windows, target_os = "macos")) {
+        return Err("Tracking is supported only on Windows and macOS".into());
     }
     if !consent || r.token.is_none() {
         return Err("Sign in and accept the monitoring disclosure first".into());
@@ -171,8 +198,11 @@ fn start(state: State<Shared>, consent: bool) -> Result<(), String> {
         return Ok(());
     }
     require_location(&r)?;
+    if !platform::screen_capture_allowed() {
+        return Err("Allow screen recording in System Settings before starting. Restart WorkTrack if macOS asks you to.".into());
+    }
     if !platform::unlocked() {
-        return Err("Unlock your normal Windows desktop first".into());
+        return Err("Unlock your desktop first".into());
     }
     if r.queue
         .get("active_session")
@@ -306,6 +336,9 @@ async fn logout(state: State<'_, Shared>) -> Result<(), String> {
     .map_err(|e| e.to_string())?
 }
 fn screenshot() -> Result<Vec<u8>, String> {
+    if !platform::screen_capture_allowed() {
+        return Err("Screen recording permission unavailable".into());
+    }
     if !platform::unlocked() {
         return Err("Screen is locked".into());
     }
@@ -758,7 +791,7 @@ fn main() {
                 let _ = window.hide();
             }
         })
-        .invoke_handler(tauri::generate_handler![status, login, start, stop, logout, location::request_location, location::diagnose_location, location::open_location_settings, updater::check_update, updater::install_update])
+        .invoke_handler(tauri::generate_handler![status, request_screen_capture, open_screen_settings, login, start, stop, logout, location::request_location, location::diagnose_location, location::open_location_settings, updater::check_update, updater::install_update])
         .build(tauri::generate_context!())
         .expect("WorkTrack failed to start")
         .run(|app, event| {
@@ -777,6 +810,19 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn status_exposes_native_platform_and_screen_permission_without_prompting() {
+        let shared = Arc::new(Mutex::new(runtime()));
+        let status = serde_json::to_value(snapshot_status(&shared).unwrap()).unwrap();
+        assert_eq!(status["platform"], std::env::consts::OS);
+        assert_eq!(
+            status["screen_capture_allowed"],
+            platform::screen_capture_allowed()
+        );
+        assert!(status.get("latitude").is_none());
+        assert!(status.get("longitude").is_none());
+    }
 
     #[test]
     fn tray_notification_releases_runtime_before_waiting_for_ui_and_only_updates_on_change() {

@@ -11,6 +11,9 @@ cleanup() {
 }
 trap cleanup EXIT
 mkdir "$downloads/0.1.2"
+mkdir -p "$downloads/macos/0.1.7"
+printf 'mac installer fixture\n' > "$downloads/macos/0.1.7/WorkTrack_0.1.7_aarch64.dmg"
+printf '{"version":"0.1.7"}\n' > "$downloads/macos/latest.json"
 printf 'worktrack installer fixture\n' > "$downloads/0.1.2/WorkTrack_0.1.2_x64-setup.exe"
 chmod 755 "$downloads" "$downloads/0.1.2"
 chmod 644 "$downloads/0.1.2/WorkTrack_0.1.2_x64-setup.exe"
@@ -37,8 +40,14 @@ test "$body" = 'worktrack installer fixture'
 headers="$(docker exec "$name" wget --no-check-certificate -S --spider "https://localhost:8443$installer" 2>&1)"
 [[ "$headers" == *'Content-Disposition: attachment'* ]]
 [[ "$headers" == *'max-age=31536000, immutable'* ]]
-for path in /downloads/missing.exe /downloads/.hidden /downloads/0.1.2/; do
+for path in /downloads/missing.exe /downloads/.hidden /downloads/0.1.2/ /downloads/macos/missing.dmg /downloads/macos/.hidden /downloads/macos/0.1.7/; do
   headers="$(docker exec "$name" wget --no-check-certificate -S --spider "https://localhost:8443$path" 2>&1 || true)"
   [[ "$headers" == *'404 Not Found'* ]]
 done
-echo 'Nonroot read-only Caddy, SPA fallback, HTTPS, health, redirects and installer download checks passed.'
+mac='/downloads/macos/0.1.7/WorkTrack_0.1.7_aarch64.dmg'
+test "$(docker exec "$name" wget --no-check-certificate -q -O - "https://localhost:8443$mac")" = 'mac installer fixture'
+headers="$(docker exec "$name" wget --no-check-certificate -S --spider "https://localhost:8443$mac" 2>&1)"
+[[ "$headers" == *'Content-Disposition: attachment'* && "$headers" == *'immutable'* ]]
+headers="$(docker exec "$name" wget --no-check-certificate -S --spider 'https://localhost:8443/downloads/macos/latest.json' 2>&1)"
+[[ "$headers" == *'no-cache, max-age=0, must-revalidate'* && "$headers" != *'immutable'* ]]
+echo 'Nonroot read-only Caddy, SPA fallback, HTTPS, health, redirects and Windows/Mac download checks passed.'
