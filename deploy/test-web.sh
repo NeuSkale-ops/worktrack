@@ -48,6 +48,6 @@ mac='/downloads/macos/0.1.7/WorkTrack_0.1.7_aarch64.dmg'
 test "$(docker exec "$name" wget --no-check-certificate -q -O - "https://localhost:8443$mac")" = 'mac installer fixture'
 headers="$(docker exec "$name" wget --no-check-certificate -S --spider "https://localhost:8443$mac" 2>&1)"
 [[ "$headers" == *'Content-Disposition: attachment'* && "$headers" == *'immutable'* ]]
-headers="$(docker exec "$name" wget --no-check-certificate -S --spider 'https://localhost:8443/downloads/macos/latest.json' 2>&1)"
+headers="$(docker exec "$name" wget --no-check-certificate -S -O /dev/null 'https://localhost:8443/downloads/macos/latest.json' 2>&1)"
 [[ "$headers" == *'no-cache, max-age=0, must-revalidate'* && "$headers" != *'immutable'* ]]
 echo 'Nonroot read-only Caddy, SPA fallback, HTTPS, health, redirects and Windows/Mac download checks passed.'

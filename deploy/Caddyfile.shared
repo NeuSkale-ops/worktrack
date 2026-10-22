@@ -19,7 +19,8 @@ http://:8080 {
 		root * /srv/downloads
 		@download_hidden path_regexp download_hidden (^|/)\.[^/]*
 		respond @download_hidden 404
-		header Cache-Control "public, max-age=31536000, immutable"
+		@download_immutable not path /macos/latest.json
+		header @download_immutable Cache-Control "public, max-age=31536000, immutable"
 		@download_manifest path /macos/latest.json
 		header @download_manifest Cache-Control "no-cache, max-age=0, must-revalidate"
 		@installer path *.exe *.dmg
