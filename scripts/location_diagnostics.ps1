@@ -56,7 +56,7 @@ try {
     $remote = 'unsupported or unavailable'
     try {
         # Some Windows versions do not expose this optional property.
-        $remoteProperty = $position.PSObject.Properties['IsRemoteSource']
+        $remoteProperty = $coordinate.PSObject.Properties['IsRemoteSource']
         if ($null -ne $remoteProperty) { $remote = $remoteProperty.Value }
     } catch {
         $remote = 'unsupported or unavailable'
