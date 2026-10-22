@@ -34,6 +34,12 @@ concurrency:
   group: windows-updater-release
   cancel-in-progress: false
 jobs:
+  macos-preview:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/macos-preview.yml
+    permissions:
+      contents: read
+    # Isolated preview build. Never inherits Windows signing or deploy secrets.
   build:
     if: github.ref == 'refs/heads/main' && inputs.candidate_run == ''
     environment: updater-release
@@ -198,9 +204,9 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
   publish:
-    needs: [verify, upgrade]
+    needs: [verify, upgrade, macos-preview]
     if: >-
-      !cancelled() && needs.verify.result == 'success' &&
+      !cancelled() && needs.verify.result == 'success' && needs.macos-preview.result == 'success' &&
       (inputs.channel == 'staging' || needs.upgrade.result == 'success') &&
       inputs.publish && (inputs.channel == 'staging' || inputs.upgrade_evidence != '') &&
       github.ref == 'refs/heads/main'

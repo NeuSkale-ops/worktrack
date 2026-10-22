@@ -1,0 +1,80 @@
+name: macOS Apple Silicon preview
+on:
+  pull_request:
+    paths:
+      - 'agent/**'
+      - '.github/workflows/macos*.yml'
+      - 'deploy/macos*.json'
+      - 'scripts/macos*'
+  push:
+    branches: [main]
+    paths:
+      - 'agent/**'
+      - '.github/workflows/macos*.yml'
+      - 'deploy/macos*.json'
+      - 'scripts/macos*'
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  apple-silicon:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      # Ad-hoc signing is not Developer ID signing or notarization.
+      APPLE_SIGNING_IDENTITY: '-'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: agent/package-lock.json
+      - name: Validate updater isolation before building
+        run: |
+          test "$(uname -m)" = arm64
+          python3 scripts/macos_preview.py
+          python3 -m unittest discover -s scripts -p 'macos_preview_test.py' -v
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --target aarch64-apple-darwin
+          rustup default stable
+      - run: npm ci
+        working-directory: agent
+      - name: Test Mac backend
+        run: cargo test --locked --manifest-path agent/src-tauri/Cargo.toml --target aarch64-apple-darwin
+      - name: Build ad-hoc preview without updater artifacts
+        working-directory: agent
+        run: npm run tauri -- build --target aarch64-apple-darwin --bundles app,dmg --config ../deploy/macos-preview.json -- --locked
+      - name: Verify and package preview
+        run: |
+          set -euo pipefail
+          bundle=agent/src-tauri/target/aarch64-apple-darwin/release/bundle
+          app="$bundle/macos/WorkTrack.app"
+          test "$(lipo -archs "$app/Contents/MacOS/worktrack-agent")" = arm64
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv "$app" 2>&1 | tee "$RUNNER_TEMP/mac-signature.txt"
+          grep -q '^Signature=adhoc$' "$RUNNER_TEMP/mac-signature.txt"
+          test -z "$(find "$bundle" -name '*.sig' -o -name '*.app.tar.gz')"
+          mkdir -p macos-preview
+          ditto -c -k --sequesterRsrc --keepParent "$app" macos-preview/WorkTrack-macos-aarch64-adhoc-preview.app.zip
+          dmgs=("$bundle"/dmg/*.dmg)
+          test "${#dmgs[@]}" -eq 1
+          version=$(python3 -c 'import json; print(json.load(open("agent/src-tauri/tauri.conf.json"))["version"])')
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          cp "${dmgs[0]}" "macos-preview/WorkTrack_${version}_aarch64.dmg"
+          python3 scripts/macos_preview.py --dmg "macos-preview/WorkTrack_${version}_aarch64.dmg" --manifest macos-preview/latest.json
+          cp scripts/macos-preview.md macos-preview/README.md
+          printf 'commit=%s\nrun=%s\ntarget=aarch64-apple-darwin\nsigning=ad-hoc, not notarized\nupdater=disabled\n' \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" > macos-preview/BUILD.txt
+          (cd macos-preview && shasum -a 256 ./*.zip ./*.dmg > SHA256SUMS)
+      # CI retention only. No GitHub Release, website deployment or updater feed.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-preview
+          path: macos-preview/
+          if-no-files-found: error
+          retention-days: 14
