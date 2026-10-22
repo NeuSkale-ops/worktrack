@@ -71,7 +71,7 @@ try {
     const day = page.locator('[aria-labelledby="day-heading"]')
     assert.match(await day.innerText(), /0h 20m/)
     assert.match(await day.innerText(), /50%/)
-    await page.locator('.time-row').first.getByRole('button', { name: /View/ }).first().click()
+    await page.locator('.time-row').first().getByRole('button', { name: /View/ }).first().click()
     assert.match(await page.locator('dialog[open]').innerText(), /10m/)
     await page.getByRole('button', { name: 'Close', exact: true }).click()
     await page.getByRole('button', { name: 'Weekly report', exact: true }).click()

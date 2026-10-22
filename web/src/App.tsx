@@ -514,7 +514,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
                 <p><strong>{busy ? '…' : duration(ownBlocks)}</strong> tracked <span className="summary-divider">/</span> <strong>{busy ? '…' : `${activity(blockActive, ownBlocks)}%`}</strong> input activity</p>
                 <span className="muted">Times in {zone}</span>
               </div>
-              <div className="day-timeline" aria-label={`${selectedLabel}'s recorded time across 24 hours`}>
+              <div className="day-timeline" role="img" aria-label={`${selectedLabel}'s recorded time across 24 hours`}>
                 <div className="track" aria-hidden="true">
                   {segments.map((segment, index) => <i className="seg" key={index} style={{ left: `${segment.left}%`, width: `${segment.width}%` }} />)}
                   {nowPercent !== null && <i className="nowline" style={{ left: `${nowPercent}%` }} />}
