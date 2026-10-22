@@ -583,7 +583,7 @@ print(json.dumps({"action": action, "integrity": "ok", "settings_preserved": Tru
     $diagnosticShapeValid = $diagnosticText -match 'Location diagnostic failed: Sign in and allow location before diagnosing\.?'
     if ($diagnosticText -match 'Location diagnostic result') {
         $diagnosticOutcome = 'provider-report'
-        $diagnosticShapeValid = $diagnosticText -match 'Source:' -and $diagnosticText -match 'Remote source:'
+        $diagnosticShapeValid = $diagnosticText -match 'Source:' -and $diagnosticText -match 'Remote\s+source:'
     }
     # Never retain raw diagnostic text or coordinates in evidence artifacts.
     Invoke-Button -Name 'Clear location diagnostic'
