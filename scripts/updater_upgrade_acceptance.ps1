@@ -573,6 +573,36 @@ print(json.dumps({"action": action, "integrity": "ok", "settings_preserved": Tru
     Set-FeedMode 'valid'
     Start-App $ExpectedVersion
     Add-Result 'candidate-restart-sign-in' @{ persisted = $true; stopped = $true }
+
+    # Exercise the installed diagnostic through real WebView IPC. Hosted Windows
+    # often denies location access; that denial is a valid diagnostic outcome,
+    # not proof that the affected user's physical coordinates are correct.
+    Invoke-Button -Name 'Run local location diagnostic'
+    $diagnosticText = Wait-UiText 'Location diagnostic result|Location diagnostic failed:' 30
+    $diagnosticOutcome = 'permission-denied'
+    $diagnosticShapeValid = $diagnosticText -match 'Location diagnostic failed: Sign in and allow location before diagnosing\.?'
+    if ($diagnosticText -match 'Location diagnostic result') {
+        $diagnosticOutcome = 'provider-report'
+        $diagnosticShapeValid = $diagnosticText -match 'Source:' -and $diagnosticText -match 'Remote source:'
+    }
+    # Never retain raw diagnostic text or coordinates in evidence artifacts.
+    Invoke-Button -Name 'Clear location diagnostic'
+    $clearDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    while ($null -ne (Get-Button 'Clear location diagnostic')) {
+        if ([DateTime]::UtcNow -ge $clearDeadline) {
+            Stop-App
+            throw 'Diagnostic report did not clear.'
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    $null = Wait-Button 'Run local location diagnostic'
+    if (-not $diagnosticShapeValid) { throw 'Diagnostic result omitted source metadata or actionable permission failure.' }
+    Assert-SignedInStopped $ExpectedVersion
+    Stop-App
+    Invoke-Fixture 'check-final'
+    Start-App $ExpectedVersion
+    Add-Result 'candidate-local-location-diagnostic' @{ outcome = $diagnosticOutcome; actualNativeIpc = $true; reportCleared = $true; localStatePreserved = $true; physicalAccuracyVerified = $false }
+
     Set-FeedMode 'missing'
     Invoke-Check
     $text = Wait-UiText '(?s)Could not check for updates:.*no release has been published'
