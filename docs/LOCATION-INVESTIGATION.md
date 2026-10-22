@@ -39,3 +39,12 @@ Its coordinates are sensitive local output. Do not paste exact coordinates into 
 ## Release state
 
 Production publication workflow `39727480185` was cancelled before publication after this report. Independent candidate verification passed; the native upgrade and publication jobs were cancelled. GitHub v0.1.6 remains a draft. No application bytes or signing keys were changed during this investigation. Prior installed-updater acceptance remains valid for updater behavior, not location accuracy.
+
+## Whole-result recheck, 05:31–05:32 UTC
+
+- **Requested release availability:** production and staging manifests returned HTTP 404, and the canonical 0.1.6 installer returned HTTP 404. Publication is not delivered. GitHub reports `isDraft=true`, with cancellation now stated explicitly in its notes.
+- **Candidate identity and packaging:** the original archive passed real local minisign/trusted-version/checksum/production-URL verification again. The draft installer asset digest equals the tested installer SHA-256, `9f5e382623d460415a100d45a8798d4a530146150fd02f28263230838bcbf176`; the draft contains the matching signature and checksum assets and targets the original signed source. This is draft packaging evidence, not a public download acceptance.
+- **Existing distribution and service continuity:** the previous immutable v0.1.5 installer returned HTTP 200. The dashboard and public API health returned HTTP 200. No installer identity was overwritten and no historical location record was corrected or erased.
+- **Affected location data path:** the actual public timeline/database comparison was rerun after all changes. All four incident location objects still matched exactly, and exact temporary credential cleanup passed again. This proves faithful data transport, not a true physical fix.
+- **Changed diagnostic behavior:** official local PowerShell parsing passed; without `-Run`, a mocked `Add-Type` trap proved WinRT loading was not reached. With `-Run` on this macOS host, the diagnostic rejected the unsupported platform. The remote-source receiver was checked against the documented `Geocoordinate` property. Actual Windows PowerShell 5.1 sensor execution remains blocked by lack of the affected device.
+- **Validation/presentation regression:** the Go monitoring validation test and all twelve frontend API/utility tests passed again. Freshness, numeric range and formatting checks do not establish location truth. The external acceptance condition remains a same-device position/source check against known physical location.
