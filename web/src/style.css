@@ -93,7 +93,6 @@ input, select {
 .page-heading > div { min-width: 0; }
 .page-heading h1 { overflow-wrap: anywhere; }
 .page-heading .muted { margin-top: 7px; }
-.eyebrow { margin-bottom: 5px; font-size: 14px; color: var(--quiet); }
 .datenav { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; max-width: 100%; }
 .datenav > button { min-height: 40px; min-width: 38px; padding: 6px 10px; }
 .date-label input { min-height: 40px; width: 155px; max-width: 100%; border-color: var(--rule); font-size: 14px; }
@@ -230,7 +229,7 @@ dialog > * + * { margin-top: 16px; }
   .workspace-status { min-height: 40px; }
   .workspace-status button { min-height: 36px; }
   .day-layout { display: block; }
-  .people-rail { padding: 10px; margin-bottom: 18px; background: var(--paper); border: 0; border-radius: 5px; }
+  .people-rail { padding: 10px; margin-bottom: 12px; background: var(--paper); border: 0; border-radius: 5px; }
   .rail-heading, .desktop-people { display: none; }
   .mobile-person { display: flex; }
   .mobile-person select { width: 100%; font-size: 14px; }
@@ -238,16 +237,16 @@ dialog > * + * { margin-top: 16px; }
   .page-heading .muted { margin-top: 4px; }
   .datenav > button, .date-label input, .mobile-person select { min-height: 44px; }
   h1 { font-size: 28px; }
-  .day-summary { margin-top: 16px; gap: 4px 16px; }
+  .day-summary { margin-top: 12px; gap: 4px 16px; }
   .summary-divider { margin: 0 9px; }
   .day-summary strong { font-size: 23px; }
-  .day-timeline { margin-top: 16px; margin-bottom: 16px; }
+  .day-timeline { margin-top: 12px; margin-bottom: 12px; }
   .day-timeline .track { height: 32px; }
   .task-tabs { gap: 22px; }
   .task-tabs button { font-size: 14px; }
   .shots { grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); gap: 20px; }
-  .task-panel { padding-top: 16px; }
-  .screenshot-intro { margin-bottom: 12px; }
+  .task-panel { padding-top: 12px; }
+  .screenshot-intro { margin-bottom: 10px; }
   .meta button { min-height: 44px; }
   .meta { padding-top: 4px; padding-bottom: 4px; }
   .time-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }

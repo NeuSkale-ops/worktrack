@@ -591,7 +591,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
         {view === 'Weekly report' && (
         <section className="report-view" aria-labelledby="week-heading">
           <div className="page-heading">
-            <div><p className="eyebrow">Recorded time</p><h1 id="week-heading">Weekly report</h1><p className="muted">{range.from} to {range.to} · {duration(weekSeconds)} {manager ? 'team' : 'total'} tracked</p></div>
+            <div><h1 id="week-heading">Weekly report</h1><p className="muted">{range.from} to {range.to} · {duration(weekSeconds)} {manager ? 'team' : 'total'} tracked</p></div>
             {dateControls}
           </div>
           <div className="report-actions"><p className="muted">Times in {zone}. Totals include recorded time only.</p><a className="button" href={`/api/reports/hours.csv?${new URLSearchParams({ ...range, tz: zone })}`} download>Export CSV</a></div>
@@ -628,7 +628,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
         )}
         {view === 'Settings' && (
           <section className="settings-view" aria-labelledby="settings-heading">
-            <div className="page-heading"><div><p className="eyebrow">Workspace</p><h1 id="settings-heading">Settings</h1><p className="muted">Desktop app, team access and your account.</p></div></div>
+            <div className="page-heading"><div><h1 id="settings-heading">Settings</h1><p className="muted">Desktop app, team access and your account.</p></div></div>
             <DownloadCard />
             {manager && <section className="settings-section" aria-labelledby="team-settings-heading">
               <h2 id="team-settings-heading">Team members</h2>
