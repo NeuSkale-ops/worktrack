@@ -32,6 +32,8 @@ http://:8080 {
 		header @manifest Cache-Control "no-cache, max-age=0, must-revalidate"
 		@immutable path /windows/x86_64/releases/*
 		header @immutable Cache-Control "public, max-age=31536000, immutable"
+		@update_installer path *.exe
+		header @update_installer Content-Disposition "attachment"
 		file_server
 	}
 	# Staging validation never writes the production update directory.
@@ -43,6 +45,8 @@ http://:8080 {
 		header @staging_manifest Cache-Control "no-cache, max-age=0, must-revalidate"
 		@staging_immutable path /windows/x86_64/releases/*
 		header @staging_immutable Cache-Control "public, max-age=31536000, immutable"
+		@staging_installer path *.exe
+		header @staging_installer Content-Disposition "attachment"
 		file_server
 	}
 	@api path /api /api/* /healthz

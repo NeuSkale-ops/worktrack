@@ -1,6 +1,9 @@
 # Worker installer downloads
 
-The signed-in dashboard offers the production-configured Windows x64 installer at `/downloads/0.1.5/WorkTrack_0.1.5_x64-setup.exe`.
+The signed-in dashboard reads `/updates/windows/x86_64/latest.json` and offers that production release's Windows x64 installer and adjacent `SHA256SUMS`.
+It refreshes on mount, window focus, every five minutes, and explicit retry, without using a cached manifest.
+Only a stable version and its canonical same-origin `/updates/windows/x86_64/releases/{version}/worktrack-setup.exe` URL are accepted.
+Missing, invalid, or failed metadata hides download links rather than falling back to an old release. A newly published release needs no dashboard rebuild.
 Existing workers use their existing email and password after installation.
 A new invitation is not required.
 Tracking starts only when the worker clicks Start tracking.
@@ -14,15 +17,15 @@ No credentials or worker data are stored in the download directory.
 
 ## Standalone deployment
 
-The default `compose.yaml` mounts `/srv/worktrack-downloads` read-only, and its Caddy configuration serves `/downloads/*` as files rather than the React app.
-Place the verified installer and `SHA256SUMS` under `/srv/worktrack-downloads/0.1.5/` with mode 0755 directories and 0644 files.
+The default `compose.yaml` retains the legacy `/srv/worktrack-downloads` read-only mount and `/downloads/*` file routes.
+The dynamic card requires the public updater mounts and verified production publication described in `UPDATES.md`; legacy installer files alone do not populate the card.
 Use the standalone Compose commands in `README.md`. The shared-host image overlay below is not required.
 `deploy/test-web.sh` checks exact fixture bytes, attachment/cache headers, and 404 responses for missing, hidden, and directory paths against the standalone image.
 
 ## Shared host deployment
 
 Build the AMD64 web image away from the shared VM and load it using the reviewed release tag in `compose.release.yaml`.
-Place the verified installer in `/srv/worktrack-downloads/0.1.5/WorkTrack_0.1.5_x64-setup.exe` with public read permissions.
+Publish the verified installer and manifest through the guarded updater receiver described in `UPDATES.md`. Preserve existing legacy downloads.
 Keep the existing image and Caddy configuration available for rollback.
 Deploy the reviewed `Caddyfile.shared` and `compose.downloads.yaml` into `/opt/worktrack/deploy`.
 The downloads overlay adds a read-only installer directory mount; the final release overlay selects the current web image.
@@ -32,11 +35,12 @@ It does not change the API, database, outer HTTPS proxy, signing secrets, or scr
 docker compose -p worktrack \
   -f /etc/worktrack/compose.runtime.json \
   -f /opt/worktrack/deploy/compose.downloads.yaml \
+  -f /opt/worktrack/deploy/compose.updates.yaml \
   -f /opt/worktrack/deploy/compose.release.yaml \
   up -d --no-deps --no-build --pull never --wait web
 ```
 
-Use all three files, in this order, for subsequent web operations so the current release image and installer mount are retained.
+Use all four files, in this order, for subsequent web operations so the current release image and public read-only mounts are retained.
 The current API/dashboard release is recorded in `SHARED-HOST.md`; the downloads overlay alone still names the older dashboard image.
 Never print the protected runtime configuration.
 Verify the public HTTPS installer checksum against the verified candidate before announcing availability.
@@ -47,9 +51,10 @@ Preserve published installer bytes and do not overwrite versioned paths with a d
 
 ## Public acceptance
 
-Run `node scripts/download-acceptance.mjs` with `WT_DOWNLOAD_BASE`, independently verified `WT_DOWNLOAD_SHA256`, and existing-account `WT_ACCEPTANCE_EMAIL` and `WT_ACCEPTANCE_PASSWORD` supplied through a protected environment.
-The script checks the deployed bundle, real login and authenticated API, anonymous exact installer bytes, attachment/cache headers, published checksum, missing/hidden paths, and disabled directory listing.
-It creates and revokes only its own authentication session and does not create workers or change tracking records.
+Run `node scripts/download-acceptance.mjs` on Node 22+ with `WT_DOWNLOAD_BASE` and independently verified `WT_DOWNLOAD_SHA256`.
+The script checks the deployed dynamic bundle, current manifest, anonymous exact installer bytes, attachment/cache headers, checksum link, missing/hidden paths, and disabled directory listing.
+Existing-account `WT_ACCEPTANCE_EMAIL` and `WT_ACCEPTANCE_PASSWORD` are optional and must be supplied together through a protected environment. With them, the script also checks login and authenticated API, then revokes only its own session. Without them, it explicitly skips login checks.
+It does not create workers or change tracking records.
 Never include credential values in shell arguments or logs.
 
 ## Observed deployment, October 21, 2026

@@ -1,7 +1,10 @@
 # Shared-host release overlay. Apply last, after protected runtime and downloads.
 # Keep published installers and the host's existing Caddy configuration unchanged.
+# The API tag and proxy trust match the already deployed compatible API.
 services:
   api:
-    image: worktrack-api:12dbe5b
+    image: worktrack-api:cc2b13d
+    environment:
+      TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
   web:
-    image: worktrack-web:12dbe5b
+    image: worktrack-web:c28250f
