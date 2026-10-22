@@ -98,15 +98,30 @@ mod win {
 }
 #[cfg(windows)]
 pub use win::{foreground_app, idle_seconds, unlocked};
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+#[path = "platform_mac.rs"]
+mod mac;
+#[cfg(target_os = "macos")]
+pub use mac::{
+    foreground_app, idle_seconds, request_screen_capture, screen_capture_allowed, unlocked,
+};
+#[cfg(not(target_os = "macos"))]
+pub fn screen_capture_allowed() -> bool {
+    cfg!(windows)
+}
+#[cfg(not(target_os = "macos"))]
+pub fn request_screen_capture() -> bool {
+    screen_capture_allowed()
+}
+#[cfg(not(any(windows, target_os = "macos")))]
 pub fn foreground_app() -> Option<String> {
     None
 }
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 pub fn unlocked() -> bool {
     false
 }
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 pub fn idle_seconds() -> Option<f64> {
     None
 }
