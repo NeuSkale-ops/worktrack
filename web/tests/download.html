@@ -10,8 +10,18 @@ let version = '0.1.6';
 let mode = 'valid';
 let pending;
 let calls = 0;
+let macMode = 'missing';
+let macPending;
+let macVersion = '0.1.6';
 const checks = [];
 window.fetch = async (path, options) => {
+  if (path === '/downloads/macos/latest.json') {
+    if (options.cache !== 'no-store' || options.redirect !== 'error') throw new Error('Wrong Mac request options');
+    if (macMode === 'pending') return new Promise(resolve => { macPending = resolve; });
+    if (macMode === 'missing') return new Response('', { status: 404 });
+    if (macMode === 'invalid') return Response.json({ version: macVersion });
+    return Response.json({ version: macVersion, architecture: 'aarch64', url: `/downloads/macos/${macVersion}/WorkTrack_${macVersion}_aarch64.dmg`, sha256: 'ab'.repeat(32), signing: 'ad-hoc', notarized: false });
+  }
   calls++;
   if (path !== '/updates/windows/x86_64/latest.json' || options.cache !== 'no-store' || options.redirect !== 'error') throw new Error('Wrong public request');
   if (mode === 'pending') return new Promise(resolve => { pending = resolve; });
@@ -30,6 +40,8 @@ async function check(name, predicate) {
 }
 const card = () => document.querySelector('.download');
 const download = () => card()?.querySelector('a[download]');
+const macCard = () => document.querySelector('.mac-download');
+const macDownload = () => macCard()?.querySelector('a[download]');
 const refresh = () => window.dispatchEvent(new Event('focus'));
 try {
   createRoot(document.querySelector('#root')).render(React.createElement(DownloadCard));
@@ -45,9 +57,27 @@ try {
   mode = 'valid'; refresh();
   await check('focus recovers after invalid feed', () => download() && calls >= 5);
   await check('install instructions remain available', () => card().querySelectorAll('li').length === 3 && card().querySelector('[role=status]'));
+  await check('missing Mac preview never hides Windows installer', () => macCard()?.querySelector('button') && !macDownload() && download());
+  macMode = 'valid'; macCard().querySelector('button').click();
+  await check('Mac retry loads canonical DMG and adjacent checksums', () => macDownload()?.getAttribute('href') === '/downloads/macos/0.1.6/WorkTrack_0.1.6_aarch64.dmg' && macCard().querySelector('details a')?.getAttribute('href') === '/downloads/macos/0.1.6/SHA256SUMS');
+  await check('Mac preview states architecture, signing, notarization and manual updates', () => ['Apple Silicon preview', 'Ad-hoc signed, not notarized', 'Manual updates only', 'Not for Intel Macs', 'macOS System Settings', 'Screen Recording', 'Location Services'].every(text => macCard().textContent.includes(text)));
+  mode = 'missing'; refresh();
+  await check('missing Windows feed never hides valid Mac preview', () => card().querySelector('button') && !download() && macDownload());
+  mode = 'valid'; macMode = 'pending'; refresh();
+  await check('pending Mac feed clears stale Mac links without blocking Windows', () => macPending && !macDownload() && !macCard().querySelector('details a') && macCard().getAttribute('aria-busy') === 'true' && download());
+  const staleMac = macPending;
+  macMode = 'invalid'; refresh();
+  await check('invalid Mac metadata removes links and offers retry', () => macCard().querySelector('button') && !macCard().querySelector('a') && download());
+  staleMac(Response.json({version:'9.9.9',architecture:'aarch64',url:'/downloads/macos/9.9.9/WorkTrack_9.9.9_aarch64.dmg',sha256:'ab'.repeat(32),signing:'ad-hoc',notarized:false}));
+  await wait(50);
+  await check('stale Mac response cannot restore an old installer', () => !macDownload() && !macCard().querySelector('a'));
+  macMode = 'valid'; macVersion = '0.1.7'; macCard().querySelector('button').click();
+  await check('Mac retry recovers with updated version independently', () => macDownload()?.getAttribute('href').includes('/0.1.7/') && macCard().textContent.includes('Version 0.1.7') && download());
+  document.documentElement.dataset.testResult = 'passed';
   document.title = 'PASS download card';
 } catch (error) {
   document.querySelector('#results').textContent += `\nFAIL ${error.stack}`;
+  document.documentElement.dataset.testResult = 'failed';
   document.title = 'FAIL download card';
   throw error;
 }
