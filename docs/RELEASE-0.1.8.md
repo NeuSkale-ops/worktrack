@@ -1,0 +1,18 @@
+# WorkTrack 0.1.8: location quality and source reporting
+
+## Changes
+
+- Windows now explicitly requests high-accuracy system positioning instead of the default 500-metre setting.
+- Mac keeps the best fresh result within its five-second lookup window instead of stopping at the first coarse result. A result with a reported radius of 100 metres or better may finish early.
+- Screenshot location records preserve optional system position source and remote-source metadata. Older records remain compatible and are not rewritten.
+- The dashboard describes coordinates as system estimates, marks results above a 1,000-metre reported radius as coarse, and displays source and remote-source information when supplied. It never describes these estimates as verified whereabouts.
+
+## Accuracy limitations
+
+Requesting high accuracy cannot guarantee that the operating system returns the correct physical location. A recent timestamp and a small reported radius are not independent proof of geographic accuracy. macOS does not provide Windows-style source labels through this bridge, so its source remains unknown rather than invented.
+
+Do not infer attendance or movement from an unverified estimate. Historical incorrect readings are unchanged. Run the local location diagnostic on the affected machine and compare its result with known physical location before asserting that this release resolves that machine's discrepancy.
+
+## Installation
+
+Stop tracking and allow queued data to sync before installing. Mac builds remain Apple Silicon previews for macOS 11 or later, ad-hoc signed and not notarized, with manual updates only. Windows publication requires the existing signature verification and real installed-upgrade recovery gates. No updater verification gates are relaxed for this release.
