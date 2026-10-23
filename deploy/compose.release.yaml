@@ -1,10 +1,10 @@
 # Shared-host release overlay. Apply last, after protected runtime and downloads.
 # Keep published installers and the host's existing Caddy configuration unchanged.
-# The API tag and proxy trust match the already deployed compatible API.
+# Location provenance API and dashboard, built from committed 0.1.8 release source.
 services:
   api:
-    image: worktrack-api:cc2b13d
+    image: worktrack-api:location-018
     environment:
       TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
   web:
-    image: worktrack-web:mac-e389b75
+    image: worktrack-web:location-018
