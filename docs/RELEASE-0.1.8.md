@@ -16,3 +16,20 @@ Do not infer attendance or movement from an unverified estimate. Historical inco
 ## Installation
 
 Stop tracking and allow queued data to sync before installing. Mac builds remain Apple Silicon previews for macOS 11 or later, ad-hoc signed and not notarized, with manual updates only. Windows publication requires the existing signature verification and real installed-upgrade recovery gates. No updater verification gates are relaxed for this release.
+
+## Verification evidence
+
+Release application source: `6637c75998acd9b73c0ca8a13b6eab915a777fd2`. Release workflow: `39995100603`.
+
+- Native tests: 40 passed, with the physical-console test explicitly ignored. The SQLite queue regression preserves optional provenance and rejects invalid fixes without leaving metadata behind.
+- macOS delegate checks exercised best-fix selection, the early-success threshold, deadline handling, cancellation and missing fixes without requesting location permission or collecting coordinates.
+- API tests against PostgreSQL 17 exercised provenance ingestion, duplicate acknowledgment, persisted `false` remote-source values, role-scoped responses and validation. Web tests and production builds passed.
+- Before API/dashboard deployment, an encrypted off-host backup restored successfully into isolated PostgreSQL 17. User/session/block counts matched at 2/8/150. Deployment left the production database container unchanged.
+- Public HTTPS timeline checks matched all four existing location records against stored coordinates, accuracy and timestamps. Actual desktop and mobile screenshot dialogs described legacy records as system estimates with unreported provenance, without claiming verified location. Temporary acceptance credentials were removed and existing tracking records were not modified.
+- The exact CI Apple Silicon DMG passed checksum, disk-image and code-signature verification. An isolated installation launched version 0.1.8 and quit normally without changing the original local queue. Public desktop/mobile download checks retrieved that same DMG and preserved the Windows download link.
+
+Published Mac DMG SHA-256: `fed4342a34b229e679fac85ed1fc0460b4653d0de637f5d254b45ad956dfb996`.
+
+Windows signing, installed-upgrade recovery and publication remain pending while the release workflow runs. No Windows publication is asserted by the checks above. No affected-machine physical location, permission flow or sensor accuracy was verified. Mac remains ad-hoc signed, not notarized, and does not auto-update.
+
+Release builds used clean committed archives. The unrelated existing local `server/reports.go` edits and untracked `velvet.yaml` were left untouched. Velvet logging was blocked by missing repository credentials.
