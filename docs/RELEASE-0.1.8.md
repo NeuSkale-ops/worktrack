@@ -30,6 +30,10 @@ Release application source: `6637c75998acd9b73c0ca8a13b6eab915a777fd2`. Release 
 
 Published Mac DMG SHA-256: `fed4342a34b229e679fac85ed1fc0460b4653d0de637f5d254b45ad956dfb996`.
 
-Windows signing, installed-upgrade recovery and publication remain pending while the release workflow runs. No Windows publication is asserted by the checks above. No affected-machine physical location, permission flow or sensor accuracy was verified. Mac remains ad-hoc signed, not notarized, and does not auto-update.
+Windows workflow `39995100603` completed successfully, including signed build, independent signature verification, installed-upgrade acceptance and protected production publication. All 14 recorded Windows scenarios passed with no cleanup errors. The real plugin upgraded 0.1.5 to 0.1.8 while preserving local identity and settings, rejected tampered and wrong-key installers, recovered from interrupted downloads, and recovered after a 603-second stalled download. The installed diagnostic exercised real native IPC and reported permission denied without collecting a position. These isolated, offline-seeded checks do not prove connected tracking or physical accuracy.
+
+The upgrade evidence identifies the exact candidate archive SHA-256 as `d02a1eac3edab4470d3c8b2b254c72db0680467a8c027066c7be1a7419b4ba4c`, matching the downloaded archive. Public production acceptance retrieved Windows version 0.1.8, verified installer SHA-256 `91208f5bcc42fe1870e307f9e6fcd293462039e60af1e3923f116af69a1d739a`, checksum link, attachment/cache headers and missing/private path protections. Actual desktop/mobile Settings checks were rerun after Windows publication and retained both platform downloads.
+
+No affected-machine physical location or successful sensor fix was verified. Mac remains ad-hoc signed, not notarized, and does not auto-update.
 
 Release builds used clean committed archives. The unrelated existing local `server/reports.go` edits and untracked `velvet.yaml` were left untouched. Velvet logging was blocked by missing repository credentials.
