@@ -8,9 +8,16 @@
 @property(nonatomic) int state;
 @property(nonatomic, strong) NSDate *started;
 @property(nonatomic, strong) CLLocation *fix;
+- (void)finish;
 @end
 @implementation WTLocationRequest
+- (void)finish {
+    [self.manager stopUpdatingLocation];
+    self.manager.delegate = nil;
+    if (self.state == 0) self.state = self.fix ? 1 : -1;
+}
 - (void)locationManagerDidChangeAuthorization:(CLLocationManager *)manager {
+    if (self.state != 0) return;
     CLAuthorizationStatus status = manager.authorizationStatus;
     if (status == kCLAuthorizationStatusDenied || status == kCLAuthorizationStatusRestricted) {
         self.state = -1;
@@ -23,15 +30,15 @@
     if (self.state != 0 || self.permissionOnly) return;
     for (CLLocation *location in locations.reverseObjectEnumerator) {
         NSTimeInterval age = [location.timestamp timeIntervalSinceDate:self.started];
-        if (location.horizontalAccuracy > 0 && age >= -2 && age <= 5) {
+        if (location.horizontalAccuracy > 0 && age >= -2 && age <= 5 &&
+            (!self.fix || location.horizontalAccuracy < self.fix.horizontalAccuracy)) {
             self.fix = location;
-            self.state = 1;
-            [manager stopUpdatingLocation];
-            break;
         }
     }
+    if (self.fix && self.fix.horizontalAccuracy <= 100) [self finish];
 }
 - (void)locationManager:(CLLocationManager *)manager didFailWithError:(NSError *)error {
+    if (self.state != 0) return;
     if (error.code != kCLErrorLocationUnknown) {
         self.state = -1;
         [manager stopUpdatingLocation];
@@ -59,10 +66,7 @@ uint64_t wt_location_start(bool permissionOnly) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (permissionOnly ? 60 : 5) * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
             WTLocationRequest *active = requests[@(identifier)];
             if (!active) return;
-            [active.manager stopUpdatingLocation];
-            active.manager.delegate = nil;
-            active.fix = nil;
-            active.state = -1;
+            [active finish];
         });
         CLAuthorizationStatus status = request.manager.authorizationStatus;
         BOOL authorized = status == kCLAuthorizationStatusAuthorizedAlways;
@@ -81,11 +85,13 @@ uint64_t wt_location_start(bool permissionOnly) {
     });
     return identifier;
 }
-int wt_location_poll(uint64_t identifier, double *values) {
+int wt_location_poll(uint64_t identifier, double *values, bool deadline) {
     __block int state = -1;
     onMain(^{
         WTLocationRequest *request = requests[@(identifier)];
         if (!request) return;
+        // Rust's overall deadline can precede delivery of the main-queue timer.
+        if (deadline) [request finish];
         state = request.state;
         if (state == 1 && request.fix && values) {
             values[0] = request.fix.coordinate.latitude;
@@ -102,6 +108,7 @@ void wt_location_cancel(uint64_t identifier) {
         [request.manager stopUpdatingLocation];
         request.manager.delegate = nil;
         request.fix = nil;
+        request.state = -1;
         [requests removeObjectForKey:@(identifier)];
     });
 }
