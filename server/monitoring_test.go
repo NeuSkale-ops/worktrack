@@ -162,6 +162,9 @@ func TestMonitoringHTTP(t *testing.T) {
 		return w
 	}
 	b := monitoringBlock()
+	source, remote := "wifi", false
+	b.Location.PositionSource = &source
+	b.Location.IsRemoteSource = &remote
 	b.Screenshot = ids["worker"] + "/" + b.ID + ".jpg"
 	request("POST", "/api/sessions/start", "worker", map[string]any{"id": b.SessionID, "started_at": b.Start}, 200)
 	if _, err = db.Exec(ctx, "INSERT INTO uploads(block_id,user_id,object_key,expires_at) VALUES($1,$2,$3,now()+interval '5 minutes')", b.ID, ids["worker"], b.Screenshot); err != nil {
@@ -170,6 +173,10 @@ func TestMonitoringHTTP(t *testing.T) {
 	payload := map[string]any{"blocks": []block{b}}
 	request("POST", "/api/blocks", "worker", payload, 200)
 	request("POST", "/api/blocks", "worker", payload, 200)
+	var storedProvenance bool
+	if err = db.QueryRow(ctx, `SELECT count(*) = 1 AND bool_and(location->'position_source' = '"wifi"'::jsonb AND location->'is_remote_source' = 'false'::jsonb) FROM blocks WHERE id=$1`, b.ID).Scan(&storedProvenance); err != nil || !storedProvenance {
+		t.Fatalf("duplicate upload did not preserve one block with exact provenance: %v", err)
+	}
 	bad := b
 	bad.Applications = []applicationUsage{{App: "changed.exe", Milliseconds: 1000}}
 	request("POST", "/api/blocks", "worker", map[string]any{"blocks": []block{bad}}, 409)
@@ -182,6 +189,10 @@ func TestMonitoringHTTP(t *testing.T) {
 		}
 		if err = json.Unmarshal(request("GET", path, role, nil, 200).Body.Bytes(), &rows); err != nil || len(rows) != 1 || rows[0].Location == nil || *rows[0].Location.Latitude != 0 || len(rows[0].Applications) != 2 || rows[0].ScreenshotStatus != "unavailable" {
 			t.Fatalf("monitoring timeline lost: %v %v", rows, err)
+		}
+		location := rows[0].Location
+		if location.PositionSource == nil || *location.PositionSource != source || location.IsRemoteSource == nil || *location.IsRemoteSource != remote {
+			t.Fatalf("%s timeline lost exact provenance including explicit false: %+v", role, location)
 		}
 	}
 	request("GET", path, "other", nil, 403)
