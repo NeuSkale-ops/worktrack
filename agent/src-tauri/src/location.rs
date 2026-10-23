@@ -150,6 +150,10 @@ pub struct Snapshot {
     pub accuracy_m: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observed_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_remote_source: Option<bool>,
 }
 impl Snapshot {
     pub fn new(enabled: bool) -> Self {
@@ -160,7 +164,19 @@ impl Snapshot {
             longitude: None,
             accuracy_m: None,
             observed_at: None,
+            position_source: None,
+            is_remote_source: None,
         }
+    }
+    fn finish_fix(self, fix: Option<Fix>) -> Self {
+        let mut result = self.finish(fix.as_ref().map(|fix| fix.coords));
+        if result.status == "available" {
+            if let Some(fix) = fix {
+                result.position_source = Some(fix.source);
+                result.is_remote_source = fix.is_remote_source;
+            }
+        }
+        result
     }
     pub(super) fn finish(mut self, fix: Option<(f64, f64, f64, DateTime<Utc>)>) -> Self {
         self.status = "unavailable".into();
@@ -168,6 +184,8 @@ impl Snapshot {
         self.longitude = None;
         self.accuracy_m = None;
         self.observed_at = None;
+        self.position_source = None;
+        self.is_remote_source = None;
         if let Some((lat, lon, accuracy, observed)) = fix {
             if lat.is_finite()
                 && lon.is_finite()
@@ -273,7 +291,7 @@ fn request_access(done: impl FnOnce(bool) + Send + 'static) -> Result<(), ()> {
 #[cfg(windows)]
 fn position(allowed: impl Fn() -> bool) -> Option<Fix> {
     use windows::{
-        Devices::Geolocation::Geolocator,
+        Devices::Geolocation::{Geolocator, PositionAccuracy},
         Foundation::TimeSpan,
         Win32::System::WinRT::{RoInitialize, RoUninitialize, RO_INIT_MULTITHREADED},
     };
@@ -292,8 +310,10 @@ fn position(allowed: impl Fn() -> bool) -> Option<Fix> {
     if !allowed() {
         return None;
     }
-    let operation = Geolocator::new()
-        .ok()?
+    let locator = Geolocator::new().ok()?;
+    // Request high accuracy, but never treat the OS estimate as verified whereabouts.
+    locator.SetDesiredAccuracy(PositionAccuracy::High).ok()?;
+    let operation = locator
         .GetGeopositionAsyncWithAgeAndTimeout(
             TimeSpan { Duration: 0 },
             TimeSpan {
@@ -353,10 +373,7 @@ fn position(_allowed: impl Fn() -> bool) -> Option<Fix> {
     None
 }
 
-fn resolve_once(
-    shared: &Shared,
-    locate: impl FnOnce() -> Option<(f64, f64, f64, DateTime<Utc>)>,
-) -> bool {
+fn resolve_once(shared: &Shared, locate: impl FnOnce() -> Option<Fix>) -> bool {
     let (id, snapshot, generation, session, eligible) = {
         let Ok(r) = shared.try_lock() else {
             return false;
@@ -377,7 +394,7 @@ fn resolve_once(
             && r.location.generation == generation
             && r.session.as_deref() == Some(session.as_str())
             && !r.paused;
-        let result = snapshot.finish(if still_allowed { fix } else { None });
+        let result = snapshot.finish_fix(if still_allowed { fix } else { None });
         if eligible {
             r.location.error = (result.status != "available")
                 .then_some("Location unavailable for the latest screenshot. Tracking continues.");
@@ -404,7 +421,6 @@ pub fn run(shared: Shared) {
                             && !r.paused
                     })
             })
-            .map(|fix| fix.coords)
         });
     }
 }
@@ -612,6 +628,43 @@ mod tests {
         )));
     }
     #[test]
+    fn screenshot_queue_preserves_provenance_and_clears_invalid_fixes() {
+        let mut r = crate::tests::runtime();
+        r.location.enabled = true;
+        r.session = Some("test".into());
+        let snapshot = Snapshot::new(true);
+        r.queue
+            .push(
+                "/api/blocks",
+                &serde_json::json!({"blocks":[{"session_id":"test", "location":snapshot}]}),
+                Some(&[1]),
+            )
+            .unwrap();
+        let shared = Arc::new(Mutex::new(r));
+        assert!(resolve_once(&shared, || Some(Fix {
+            coords: (12.25, -73.5, 500.0, snapshot.captured_at),
+            source: "default".into(),
+            is_remote_source: Some(true),
+        })));
+        let r = shared.lock().unwrap();
+        let payload: serde_json::Value =
+            serde_json::from_str(&r.queue.first().unwrap().unwrap().json).unwrap();
+        let stored: Snapshot =
+            serde_json::from_value(payload["blocks"][0]["location"].clone()).unwrap();
+        assert_eq!(stored.position_source.as_deref(), Some("default"));
+        assert_eq!(stored.is_remote_source, Some(true));
+        assert_eq!(stored.latitude, Some(12.25));
+        let invalid = stored.finish(None);
+        assert!(invalid.position_source.is_none());
+        assert!(invalid.is_remote_source.is_none());
+        assert!(invalid.latitude.is_none());
+        let legacy: Snapshot = serde_json::from_value(
+            serde_json::json!({"status":"unavailable","captured_at":snapshot.captured_at}),
+        )
+        .unwrap();
+        assert!(legacy.position_source.is_none());
+    }
+    #[test]
     fn fresh_valid_fixes_only_and_no_location_on_ordinary_blocks() {
         let snapshot = Snapshot::new(true);
         assert_eq!(
@@ -657,7 +710,11 @@ mod tests {
                 .try_lock()
                 .expect("location must not hold tracking mutex");
             r.location.reset();
-            Some((1.0, 2.0, 3.0, snap.captured_at))
+            Some(Fix {
+                coords: (1.0, 2.0, 3.0, snap.captured_at),
+                source: "wifi".into(),
+                is_remote_source: Some(false),
+            })
         }));
         let r = shared.lock().unwrap();
         let payload: serde_json::Value =
