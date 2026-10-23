@@ -9,12 +9,14 @@ import (
 )
 
 type screenshotLocation struct {
-	Status     string     `json:"status"`
-	CapturedAt time.Time  `json:"captured_at"`
-	Latitude   *float64   `json:"latitude,omitempty"`
-	Longitude  *float64   `json:"longitude,omitempty"`
-	Accuracy   *float64   `json:"accuracy_m,omitempty"`
-	ObservedAt *time.Time `json:"observed_at,omitempty"`
+	PositionSource *string    `json:"position_source,omitempty"`
+	IsRemoteSource *bool      `json:"is_remote_source,omitempty"`
+	Status         string     `json:"status"`
+	CapturedAt     time.Time  `json:"captured_at"`
+	Latitude       *float64   `json:"latitude,omitempty"`
+	Longitude      *float64   `json:"longitude,omitempty"`
+	Accuracy       *float64   `json:"accuracy_m,omitempty"`
+	ObservedAt     *time.Time `json:"observed_at,omitempty"`
 }
 type applicationUsage struct {
 	App          string `json:"app"`
@@ -47,10 +49,17 @@ func (b block) validateMonitoring() error {
 		return fmt.Errorf("location must belong to screenshot capture")
 	}
 	if l.Status != "available" {
-		if (l.Status != "disabled" && l.Status != "unavailable") || l.Latitude != nil || l.Longitude != nil || l.Accuracy != nil || l.ObservedAt != nil {
+		if (l.Status != "disabled" && l.Status != "unavailable") || l.Latitude != nil || l.Longitude != nil || l.Accuracy != nil || l.ObservedAt != nil || l.PositionSource != nil || l.IsRemoteSource != nil {
 			return fmt.Errorf("invalid location status or fields")
 		}
 		return nil
+	}
+	if l.PositionSource != nil {
+		switch *l.PositionSource {
+		case "cellular", "satellite", "wifi", "ip_address", "default", "obfuscated", "unknown":
+		default:
+			return fmt.Errorf("invalid location position source")
+		}
 	}
 	if l.Latitude == nil || l.Longitude == nil || l.Accuracy == nil || l.ObservedAt == nil {
 		return fmt.Errorf("incomplete location")

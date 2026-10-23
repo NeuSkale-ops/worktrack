@@ -63,6 +63,55 @@ func TestMonitoringValidation(t *testing.T) {
 		}
 	}
 }
+func TestMonitoringProvenance(t *testing.T) {
+	for _, source := range []string{"cellular", "satellite", "wifi", "ip_address", "default", "obfuscated", "unknown", "", "gps", "WiFi"} {
+		b := monitoringBlock()
+		b.Screenshot = "capture.jpg"
+		b.Location.PositionSource = &source
+		err := b.validateMonitoring()
+		if (err == nil) != (source != "" && source != "gps" && source != "WiFi") {
+			t.Fatalf("source %q: %v", source, err)
+		}
+	}
+	for _, raw := range []string{`{}`, `{"position_source":null,"is_remote_source":null}`, `{"is_remote_source":false}`, `{"position_source":"unknown","is_remote_source":true}`} {
+		b := monitoringBlock()
+		b.Screenshot = "capture.jpg"
+		if err := json.Unmarshal([]byte(raw), b.Location); err != nil {
+			t.Fatal(err)
+		}
+		if err := b.validateMonitoring(); err != nil {
+			t.Fatalf("legacy/nullable payload %s: %v", raw, err)
+		}
+		encoded, err := json.Marshal(b.Location)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var roundtrip screenshotLocation
+		if err := json.Unmarshal(encoded, &roundtrip); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(raw, `false`) && (roundtrip.IsRemoteSource == nil || *roundtrip.IsRemoteSource) {
+			t.Fatal("explicit false lost")
+		}
+		if raw == `{}` && (roundtrip.PositionSource != nil || roundtrip.IsRemoteSource != nil) {
+			t.Fatal("invented legacy provenance")
+		}
+	}
+	for _, status := range []string{"disabled", "unavailable"} {
+		for _, raw := range []string{`{"position_source":"unknown"}`, `{"is_remote_source":false}`, `{"is_remote_source":true}`} {
+			b := monitoringBlock()
+			b.Screenshot = "capture.jpg"
+			b.Location = &screenshotLocation{Status: status, CapturedAt: b.End}
+			if err := json.Unmarshal([]byte(raw), b.Location); err != nil {
+				t.Fatal(err)
+			}
+			if b.validateMonitoring() == nil {
+				t.Fatalf("accepted %s provenance %s", status, raw)
+			}
+		}
+	}
+}
+
 func TestMonitoringHTTP(t *testing.T) {
 	dsn := os.Getenv("WT_TEST_DATABASE_URL")
 	if dsn == "" {

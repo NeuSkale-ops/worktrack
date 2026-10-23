@@ -21,6 +21,8 @@ export interface ScreenshotLocation {
   longitude?: number
   accuracy_m?: number
   observed_at?: string
+  position_source?: 'cellular' | 'satellite' | 'wifi' | 'ip_address' | 'default' | 'obfuscated' | 'unknown' | null
+  is_remote_source?: boolean | null
 }
 export interface ApplicationUsage { app: string; milliseconds: number }
 export interface Block {

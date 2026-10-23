@@ -31,7 +31,10 @@ export function locationText(location?: ScreenshotLocation | null): string | nul
   if (!location) return null
   if (location.status === 'disabled') return 'Screenshot location: sharing off.'
   if (location.status !== 'available' || location.latitude == null || location.longitude == null || location.accuracy_m == null) return 'Screenshot location: unavailable.'
-  return `Screenshot location: ${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)} (accuracy ±${Math.ceil(location.accuracy_m)} m). Fix: ${location.observed_at || 'unknown'}.`
+  const source = location.position_source ?? 'not reported'
+  const remote = location.is_remote_source == null ? 'not reported' : location.is_remote_source ? 'yes' : 'no'
+  const coarse = location.accuracy_m > 1000 ? ' Coarse estimate.' : ''
+  return `Screenshot location: system estimate ${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)} (accuracy ±${Math.ceil(location.accuracy_m)} m).${coarse} Source: ${source}. Remote source: ${remote}. Observed: ${location.observed_at || 'unknown'}. Not verified true location.`
 }
 
 export function utcDate(date = new Date()): string {

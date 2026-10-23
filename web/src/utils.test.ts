@@ -31,6 +31,24 @@ test('location renders zero coordinates, accuracy and honest missing states', ()
   assert.match(locationText({ status: 'unavailable', captured_at: '' })!, /unavailable/)
   assert.match(locationText({ status: 'available', captured_at: '', latitude: 0, longitude: 0, accuracy_m: 25 })!, /0.00000, 0.00000.*±25 m/)
 })
+test('location qualifies system estimates without inferring provenance', () => {
+  const location = { status: 'available' as const, captured_at: '', latitude: 0, longitude: 0, accuracy_m: 1000 }
+  const legacy = locationText(location)!
+  assert.match(legacy, /system estimate/)
+  assert.match(legacy, /Source: not reported\. Remote source: not reported\./)
+  assert.match(legacy, /Not verified true location/)
+  assert.doesNotMatch(legacy, /Coarse estimate/)
+  assert.match(locationText({ ...location, accuracy_m: 1000.1 })!, /Coarse estimate/)
+  for (const position_source of ['cellular', 'satellite', 'wifi', 'ip_address', 'default', 'obfuscated', 'unknown'] as const) {
+    for (const is_remote_source of [true, false, null]) {
+      const text = locationText({ ...location, position_source, is_remote_source })!
+      assert.ok(text.includes(`Source: ${position_source}.`))
+      assert.ok(text.includes(`Remote source: ${is_remote_source == null ? 'not reported' : is_remote_source ? 'yes' : 'no'}.`))
+    }
+  }
+  assert.match(locationText({ ...location, position_source: null, is_remote_source: null })!, /Source: not reported\. Remote source: not reported\./)
+  assert.equal(locationText({ ...location, status: 'unavailable', position_source: 'wifi', is_remote_source: true }), 'Screenshot location: unavailable.')
+})
 test('weeks run Monday to Sunday across month and year boundaries', () => {
   assert.deepEqual(weekRange('2027-01-01'), {
     from: '2026-12-28',
