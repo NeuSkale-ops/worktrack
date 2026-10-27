@@ -142,7 +142,8 @@ impl Queue {
     pub fn reject(&self, id: i64, status: u16) -> Result<(), String> {
         self.atomic(|q| {
             q.0.execute("INSERT INTO rejected(path,json,image,status) SELECT path,json,image,?2 FROM queue WHERE id=?1", params![id, status]).map_err(|e| e.to_string())?;
-            // shortcut: keep only the newest 20 (screenshots are ~300 KB) inside the SQLite page cap.
+            // shortcut: retain only the newest 20 rejected records inside the SQLite page cap;
+            // add a bounded support export before pruning when investigations require older records.
             q.0.execute("DELETE FROM rejected WHERE id NOT IN (SELECT id FROM rejected ORDER BY id DESC LIMIT 20)", []).map_err(|e| e.to_string())?;
             q.ack(id)
         })
