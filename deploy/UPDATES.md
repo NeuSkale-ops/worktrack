@@ -233,6 +233,32 @@ The protected release workflow performs actual public-key verification using `mi
 The hosting test exercises the actual shared Caddy configuration over local HTTP for JSON/cache behavior, byte identity, missing/hidden 404s, SPA fallback, and rejected writes.
 It does not prove production TLS, shared-host isolation, or a signed Windows in-app upgrade.
 
+## Local Windows builds when GitHub Actions is unavailable
+
+Tauri supports NSIS cross-compilation from macOS with caveats. This path successfully produced the 0.1.10 Windows x64 candidate on October 27, 2026. See `docs/RELEASE-0.1.10.md` for the exact tool versions, source and checksum.
+
+Use a clean committed source archive and the locked npm/Cargo dependencies. Install NSIS, LLVM and LLD, the Windows Rust standard library, and `cargo-xwin`:
+
+```sh
+brew install nsis llvm lld
+rustup target add x86_64-pc-windows-msvc
+cargo install --locked cargo-xwin
+```
+
+With their binaries on PATH, run from `agent/`:
+
+```sh
+npm run tauri -- build --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis -- --locked
+```
+
+The default committed configuration produces an installer candidate without updater artifacts. It preserves the installed app's verification key and production endpoint. Validate its Windows AMD64 payload, version and checksum, then keep unsigned candidates outside public download mounts.
+
+An authorized local build does not need to recreate GitHub Actions, but production publication still needs the existing signing key and Windows installation/upgrade evidence. For manual updater signing, use the installed Tauri signer's private-key file/environment options and `--app-version` to bind the signature to the exact version. Never put private key material or its password in command arguments or logs. Package and independently verify the signed candidate using `scripts/updater_release.py` before sending it to the existing restricted SSH receiver.
+
+The current automated Windows acceptance fixture deliberately runs only on disposable GitHub-hosted Windows runners because it changes credentials, hosts and installation state. Do not run it on a worker's regular PC or spoof its runner guards. A different disposable Windows test environment needs an explicitly reviewed fixture, or record equivalent manual acceptance without destructive fixture setup.
+
+Official build instructions: https://v2.tauri.app/distribute/windows-installer/#build-windows-apps-on-linux-and-macos.
+
 ## Official references reviewed
 
 - Tauri 2 updater configuration, signing environment variables, NSIS `.exe` plus `.sig` artifacts, and static manifest format: https://v2.tauri.app/plugin/updater/

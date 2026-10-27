@@ -29,4 +29,17 @@ On October 27, 2026, GitHub refused to start both the Windows build and Mac prev
 
 Version 0.1.10 is pushed and prepared, not published. Fresh public manifest checks after the failure returned 0.1.8 for both Windows and Mac. No release tag, replacement installer or update manifest was published for 0.1.10.
 
-The repository owner must resolve the GitHub billing or spending-limit issue before retrying. Dispatch the production-channel candidate for version 0.1.10 from the unchanged application source, inspect its verification and installed-upgrade evidence, then request publication using the verified candidate and evidence reference. Complete the separate Mac download acceptance before publishing its DMG. Do not replace existing immutable release artifacts or bypass the release checks.
+The repository owner must resolve the GitHub billing or spending-limit issue before retrying that workflow. The local Windows build alternative below does not depend on GitHub Actions. For a workflow retry, dispatch the production-channel candidate for version 0.1.10 from the unchanged application source, inspect its verification and installed-upgrade evidence, then request publication using the verified candidate and evidence reference. Complete the separate Mac download acceptance before publishing its DMG. Do not replace existing immutable release artifacts or bypass the release checks.
+
+## Local Windows cross-build, October 27, 2026
+
+A Windows x64 NSIS installer was built successfully on this Apple Silicon Mac from clean committed source `4c17f651781ebb1a874f5b197eba242465e6e5ae`. No application-code changes were needed. The local path uses Rust 1.97.1, checksum-verified `cargo-xwin` 0.23.1, LLVM/LLD 23.1.4, NSIS 3.13 and Microsoft's downloaded MSVC/Windows SDK libraries. The optimized build completed in 3 minutes 24 seconds, followed by NSIS packaging.
+
+- Installer: `WorkTrack_0.1.10_x64-setup.exe`, approximately 4.17 MiB.
+- SHA-256: `06365e317389be46e24eae5a92ce0731794523395dc26c1168d944e446469856`.
+- Static checks identify the application payload as a Windows AMD64 GUI executable. The NSIS bootstrapper is a normal 32-bit installer containing that x64 application. Imports were inspected; the build does not require a separately shipped Microsoft Visual C++ runtime DLL.
+- Linker warnings concern unavailable Microsoft library debug-symbol files. The release executable and installer were produced successfully. Cross-compilation does not prove native execution.
+- The local environment has neither `TAURI_SIGNING_PRIVATE_KEY` nor `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. This candidate has no updater signature and no Authenticode signature. The embedded updater verification key and endpoint are unchanged; its public key matches the VM's receiver key.
+- The candidate, checksum file and build metadata are staged privately at `/var/lib/worktrack-release-candidates/0.1.10-06365e317389` on the existing VM. This directory is outside public download mounts.
+
+This proves Windows builds can proceed without GitHub Actions or a dedicated Windows build PC. It does not complete Windows installation, data-preservation or updater acceptance. Public feeds remain on 0.1.8. Production promotion still requires the existing updater signing credentials, independent signature verification and Windows execution evidence. Never rotate the trusted key or publish a fabricated update signature as a workaround.
