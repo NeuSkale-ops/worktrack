@@ -43,3 +43,16 @@ A Windows x64 NSIS installer was built successfully on this Apple Silicon Mac fr
 - The candidate, checksum file and build metadata are staged privately at `/var/lib/worktrack-release-candidates/0.1.10-06365e317389` on the existing VM. This directory is outside public download mounts.
 
 This proves Windows builds can proceed without GitHub Actions or a dedicated Windows build PC. It does not complete Windows installation, data-preservation or updater acceptance. Public feeds remain on 0.1.8. Production promotion still requires the existing updater signing credentials, independent signature verification and Windows execution evidence. Never rotate the trusted key or publish a fabricated update signature as a workaround.
+
+## Local signing completed, October 28, 2026
+
+The signing credentials were already in envkit project `worktrack`. The earlier missing-credentials result came from automatic selection of the empty `NarayanaSabari__worktrack` vault. Selecting the original vault confirmed both credentials and an exact match between its public key and the committed app key. The repository's local `envkit.project` setting now selects `worktrack`; no secret values were displayed or copied, and no key was regenerated.
+
+The exact existing installer was signed with Tauri's `--app-version 0.1.10`. `scripts/updater_release.py package` produced a production-channel candidate, and independent `minisign` verification passed alongside trusted-version, installer-checksum and canonical-production-URL checks. Installer bytes and SHA-256 remain unchanged.
+
+- Detached signature SHA-256: `9f87213b4eb8b23ac64b72c639f63b3fe3adde477c6c0e3c710221a6541dce28`.
+- Signed candidate archive SHA-256: `b945ae12df97899754187c324c4559496b4d042f01b365a8772e518a47e8547e`.
+
+The signed archive and detached signature are staged in the same private VM candidate directory. Verification on the VM passed independently against `/etc/worktrack-updater/public-key.txt`, and both remote hashes match the local files. No public manifest was promoted.
+
+The remaining release gate is native Windows installation/upgrade and data-preservation acceptance. A signed candidate alone does not prove those checks. The public update feed must remain unchanged until that evidence is available. Updater signing is separate from Authenticode publisher signing.

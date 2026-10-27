@@ -7,6 +7,18 @@ Do not regenerate or replace this key during the remaining release setup.
 Protected GitHub environments, signed Windows artifacts, and real upgrade acceptance are still required.
 Do not send a private key or password in chat.
 
+## Existing envkit project
+
+The original signing credentials are stored in envkit project `worktrack`. Automatic GitHub-based project detection can select the empty `NarayanaSabari__worktrack` vault instead. On October 28, 2026, selecting the original vault confirmed that the saved public key matches the app and successfully signed the local 0.1.10 Windows installer. No key was regenerated, copied or rotated.
+
+Keep this repository linked to the original local vault:
+
+```sh
+git config --local envkit.project worktrack
+```
+
+Then use `envkit run -- COMMAND` to pass the existing credentials without displaying them. Check only presence or public-key equality when diagnosing selection, never print private values.
+
 ## Operator actions
 
 Use your own private terminal, not a recorded or shared terminal session.
