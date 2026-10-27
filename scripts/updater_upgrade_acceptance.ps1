@@ -574,34 +574,24 @@ print(json.dumps({"action": action, "integrity": "ok", "settings_preserved": Tru
     Start-App $ExpectedVersion
     Add-Result 'candidate-restart-sign-in' @{ persisted = $true; stopped = $true }
 
-    # Exercise the installed diagnostic through real WebView IPC. Hosted Windows
-    # often denies location access; that denial is a valid diagnostic outcome,
-    # not proof that the affected user's physical coordinates are correct.
-    Invoke-Button -Name 'Run local location diagnostic'
-    $diagnosticText = Wait-UiText 'Location diagnostic result|Location diagnostic failed:' 30
-    $diagnosticOutcome = 'permission-denied'
-    $diagnosticShapeValid = $diagnosticText -match 'Location diagnostic failed: Sign in and allow location before diagnosing\.?'
-    if ($diagnosticText -match 'Location diagnostic result') {
-        $diagnosticOutcome = 'provider-report'
-        $diagnosticShapeValid = $diagnosticText -match 'Source:' -and $diagnosticText -match 'Remote\s+source:'
+    # Check the installed worker screen without requesting location or starting monitoring.
+    $null = Wait-UiText '(?s)While\s+tracking,\s+WorkTrack\s+records.*elapsed\s+time,.*input\s+activity,.*app\s+names' 30
+    $null = Wait-UiText 'screenshot\s+of\s+your\s+primary\s+display\s+and\s+its\s+location' 30
+    $null = Wait-UiText 'I\s+understand\s+and\s+agree\s+to\s+this\s+monitoring' 30
+    if ($null -ne (Get-Button 'Run local location diagnostic') -or $null -ne (Get-Button 'Clear location diagnostic')) {
+        throw 'Technical location diagnostic controls must not appear on the worker screen.'
     }
-    # Never retain raw diagnostic text or coordinates in evidence artifacts.
-    Invoke-Button -Name 'Clear location diagnostic'
-    $clearDeadline = [DateTime]::UtcNow.AddSeconds(10)
-    while ($null -ne (Get-Button 'Clear location diagnostic')) {
-        if ([DateTime]::UtcNow -ge $clearDeadline) {
-            Stop-App
-            throw 'Diagnostic report did not clear.'
-        }
-        Start-Sleep -Milliseconds 100
+    $checkboxes = @(Get-UiElements | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::CheckBox })
+    $toggle = $null
+    if ($checkboxes.Count -ne 1 -or -not $checkboxes[0].TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$toggle) -or $toggle.Current.ToggleState -ne [System.Windows.Automation.ToggleState]::Off) {
+        throw 'Monitoring consent must start unchecked.'
     }
-    $null = Wait-Button 'Run local location diagnostic'
-    if (-not $diagnosticShapeValid) { throw 'Diagnostic result omitted source metadata or actionable permission failure.' }
+    $null = Wait-Button 'Start tracking' $false
     Assert-SignedInStopped $ExpectedVersion
     Stop-App
     Invoke-Fixture 'check-final'
     Start-App $ExpectedVersion
-    Add-Result 'candidate-local-location-diagnostic' @{ outcome = $diagnosticOutcome; actualNativeIpc = $true; reportCleared = $true; localStatePreserved = $true; physicalAccuracyVerified = $false }
+    Add-Result 'candidate-monitoring-notice-and-consent' @{ noticeVisible = $true; consentUnchecked = $true; startBlocked = $true; diagnosticControlsAbsent = $true; localStatePreserved = $true }
 
     Set-FeedMode 'missing'
     Invoke-Check
