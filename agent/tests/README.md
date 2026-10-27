@@ -1,5 +1,13 @@
 # Updater UI browser tests
 
+## Status-clarity validation (October 27, 2026)
+
+The desktop usability pass was interpreted as targeted status clarity and recovery, not a full redesign or a new release. The production frontend build passed, as did 51 updater/status and seven macOS permission browser checks against the real React UI with mocked IPC.
+
+A current Apple Silicon app bundle was also built and its ad-hoc signature verified. The actual packaged app launched with a fresh isolated HOME and an incompatible offline test queue, rendering the sign-in fields, native queue compatibility error, version and Mac manual-update guidance through real Tauri IPC. The Check for updates control was invoked through Accessibility, and the application exited through its native Quit menu. The original user's queue hash was unchanged and the isolated queued row was retained. No account was used and no monitoring or sensor permission was requested.
+
+This packaged smoke test verifies the native/frontend startup boundary, not the new signed-in failure states. There is no supported public action to inject a transient native status-IPC failure while retaining the UI. Saving, stale-status recovery, Start/update gating, usable Stop and countdown behavior therefore remain covered by explicit mocked-IPC browser regressions. A real Windows installation and a new release were not exercised for this change.
+
 ## macOS permission checks
 
 Open `http://127.0.0.1:1427/tests/macos.html` with the same Vite server for seven synthetic permission checks. These mock every native IPC call and verify Mac disclosure, explicit-only screen recording consent, settings actions, and Start gating. They do not request real consent or collect a device location.
