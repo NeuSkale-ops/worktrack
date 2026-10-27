@@ -16,6 +16,7 @@ type Status = { platform?: string; screen_capture_allowed?: boolean; authenticat
 function App() {
   const [status, setStatus] = useState<Status>();
   const [error, setError] = useState('');
+  const [statusError, setStatusError] = useState('');
   const [renew, setRenew] = useState(false);
   const [busy, setBusy] = useState(false);
   const [consent, setConsent] = useState(false);
@@ -82,8 +83,9 @@ function App() {
       const next = await invoke<Status>('status');
       if (!next.authenticated || next.tracking) clearLocationReport();
       setStatus(next);
+      setStatusError('');
     }
-    catch (e) { setError(String(e)); }
+    catch { setStatusError('Cannot refresh app status. Keep WorkTrack open. Retrying automatically.'); }
     finally { refreshPending.current = false; }
   }
   useEffect(() => { void refresh(); const id = setInterval(() => void refresh(), 1000); return () => clearInterval(id); }, []);
@@ -114,7 +116,7 @@ function App() {
   const updateBusy = checking || update?.phase === 'checking';
   const unavailableMessage = unavailable || (update?.phase === 'unavailable' ? update.error?.replace(/^UPDATER_UNAVAILABLE:\s*/, '') : '');
   const updateFailure = updateError || (update?.phase !== 'unavailable' ? update?.error : null);
-  const unsafeInstall = !status || status.tracking || status.stopping || status.queued > 0;
+  const unsafeInstall = !status || Boolean(statusError) || status.tracking || status.stopping || status.queued > 0;
   const signedIn = Boolean(status?.authenticated) && !renew;
   const isMac = status?.platform === 'macos';
   const platformName = isMac ? 'macOS' : 'Windows';
@@ -124,8 +126,8 @@ function App() {
   const clock = [elapsed / 3600, elapsed / 60 % 60, elapsed % 60].map(n => Math.floor(n).toString().padStart(2, '0')).join(':');
   const cycleDone = status?.tracking ? Math.min(10, Math.max(0, 10 - (status.next_capture / 60))) : 0;
   const nextShot = Math.ceil(status?.next_capture ?? 0);
-  const stateClass = !status?.tracking ? 'off' : status.paused ? 'paused' : 'on';
-  const stateText = !status?.tracking ? 'Not tracking' : status.paused ? 'Paused, screen locked' : 'Tracking';
+  const stateClass = statusError || status?.stopping ? 'paused' : !status?.tracking ? 'off' : status.paused ? 'paused' : 'on';
+  const stateText = statusError ? 'Status unavailable' : status?.stopping ? 'Saving tracked time' : !status?.tracking ? 'Not tracking' : status.paused ? 'Paused, screen locked' : 'Tracking';
   const syncText = status?.stopping ? 'Saving the final interval. Keep WorkTrack open while records retry.' : status?.queued ? `${status.queued} records waiting to sync` : 'All records synced';
   const notice = <details className="facts" open={!signedIn}>
     <summary>What WorkTrack records</summary>
@@ -150,6 +152,7 @@ function App() {
   </section>;
   return <div className="win">
     <main className="body">
+      {statusError && <p role="alert" className="error">{statusError}</p>}
       <div role="status" aria-live="polite" className="update-status">
         {installReserved && <p className="note">Update in progress. Tracking and sign-in are unavailable until installation finishes. The app may restart. Tracking will remain off.</p>}
         {update?.phase === 'downloading' && <>
@@ -174,8 +177,8 @@ function App() {
       </> : <>
         <p className={`state ${stateClass}`}><span className="dot" />{stateText}</p>
         <output className={`clock ${status?.tracking ? '' : 'dim'}`} aria-label="Elapsed tracked time">{clock}</output>
-        {status?.tracking && !status.paused && <div className="cycle">
-          <div className="ticks" role="img" aria-label={`${Math.floor(cycleDone)} of 10 minutes until the next screenshot`}>{Array.from({ length: 10 }, (_, i) => <i key={i} className={i < Math.floor(cycleDone) ? 'done' : ''} style={i === Math.floor(cycleDone) ? { background: `linear-gradient(90deg,var(--stamp) ${(cycleDone % 1) * 100}%,var(--track) 0)` } : undefined} />)}</div>
+        {status?.tracking && !status.paused && !statusError && <div className="cycle">
+          <div className="ticks" role="img" aria-label={`Next screenshot in ${Math.floor(nextShot / 60)} minutes ${nextShot % 60} seconds`}>{Array.from({ length: 10 }, (_, i) => <i key={i} className={i < Math.floor(cycleDone) ? 'done' : ''} style={i === Math.floor(cycleDone) ? { background: `linear-gradient(90deg,var(--stamp) ${(cycleDone % 1) * 100}%,var(--track) 0)` } : undefined} />)}</div>
           <p><span>Next screenshot in <b>{Math.floor(nextShot / 60)} min {nextShot % 60} s</b></span></p>
         </div>}
         {status?.tracking && status.paused && <p className="note paused-note">Nothing is recorded while the screen is locked or the PC sleeps. Tracking resumes when you unlock.</p>}
@@ -190,8 +193,8 @@ function App() {
           <div className="acts"><button disabled={diagnosing || busy || installReserved} onClick={() => void run('request_screen_capture')}>Allow screen recording</button><button disabled={diagnosing || busy || installReserved} onClick={() => void run('open_screen_settings')}>Open screen recording settings</button></div>
         </div>}
         {!status?.tracking && <label className="consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /><span>I understand what is recorded, including location with each screenshot and diagnostic logs, and agree to it. Close private content before starting.</span></label>}
-        <button className={status?.tracking ? 'big stop' : 'primary big'} disabled={busy || installReserved || (!status?.tracking && (diagnosing || !consent || !locationReady || !screenReady || status?.stopping))} onClick={() => void run(status?.tracking ? 'stop' : 'start', { consent })}>{status?.tracking ? 'Stop tracking' : 'Start tracking'}</button>
-        <p className="sync-line"><span>{syncText}</span></p>
+        <button className={status?.tracking ? 'big stop' : 'primary big'} disabled={busy || installReserved || (!status?.tracking && (Boolean(statusError) || diagnosing || !consent || !locationReady || !screenReady || status?.stopping))} onClick={() => void run(status?.tracking ? 'stop' : 'start', { consent })}>{status?.tracking ? 'Stop tracking' : 'Start tracking'}</button>
+        <p className="sync-line"><span>{statusError ? 'Sync status unavailable until the app reconnects.' : syncText}</span></p>
         {Boolean(status?.rejected) && <p role="status" className="note">{status?.rejected} records refused by the server were set aside on this PC. Contact your manager.</p>}
         {(error || status?.error) && <p role="alert" className="error">{error || status?.error}</p>}
         <section className="facts rows" aria-label="Required monitoring">

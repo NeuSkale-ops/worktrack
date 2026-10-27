@@ -27,6 +27,7 @@ let available = offer;
 let checkError = null;
 let rejectInstall;
 let statusGate = null;
+let statusFails = false;
 let diagnosticResolve;
 let diagnosticReject;
 const report = { status: 'available', requested_at: '2026-10-22T05:00:00Z', latitude: 12.34, longitude: 56.78, accuracy_m: 42, observed_at: '2026-10-22T04:59:59Z', position_source: 'IPAddress', is_remote_source: true };
@@ -35,7 +36,7 @@ window.__TAURI_INTERNALS__ = {
   async invoke(command, args) {
     calls.push({ command, args });
     if (command === 'plugin:app|version') return '0.1.1';
-    if (command === 'status') { if (statusGate) await statusGate; return structuredClone(state); }
+    if (command === 'status') { if (statusFails) throw new Error('internal status failure'); if (statusGate) await statusGate; return structuredClone(state); }
     if (command === 'check_update') {
       if (checkError) throw checkError;
       return available;
@@ -161,6 +162,7 @@ try {
   await refresh();
   await check('unsaved final interval blocks update, Start and sign-out but permits sign-in renewal', () => button('Update now')?.disabled && button('Start tracking')?.disabled && button('Sign out')?.disabled && !button('Renew sign-in')?.disabled && text().includes('Saving the final interval') && !text().includes('All records synced'));
   await check('stopping blocks diagnostic', () => button('Run local location diagnostic').disabled);
+  await check('unsaved stop has a distinct saving state', () => document.querySelector('.state')?.textContent.includes('Saving tracked time'));
   state.stopping = false;
   state.queued = 1;
   await refresh();
@@ -200,6 +202,22 @@ try {
   state.update = { phase: 'error', downloaded: 50, total: null, error: 'Download interrupted' };
   rejectInstall('Download interrupted');
   await check('installation failure releases controls', () => text().includes('Update could not be installed') && !button('Start tracking').disabled);
+  statusFails = true;
+  await refresh();
+  await check('lost status blocks Start and updates without claiming synced records', () => button('Start tracking').disabled && button('Update now').disabled && text().includes('Status unavailable') && !text().includes('All records synced'));
+  statusFails = false;
+  await refresh();
+  await check('successful refresh clears transient status error and restores actions', () => !text().includes('Cannot refresh app status') && !button('Start tracking').disabled);
+  state.tracking = true;
+  state.next_capture = 125;
+  await refresh();
+  await check('countdown accessibility matches remaining time', () => document.querySelector('.ticks')?.getAttribute('aria-label') === 'Next screenshot in 2 minutes 5 seconds');
+  statusFails = true;
+  await refresh();
+  await check('Stop remains available when status refresh fails', () => !button('Stop tracking').disabled && text().includes('Cannot refresh app status') && !document.querySelector('.ticks') && document.querySelector('.state').classList.contains('paused'));
+  statusFails = false;
+  state.tracking = false;
+  await refresh();
   state.authenticated = false;
   state.update_reserved = true;
   await refresh();
