@@ -79,3 +79,5 @@ The production-channel archive was repackaged with the runtime-test disclosure i
 - Web, API and database containers retained their identities and remained healthy. Static release publication required no application-service rollout.
 
 Native Windows execution was deliberately skipped at the owner's request. Website and cryptographic acceptance do not claim to validate Windows installation, upgrade preservation, capture, location, lock/suspend or native updater failure recovery.
+
+The [GitHub preview release v0.1.10](https://github.com/NarayanaSabari/worktrack/releases/tag/v0.1.10) is published with the installer, detached signature and checksums. GitHub's recorded installer and signature digests match the independently verified files. The tag targets publication-documentation commit `410dadf82fe703e3de9c738c88505bb1450600a6`; application and release-script source is unchanged from the clean build commit `4c17f651781ebb1a874f5b197eba242465e6e5ae`.
