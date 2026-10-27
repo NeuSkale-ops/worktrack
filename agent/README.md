@@ -74,7 +74,7 @@ cargo clippy --locked -- -D warnings
 - Locked time and scheduler gaps over two seconds are excluded.
   Resuming uses a fresh wall-clock segment without changing the fixed elapsed capture boundaries.
   Privacy guards are polling-based and need real Windows lock/suspend validation before deployment.
-- Offline records can upload while stopped, but no new automatic monitoring occurs. **Run local location diagnostic** is a separate, explicit one-shot location request while stopped. Its coordinates, provider, reported accuracy, fix time and remote-source flag stay in the app window and are not queued, logged or uploaded. Clear the report before sharing the screen. The report clears on account or tracking changes; it does not correct old screenshots or certify the machine's physical position.
+- Offline records can upload while stopped, but no new automatic monitoring occurs. The worker screen shows a brief monitoring notice and consent before Start, with expandable privacy details. Technical monitoring-status and local location-diagnostic panels are omitted. For explicit Windows location troubleshooting, use `scripts/location_diagnostics.ps1`; its result does not correct old screenshots or certify the machine's physical position.
 
 For Windows location, check **Settings > Privacy & security > Location**, including location services and desktop-app access. Keep WorkTrack visible when allowing location, then use **Try again** if permission was denied. Permission is required to start tracking; a later unavailable fix does not stop tracking. A PC without a reliable GPS/Wi-Fi fix may provide no coordinates or an inaccurate estimate. Windows itself may use IP address or a configured default location even though WorkTrack has no separate IP-geolocation fallback.
 
@@ -132,7 +132,7 @@ Protect the Windows user profile and use device encryption for sensitive deploym
 
 ## Diagnostic logs
 
-Diagnostics are mandatory. They turn on at sign-in and at startup when a saved sign-in exists, and turn off only at sign-out. The desktop window shows their status but has no off switch.
+Diagnostics are mandatory. They turn on at sign-in and at startup when a saved sign-in exists, and turn off only at sign-out. The desktop monitoring notice explains them, with no off switch or technical delivery-status panel.
 They may upload while tracking is stopped.
 The owner can open **Desktop diagnostic logs (owner only)** below the dashboard timesheet and click **Load recent logs**.
 
@@ -146,7 +146,7 @@ It never holds the tracking mutex during network work and never uses, clears, or
 Repeated consecutive code/status pairs are coalesced for one minute, including after acknowledgement.
 The memory-only buffer holds at most 100 events, discards the oldest on overflow, and loses pending events on exit or sign-in changes. Events older than seven days are discarded.
 Signing out clears unsent events immediately. An already in-flight request may finish, but its acknowledgement cannot clear events from a new account snapshot.
-Delivery failures appear in the diagnostic section, never as tracking failures or recursively generated log events.
+Delivery failures retry in the background, never as tracking failures or recursively generated log events.
 
 The API accepts at most six diagnostic requests per account per minute and 120 new events per account per hour. Diagnostic quota failures retry without affecting tracking.
 Owners see the newest 100 retained events. Logs older than seven days are hidden immediately and deleted hourly from the live database. Existing database backups follow their separate backup retention policy.

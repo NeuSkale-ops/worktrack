@@ -44,7 +44,8 @@ try {
   button('Try again').click();
   await until(() => !button('Start tracking').disabled);
   check('Both permissions and disclosure unblock Start', !button('Start tracking').disabled);
-  check('Honest unknown source disclosure', document.body.textContent.includes('CoreLocation does not report whether Wi-Fi, GPS or another positioning source was used'));
+  document.querySelector('.facts summary').click();
+  check('Plain location uncertainty stays in privacy details', document.body.textContent.includes('System location estimates can be wrong') && !document.querySelector('#location-diagnostic-title'));
   document.documentElement.dataset.testResult = 'passed';
   document.querySelector('#results').textContent = `PASS: ${checks.length} synthetic macOS permission checks\n${checks.join('\n')}`;
 } catch (error) {

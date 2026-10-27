@@ -1,6 +1,12 @@
 # Updater UI browser tests
 
-## Status-clarity validation (October 27, 2026)
+## Simplified worker screen
+
+The worker screen omits technical monitoring-status and local location-diagnostic panels. A brief monitoring notice stays visible before consent and Start, with expandable privacy details. The current harness checks panel removal, absence of diagnostic IPC calls, the notice's content and position, consent, location permission, and the existing updater/status behavior.
+
+The native location diagnostic and its privacy guards remain covered by Rust tests. The worker UI no longer invokes or displays that diagnostic.
+
+## Status-clarity validation before panel removal (October 27, 2026)
 
 The desktop usability pass was interpreted as targeted status clarity and recovery, not a full redesign or a new release. The production frontend build passed, as did 51 updater/status and seven macOS permission browser checks against the real React UI with mocked IPC.
 
@@ -36,7 +42,7 @@ npm --prefix agent run dev -- --port 1427
 ```
 
 Open `http://127.0.0.1:1427/tests/updater.html` in a normal browser.
-Wait for `PASS: 51 synthetic browser checks` above the app.
+Wait for `PASS: 40 synthetic browser checks` above the app.
 A failed check prints `FAIL` with its description and stack trace.
 Reload the page to rerun.
 Keep the tab visible to avoid background timer throttling.
@@ -54,9 +60,7 @@ The checks cover startup and manual discovery, StrictMode duplicate-check protec
 
 The checks also cover unsaved final-stop gating with sign-in renewal still available, and actionable missing-feed errors without blaming the worker's connection. Five status-clarity checks verify the saving state, status-loss Start/update gating, automatic recovery, remaining-time accessibility text, and an available Stop action without a stale countdown or green tracking indicator. These use mocked IPC failure, not a native process crash.
 
-The local location diagnostic checks cover explicit-only invocation, native permission denial, safe error allowlisting, single-flight duplicate clicks, loading/action gates, readable source/remote/coordinates/accuracy/timestamps, unavailable values, clearing, renewal/start/logout/auth-loss cleanup, and stale completion suppression. The original 29 checks remain included in the 51 total checks.
-
-Contract assumptions: `diagnose_location` takes no arguments and returns the documented nullable location report. Native code enforces permission, unlocked/stopped state and single-flight safety, performs at most one provider request, and never queues, uploads or logs the report. Missing permission deliberately leaves the button enabled so native denial is visible. Only four known fixed native errors are shown; arbitrary native error strings use a fixed generic fallback. Browser mocks cannot prove these backend privacy guarantees or real Windows provider behavior.
+The screen checks verify that technical panels and the local diagnostic action are absent, that no diagnostic IPC request occurs, and that internal diagnostic-delivery failures do not block tracking. The visible notice names time, input activity, app use, screenshots and location before consent. Expandable privacy details explain signed-in diagnostics, access and retention. Permission alone cannot bypass consent, and Start passes explicit consent to the native command.
 
 The harness also checks that no location or diagnostic off switch exists, that the app requests Windows location after sign-in, that Start stays disabled until location is granted, the settings shortcut IPC, retry, and that the disclosure names both requirements. It does not access a real Windows location provider.
 `tests/preview.html?state=signedout|stopped|blocked|tracking|paused` renders single states for visual review.
