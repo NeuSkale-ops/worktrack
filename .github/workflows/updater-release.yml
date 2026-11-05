@@ -47,11 +47,14 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: agent/package.json
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: agent/package-lock.json
+          cache: pnpm
+          cache-dependency-path: agent/pnpm-lock.yaml
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -71,7 +74,7 @@ jobs:
       - name: Install stable Rust
         run: rustup toolchain install stable --profile minimal
       - run: rustup default stable
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
         working-directory: agent
       - name: Test backend and release plumbing
         shell: pwsh
@@ -89,7 +92,7 @@ jobs:
         shell: pwsh
         run: |
           if (-not $env:TAURI_SIGNING_PRIVATE_KEY -or -not $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD) { throw 'Protected signing secrets are missing' }
-          npm run tauri -- build --bundles nsis --target x86_64-pc-windows-msvc --config ../deploy/windows-release.generated.json -- --locked
+          pnpm run tauri -- build --bundles nsis --target x86_64-pc-windows-msvc --config ../deploy/windows-release.generated.json -- --locked
           if ($LASTEXITCODE -ne 0) { throw 'Signed build failed' }
       - name: Smoke-test exact signed installer
         shell: pwsh

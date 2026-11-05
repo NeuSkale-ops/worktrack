@@ -17,8 +17,8 @@ python3 scripts/macos_preview.py
 python3 -m unittest discover -s scripts -p 'macos_preview_test.py' -v
 rustup target add aarch64-apple-darwin
 cd agent
-npm ci
-APPLE_SIGNING_IDENTITY=- npm run tauri -- build --target aarch64-apple-darwin --bundles app,dmg --config ../deploy/macos-preview.json -- --locked
+pnpm install --frozen-lockfile
+APPLE_SIGNING_IDENTITY=- pnpm run tauri -- build --target aarch64-apple-darwin --bundles app,dmg --config ../deploy/macos-preview.json -- --locked
 ```
 
 Outputs are under `agent/src-tauri/target/aarch64-apple-darwin/release/bundle/`.

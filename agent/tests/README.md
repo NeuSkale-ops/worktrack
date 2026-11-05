@@ -37,8 +37,8 @@ It is a separate Vite development entry point and is not imported by the product
 From the repository root:
 
 ```sh
-npm --prefix agent ci
-npm --prefix agent run dev -- --port 1427
+pnpm -C agent install --frozen-lockfile
+pnpm -C agent run dev --port 1427
 ```
 
 Open `http://127.0.0.1:1427/tests/updater.html` in a normal browser.

@@ -74,9 +74,9 @@ def consistent_versions(path, version):
     agent = path.parent.parent
     cargo = tomllib.loads((path.parent / "Cargo.toml").read_text())["package"]["version"]
     package = json.loads((agent / "package.json").read_text())["version"]
-    lock = json.loads((agent / "package-lock.json").read_text())
-    if any(value != version for value in (cargo, package, lock["version"], lock["packages"][""]["version"])):
-        raise ValueError("Tauri, Cargo, npm package and package lock versions must match")
+    # pnpm-lock.yaml does not record the root package version, so only manifests are compared.
+    if any(value != version for value in (cargo, package)):
+        raise ValueError("Tauri, Cargo and package.json versions must match")
 
 
 def make_package(args):

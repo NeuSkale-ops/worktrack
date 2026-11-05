@@ -30,9 +30,9 @@ The new version blocks sign-in if it finds an incompatible pending queue rather 
 Use Node 22.12+ and current stable Rust with the Windows MSVC build tools and WebView2 installed.
 
 ```sh
-npm ci
-npm run tauri -- dev
-npm run tauri -- build --bundles nsis
+pnpm install --frozen-lockfile
+pnpm run tauri dev
+pnpm run tauri build --bundles nsis
 ```
 
 The NSIS configuration installs for the current user without elevation.
@@ -44,7 +44,7 @@ The deployment worker owns Windows CI outside `agent/`.
 Portable checks:
 
 ```sh
-npm run build
+pnpm run build
 cd src-tauri
 cargo check --locked
 cargo test --locked

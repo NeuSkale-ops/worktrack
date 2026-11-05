@@ -25,19 +25,22 @@ jobs:
         working-directory: agent
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: agent/package.json
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: agent/package-lock.json
+          cache: pnpm
+          cache-dependency-path: agent/pnpm-lock.yaml
       - name: Install stable Rust
         run: rustup toolchain install stable --profile minimal
       - run: rustup default stable
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
       - run: cargo check --locked --manifest-path src-tauri/Cargo.toml --all-targets
       - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
       - name: Build unsigned NSIS installer without updater artifacts
-        run: npm run tauri -- build --bundles nsis --config ../deploy/windows-ci.json
+        run: pnpm run tauri -- build --bundles nsis --config ../deploy/windows-ci.json
       - uses: actions/upload-artifact@v4
         with:
           name: windows-nsis-unsigned

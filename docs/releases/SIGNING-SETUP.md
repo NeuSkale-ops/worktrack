@@ -27,7 +27,7 @@ Run the installed Tauri signing tool interactively so the password is not includ
 
 ```sh
 cd /Users/sabari/Developer/worktrack
-npm --prefix agent run tauri -- signer generate
+pnpm -C agent run tauri signer generate
 ```
 
 Use a nonempty password when prompted.

@@ -57,11 +57,8 @@ class ValidationTests(unittest.TestCase):
             tauri.mkdir()
             (tauri / "Cargo.toml").write_text('[package]\nversion = "0.1.2"\n')
             (agent / "package.json").write_text('{"version":"0.1.2"}')
-            lock = {"version": "0.1.2", "packages": {"": {"version": "0.1.2"}}}
-            (agent / "package-lock.json").write_text(json.dumps(lock))
             release.consistent_versions(tauri / "tauri.conf.json", "0.1.2")
-            lock["packages"][""]["version"] = "0.1.1"
-            (agent / "package-lock.json").write_text(json.dumps(lock))
+            (agent / "package.json").write_text('{"version":"0.1.1"}')
             with self.assertRaisesRegex(ValueError, "versions must match"):
                 release.consistent_versions(tauri / "tauri.conf.json", "0.1.2")
 

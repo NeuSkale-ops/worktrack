@@ -237,7 +237,7 @@ It does not prove production TLS, shared-host isolation, or a signed Windows in-
 
 Tauri supports NSIS cross-compilation from macOS with caveats. This path successfully produced the 0.1.10 Windows x64 candidate on October 27, 2026. See `docs/RELEASE-0.1.10.md` for the exact tool versions, source and checksum.
 
-Use a clean committed source archive and the locked npm/Cargo dependencies. Install NSIS, LLVM and LLD, the Windows Rust standard library, and `cargo-xwin`:
+Use a clean committed source archive and the locked pnpm/Cargo dependencies. Install NSIS, LLVM and LLD, the Windows Rust standard library, and `cargo-xwin`:
 
 ```sh
 brew install nsis llvm lld
@@ -248,7 +248,7 @@ cargo install --locked cargo-xwin
 With their binaries on PATH, run from `agent/`:
 
 ```sh
-npm run tauri -- build --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis -- --locked
+pnpm run tauri -- build --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis -- --locked
 ```
 
 The default committed configuration produces an installer candidate without updater artifacts. It preserves the installed app's verification key and production endpoint. Validate its Windows AMD64 payload, version and checksum, then keep unsigned candidates outside public download mounts.
