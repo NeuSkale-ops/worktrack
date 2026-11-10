@@ -16,11 +16,11 @@ import tempfile
 import tomllib
 import urllib.request
 
-BASE_URL = "https://worktrack.178.156.213.40.sslip.io/updates/windows/x86_64"
+BASE_URL = "https://worktrack.neuskale.com/updates/windows/x86_64"
 INSTALLER = "worktrack-setup.exe"
 CHANNEL_URLS = {
     "production": BASE_URL,
-    "staging": "https://worktrack.178.156.213.40.sslip.io/updates-staging/windows/x86_64",
+    "staging": "https://worktrack.neuskale.com/updates-staging/windows/x86_64",
 }
 FILES = {INSTALLER, INSTALLER + ".sig", "latest.json", "SHA256SUMS"}
 MAX_INSTALLER = 512 * 1024 * 1024

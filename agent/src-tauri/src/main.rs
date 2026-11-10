@@ -24,11 +24,47 @@ use tauri::{
 // The updater endpoint in tauri.conf.json must be changed separately.
 const SERVER_URL: &str = match option_env!("WORKTRACK_SERVER_URL") {
     Some(url) => url,
-    None => "https://worktrack.178.156.213.40.sslip.io",
+    None => "https://worktrack.neuskale.com",
 };
 
+// Servers this build may inherit a signed-in device and unsynced queue from.
+// Same backend and database, only the hostname changed, so the device token
+// and queued records stay valid and are carried over on first launch.
+const PREVIOUS_SERVER_URLS: &[&str] = &["https://worktrack.178.156.213.40.sslip.io"];
+
+fn is_previous_server(server: &str) -> bool {
+    PREVIOUS_SERVER_URLS.contains(&server)
+}
+
 fn queue_matches_server(saved_server: &str, pending: usize) -> bool {
-    pending == 0 || saved_server == SERVER_URL
+    pending == 0 || saved_server == SERVER_URL || is_previous_server(saved_server)
+}
+
+/// Moves the saved device token and queue ownership from a previous hostname
+/// to SERVER_URL. Copies the token first and only then rewrites the queue, so
+/// a failure at any step leaves the old entry usable and the move retries on
+/// next launch. Returns the new server's token if one exists afterwards.
+fn migrate_server(
+    queue: &Queue,
+    read: impl Fn(&str) -> Option<String>,
+    write: impl Fn(&str, &str) -> Result<(), String>,
+    remove: impl Fn(&str),
+) -> Option<String> {
+    let saved = queue.get("server").unwrap_or_default();
+    if !is_previous_server(&saved) {
+        return read(SERVER_URL);
+    }
+    let token = read(SERVER_URL).or_else(|| read(&saved));
+    if let Some(token) = &token {
+        if write(SERVER_URL, token).is_err() {
+            return read(&saved);
+        }
+    }
+    if queue.set("server", SERVER_URL).is_err() {
+        return token;
+    }
+    remove(&saved);
+    token
 }
 
 struct Runtime {
@@ -642,7 +678,16 @@ fn main() {
             let compatible_queue = queue_matches_server(&saved_server, queue.count());
             let server = SERVER_URL.to_string();
             let token = if compatible_queue {
-                credential(&server).ok().and_then(|e| e.get_password().ok())
+                migrate_server(
+                    &queue,
+                    |s| credential(s).ok().and_then(|e| e.get_password().ok()),
+                    |s, t| credential(s)?.set_password(t).map_err(|e| e.to_string()),
+                    |s| {
+                        if let Ok(e) = credential(s) {
+                            let _ = e.delete_credential();
+                        }
+                    },
+                )
             } else {
                 None
             };
@@ -925,12 +970,72 @@ mod tests {
 
     #[test]
     fn fixed_server_preserves_queue_ownership() {
-        assert_eq!(SERVER_URL, "https://worktrack.178.156.213.40.sslip.io");
+        assert_eq!(SERVER_URL, "https://worktrack.neuskale.com");
         assert!(queue_matches_server("", 0));
         assert!(queue_matches_server(SERVER_URL, 3));
+        assert!(queue_matches_server("https://worktrack.178.156.213.40.sslip.io", 3));
         assert!(queue_matches_server("https://previous.invalid", 0));
         assert!(!queue_matches_server("https://previous.invalid", 3));
         assert!(!queue_matches_server("", 3));
+    }
+
+    fn store() -> std::cell::RefCell<std::collections::HashMap<String, String>> {
+        Default::default()
+    }
+
+    #[test]
+    fn migrates_token_and_queue_from_previous_server() {
+        let old = PREVIOUS_SERVER_URLS[0];
+        let q = Queue::open(std::path::Path::new(":memory:")).unwrap();
+        q.set("server", old).unwrap();
+        q.push("/api/sessions/stop", &json!({"id":"s"}), None).unwrap();
+        let s = store();
+        s.borrow_mut().insert(old.into(), "tok".into());
+        let token = migrate_server(
+            &q,
+            |k| s.borrow().get(k).cloned(),
+            |k, v| { s.borrow_mut().insert(k.into(), v.into()); Ok(()) },
+            |k| { s.borrow_mut().remove(k); },
+        );
+        assert_eq!(token.as_deref(), Some("tok"));
+        assert_eq!(q.get("server").as_deref(), Some(SERVER_URL));
+        assert_eq!(s.borrow().get(SERVER_URL).map(String::as_str), Some("tok"));
+        assert!(!s.borrow().contains_key(old));
+        assert_eq!(q.count(), 1, "queued records are kept");
+    }
+
+    #[test]
+    fn failed_token_copy_keeps_old_login_and_retries_later() {
+        let old = PREVIOUS_SERVER_URLS[0];
+        let q = Queue::open(std::path::Path::new(":memory:")).unwrap();
+        q.set("server", old).unwrap();
+        let s = store();
+        s.borrow_mut().insert(old.into(), "tok".into());
+        let token = migrate_server(
+            &q,
+            |k| s.borrow().get(k).cloned(),
+            |_, _| Err("keychain locked".into()),
+            |k| { s.borrow_mut().remove(k); },
+        );
+        assert_eq!(token.as_deref(), Some("tok"));
+        assert_eq!(q.get("server").as_deref(), Some(old), "not moved yet");
+        assert!(s.borrow().contains_key(old), "old login kept");
+    }
+
+    #[test]
+    fn current_or_unknown_server_is_left_alone() {
+        let q = Queue::open(std::path::Path::new(":memory:")).unwrap();
+        q.set("server", "https://other.invalid").unwrap();
+        let s = store();
+        s.borrow_mut().insert("https://other.invalid".into(), "x".into());
+        let token = migrate_server(
+            &q,
+            |k| s.borrow().get(k).cloned(),
+            |_, _| panic!("must not write"),
+            |_| panic!("must not remove"),
+        );
+        assert_eq!(token, None);
+        assert_eq!(q.get("server").as_deref(), Some("https://other.invalid"));
     }
 
     pub(crate) fn runtime() -> Runtime {

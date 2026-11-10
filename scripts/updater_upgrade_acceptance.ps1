@@ -106,7 +106,12 @@ public static class AcceptanceCredential {
 }
 '@
 
-$domain = 'worktrack.178.156.213.40.sslip.io'
+# Baseline 0.1.5 uses the old hostname. The candidate migrates its sign-in and
+# queue to the new hostname on first launch, so both are isolated to loopback.
+$oldDomain = 'worktrack.178.156.213.40.sslip.io'
+$oldServer = "https://$oldDomain"
+$oldCredentialTarget = "$oldServer.com.worktrack.agent"
+$domain = 'worktrack.neuskale.com'
 $server = "https://$domain"
 $credentialTarget = "$server.com.worktrack.agent"
 $dataDir = Join-Path $env:LOCALAPPDATA 'com.worktrack.agent'
@@ -322,7 +327,10 @@ function Assert-SignedInStopped([string]$Version) {
     $null = Wait-Button 'Renew sign-in'
     $null = Wait-Button 'Check for updates'
     if ($null -ne (Get-Button 'Sign in') -or $null -ne (Get-Button 'Stop tracking')) { throw 'Expected persisted sign-in with tracking stopped.' }
-    if ([AcceptanceCredential]::Read($credentialTarget) -cne $script:fixtureToken) { throw 'OS credential changed or disappeared.' }
+    if ($Version -eq '0.1.5') { $target = $oldCredentialTarget; $stale = $credentialTarget }
+    else { $target = $credentialTarget; $stale = $oldCredentialTarget }
+    if ([AcceptanceCredential]::Read($target) -cne $script:fixtureToken) { throw 'OS credential changed or disappeared.' }
+    if ($null -ne [AcceptanceCredential]::Read($stale)) { throw 'Credential for the other hostname must not exist.' }
 }
 function Start-App([string]$Version) {
     $null = Start-Process -FilePath $exe -PassThru
@@ -346,7 +354,7 @@ function Stop-App([switch]$AllFixtureProcesses) {
 }
 function Invoke-Fixture([string]$Action) {
     if (@(Get-AppProcesses).Count -ne 0) { throw 'Fixture SQLite reads or writes require a stopped app.' }
-    & $python (Join-Path $root 'fixture.py') $Action (Join-Path $dataDir 'queue.sqlite3') $server
+    & $python (Join-Path $root 'fixture.py') $Action (Join-Path $dataDir 'queue.sqlite3') $(if ($Action -eq 'check-final') { $server } else { $oldServer })
     if ($LASTEXITCODE -ne 0) { throw "SQLite fixture $Action failed." }
 }
 function Assert-OldBinary {
@@ -356,7 +364,7 @@ function Assert-OldBinary {
 
 # Refuse existing user state rather than backing up or overwriting any real identity.
 if (Test-Path -LiteralPath $dataDir) { throw "Existing application state must not be touched: $dataDir" }
-if ($null -ne [AcceptanceCredential]::Read($credentialTarget)) { throw 'Existing WorkTrack OS credential must not be overwritten.' }
+if ($null -ne [AcceptanceCredential]::Read($credentialTarget) -or $null -ne [AcceptanceCredential]::Read($oldCredentialTarget)) { throw 'Existing WorkTrack OS credential must not be overwritten.' }
 if (@(Get-Process -Name 'worktrack-agent' -ErrorAction SilentlyContinue).Count -ne 0) { throw 'A WorkTrack process already exists.' }
 if (Test-Path -LiteralPath $evidenceDir) { throw "Evidence directory already exists: $evidenceDir" }
 $null = New-Item -ItemType Directory -Path $root, $evidenceDir
@@ -371,12 +379,12 @@ try {
         $oldProxy[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
         [Environment]::SetEnvironmentVariable($name, $null, 'Process')
     }
-    $env:NO_PROXY = "$domain,127.0.0.1,localhost"
+    $env:NO_PROXY = "$domain,$oldDomain,127.0.0.1,localhost"
     $env:no_proxy = $env:NO_PROXY
     $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--force-renderer-accessibility'
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     [Net.WebRequest]::DefaultWebProxy = $null
-    $cert = New-SelfSignedCertificate -DnsName $domain -CertStoreLocation 'Cert:\CurrentUser\My' -KeyAlgorithm RSA -KeyLength 2048 -HashAlgorithm SHA256 -KeyExportPolicy Exportable -NotAfter (Get-Date).AddDays(1)
+    $cert = New-SelfSignedCertificate -DnsName $domain, $oldDomain -CertStoreLocation 'Cert:\CurrentUser\My' -KeyAlgorithm RSA -KeyLength 2048 -HashAlgorithm SHA256 -KeyExportPolicy Exportable -NotAfter (Get-Date).AddDays(1)
     $cer = Join-Path $root 'feed.cer'
     $pfx = Join-Path $root 'feed.pfx'
     $pem = Join-Path $root 'feed.pem'
@@ -401,11 +409,13 @@ try {
     Remove-Item -LiteralPath $pfx
     $hostsOriginal = [IO.File]::ReadAllBytes($hostsPath)
     $hostsText = [IO.File]::ReadAllText($hostsPath)
-    if ($hostsText -match ('(?im)^[^#\r\n]*\s' + [regex]::Escape($domain) + '(?:\s|$)')) { throw 'Production hostname already has a hosts mapping.' }
+    foreach ($name in @($domain, $oldDomain)) {
+        if ($hostsText -match ('(?im)^[^#\r\n]*\s' + [regex]::Escape($name) + '(?:\s|$)')) { throw 'Production hostname already has a hosts mapping.' }
+    }
     $hostsChanged = $true
-    [IO.File]::AppendAllText($hostsPath, "`r`n127.0.0.1 $domain # worktrack-disposable-updater-acceptance`r`n", [Text.Encoding]::ASCII)
+    [IO.File]::AppendAllText($hostsPath, "`r`n127.0.0.1 $domain # worktrack-disposable-updater-acceptance`r`n127.0.0.1 $oldDomain # worktrack-disposable-updater-acceptance`r`n", [Text.Encoding]::ASCII)
     Clear-DnsClientCache
-    $resolved = @([Net.Dns]::GetHostAddresses($domain) | ForEach-Object { $_.IPAddressToString })
+    $resolved = @(@($domain, $oldDomain) | ForEach-Object { [Net.Dns]::GetHostAddresses($_) } | ForEach-Object { $_.IPAddressToString })
     if ($resolved.Count -eq 0 -or @($resolved | Where-Object { $_ -ne '127.0.0.1' }).Count -ne 0) { throw "Unsafe hostname resolution: $resolved" }
     $feedArgs = '"{0}" --archive "{1}" --root "{2}" --cert "{3}" --port 443' -f $helper, $Candidate, $root, $pem
     $feed = Start-Process -FilePath $python -ArgumentList $feedArgs -RedirectStandardOutput (Join-Path $root 'feed.stdout') -RedirectStandardError (Join-Path $root 'feed.stderr') -PassThru
@@ -476,7 +486,7 @@ print(json.dumps({"action": action, "integrity": "ok", "settings_preserved": Tru
     Invoke-Fixture 'seed'
     $script:fixtureToken = 'not-a-production-token-updater-acceptance-' + [guid]::NewGuid().ToString('N')
     $credentialCreated = $true
-    [AcceptanceCredential]::Write($credentialTarget, $server, $script:fixtureToken)
+    [AcceptanceCredential]::Write($oldCredentialTarget, $oldServer, $script:fixtureToken)
 
     if ($installDir.Contains(' ')) { throw 'NSIS /D path must not contain spaces.' }
     $installStarted = $true
@@ -670,7 +680,7 @@ print(json.dumps({"action": action, "integrity": "ok", "settings_preserved": Tru
         } catch { $cleanup += "Uninstall: $($_.Exception.Message)" }
     }
     if ($credentialCreated) {
-        try { [AcceptanceCredential]::Delete($credentialTarget) } catch { $cleanup += "Delete fixture credential: $($_.Exception.Message)" }
+        try { foreach ($target in @($credentialTarget, $oldCredentialTarget)) { [AcceptanceCredential]::Delete($target) } } catch { $cleanup += "Delete fixture credential: $($_.Exception.Message)" }
     }
     $appsStopped = $installersStopped -and @(Get-Process -Name 'worktrack-agent' -ErrorAction SilentlyContinue).Count -eq 0
     if ($identityCreated -and (Test-Path -LiteralPath $dataDir)) {

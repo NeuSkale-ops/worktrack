@@ -44,7 +44,7 @@ A publisher certificate is a separate decision and is not required to implement 
 ## Hosting and release pipeline
 
 Use our existing Hetzner server and Caddy for public, read-only update files.
-The production manifest endpoint is `https://worktrack.178.156.213.40.sslip.io/updates/windows/x86_64/latest.json`; staging uses `/updates-staging/windows/x86_64/latest.json` on the same host.
+The production manifest endpoint is `https://worktrack.neuskale.com/updates/windows/x86_64/latest.json`; staging uses `/updates-staging/windows/x86_64/latest.json` on the same host.
 Approved provisioning on October 21, 2026 installed the root-owned receiver/public key, `minisign`, two isolated fixed service accounts, distinct restricted SSH identities, and separate storage trees.
 The reviewed operator-only `scripts/setup_updater_host.sh` accepts a receiver path and three public-key file paths, validates inputs and effective sshd restrictions, and rolls back its SSH fragment on validation or reload failure.
 It does not create public mounts, modify runtime configuration, or publish manifests.

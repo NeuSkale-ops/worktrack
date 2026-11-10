@@ -45,7 +45,7 @@ class AcceptanceFeedTests(unittest.TestCase):
         (artifacts / release.INSTALLER).write_bytes(self.payload)
         self.path = "/updates/windows/x86_64/releases/0.1.6/worktrack-setup.exe"
         self.manifest = {"version": "0.1.6", "platforms": {"windows-x86_64": {
-            "url": "https://worktrack.178.156.213.40.sslip.io" + self.path,
+            "url": "https://worktrack.neuskale.com" + self.path,
             "signature": "fixture",
         }}}
         self.server = feed.Feed(("127.0.0.1", 0), self.root, artifacts, self.manifest)

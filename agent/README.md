@@ -7,7 +7,8 @@ Development builds reject update checks. Unsigned CI installers clear the truste
 
 ## Worker sign-in and updates
 
-Version 0.1.1 pins the server origin to `https://worktrack.178.156.213.40.sslip.io` in Rust.
+Version 0.1.11 pins the server origin to `https://worktrack.neuskale.com` in Rust.
+On first launch it moves the sign-in and offline queue from the previous origin, `https://worktrack.178.156.213.40.sslip.io`.
 Workers enter only their invited account email and password, with no server URL field.
 The invite creates their account when accepted, but installation and Start remain explicit actions.
 
