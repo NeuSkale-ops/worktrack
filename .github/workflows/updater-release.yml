@@ -228,6 +228,8 @@ jobs:
           WORKTRACK_UPDATER_SSH_KEY: ${{ secrets.WORKTRACK_UPDATER_SSH_KEY }}
           WORKTRACK_UPDATER_KNOWN_HOSTS: ${{ vars.WORKTRACK_UPDATER_KNOWN_HOSTS }}
           WORKTRACK_UPDATER_HOST: ${{ vars.WORKTRACK_UPDATER_HOST }}
+          # Restricted receiver sshd. Admin SSH on 22 is firewalled to operators.
+          WORKTRACK_UPDATER_PORT: ${{ vars.WORKTRACK_UPDATER_PORT || '22' }}
           RELEASE_CHANNEL: ${{ inputs.channel }}
           UPGRADE_EVIDENCE: ${{ inputs.upgrade_evidence }}
         shell: bash
@@ -246,6 +248,7 @@ jobs:
           user=worktrack-updates
           if [[ "$RELEASE_CHANNEL" == staging ]]; then user=worktrack-updates-staging; fi
           # The server forces the receiver command. No shell, scp, sudo or root.
+          [[ "$WORKTRACK_UPDATER_PORT" =~ ^[0-9]{1,5}$ ]]
           ssh -T -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
-            -o "UserKnownHostsFile=$hosts" -o ConnectTimeout=15 -i "$key" \
+            -o "UserKnownHostsFile=$hosts" -o ConnectTimeout=15 -i "$key" -p "$WORKTRACK_UPDATER_PORT" \
             "$user@$WORKTRACK_UPDATER_HOST" < updater-candidate.tar

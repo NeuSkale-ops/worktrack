@@ -103,7 +103,7 @@ Match User worktrack-updates-staging
     KbdInteractiveAuthentication no
     DisableForwarding yes
     PermitTTY no
-    ForceCommand /usr/bin/timeout 600 /usr/bin/python3 -I /usr/local/lib/worktrack-updater/updater_release.py receive --root /srv/worktrack-updates-staging --public-key /etc/worktrack-updater/public-key.txt --base-url https://worktrack.178.156.213.40.sslip.io/updates-staging/windows/x86_64
+    ForceCommand /usr/bin/timeout 600 /usr/bin/python3 -I /usr/local/lib/worktrack-updater/updater_release.py receive --root /srv/worktrack-updates-staging --public-key /etc/worktrack-updater/public-key.txt --base-url https://worktrack.neuskale.com/updates-staging/windows/x86_64
 
 Match all
 SSHD

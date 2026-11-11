@@ -136,7 +136,7 @@ Match User worktrack-updates-staging
     KbdInteractiveAuthentication no
     DisableForwarding yes
     PermitTTY no
-    ForceCommand /usr/bin/timeout 600 /usr/bin/python3 -I /usr/local/lib/worktrack-updater/updater_release.py receive --root /srv/worktrack-updates-staging --public-key /etc/worktrack-updater/public-key.txt --base-url https://worktrack.178.156.213.40.sslip.io/updates-staging/windows/x86_64
+    ForceCommand /usr/bin/timeout 600 /usr/bin/python3 -I /usr/local/lib/worktrack-updater/updater_release.py receive --root /srv/worktrack-updates-staging --public-key /etc/worktrack-updater/public-key.txt --base-url https://worktrack.neuskale.com/updates-staging/windows/x86_64
 
 Match all
 ```
@@ -264,3 +264,11 @@ Official build instructions: https://v2.tauri.app/distribute/windows-installer/#
 - Tauri 2 updater configuration, signing environment variables, NSIS `.exe` plus `.sig` artifacts, and static manifest format: https://v2.tauri.app/plugin/updater/
 - Official CLI release notes explaining version-bound signatures and `requireSignedVersion`: https://tauri.app/release/%40tauri-apps/cli/v2.12.0/
 - Official signing implementation showing the signed trusted-comment version and encoded signature format: https://github.com/tauri-apps/tauri/blob/dev/crates/tauri-cli/src/helpers/updater_signature.rs
+
+## Release host after the November 2026 migration
+
+Since November 11, 2026 the receiver runs on app-nbg (`46.225.13.28`, Nuremberg k3s node), provisioned with `scripts/setup_updater_host.sh`.
+GitHub runners connect to a dedicated restricted sshd on port 2222 (`sshd-worktrack-release.service`, config `/etc/ssh/sshd_worktrack_release_config`).
+It allows only the two release accounts, public keys only, with the same forced receiver command. Admin SSH on port 22 stays firewalled to operators.
+The `updater-production` and `updater-staging` environments set `WORKTRACK_UPDATER_HOST=46.225.13.28`, `WORKTRACK_UPDATER_PORT=2222` and a pinned `WORKTRACK_UPDATER_KNOWN_HOSTS` line.
+The worktrack-web pod serves `/srv/worktrack-updates/public` and `/srv/worktrack-updates-staging/public` read-only via hostPath.
