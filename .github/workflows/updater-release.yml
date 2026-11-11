@@ -92,7 +92,7 @@ jobs:
         shell: pwsh
         run: |
           if (-not $env:TAURI_SIGNING_PRIVATE_KEY -or -not $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD) { throw 'Protected signing secrets are missing' }
-          pnpm run tauri -- build --bundles nsis --target x86_64-pc-windows-msvc --config ../deploy/windows-release.generated.json -- --locked
+          pnpm run tauri build --bundles nsis --target x86_64-pc-windows-msvc --config ../deploy/windows-release.generated.json -- --locked
           if ($LASTEXITCODE -ne 0) { throw 'Signed build failed' }
       - name: Smoke-test exact signed installer
         shell: pwsh

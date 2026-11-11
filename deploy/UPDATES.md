@@ -248,7 +248,7 @@ cargo install --locked cargo-xwin
 With their binaries on PATH, run from `agent/`:
 
 ```sh
-pnpm run tauri -- build --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis -- --locked
+pnpm run tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis -- --locked
 ```
 
 The default committed configuration produces an installer candidate without updater artifacts. It preserves the installed app's verification key and production endpoint. Validate its Windows AMD64 payload, version and checksum, then keep unsigned candidates outside public download mounts.

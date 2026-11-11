@@ -40,7 +40,7 @@ jobs:
       - run: cargo check --locked --manifest-path src-tauri/Cargo.toml --all-targets
       - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
       - name: Build unsigned NSIS installer without updater artifacts
-        run: pnpm run tauri -- build --bundles nsis --config ../deploy/windows-ci.json
+        run: pnpm run tauri build --bundles nsis --config ../deploy/windows-ci.json
       - uses: actions/upload-artifact@v4
         with:
           name: windows-nsis-unsigned

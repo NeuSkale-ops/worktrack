@@ -51,7 +51,7 @@ jobs:
         run: cargo test --locked --manifest-path agent/src-tauri/Cargo.toml --target aarch64-apple-darwin
       - name: Build ad-hoc preview without updater artifacts
         working-directory: agent
-        run: pnpm run tauri -- build --target aarch64-apple-darwin --bundles app,dmg --config ../deploy/macos-preview.json -- --locked
+        run: pnpm run tauri build --target aarch64-apple-darwin --bundles app,dmg --config ../deploy/macos-preview.json -- --locked
       - name: Verify and package preview
         run: |
           set -euo pipefail
