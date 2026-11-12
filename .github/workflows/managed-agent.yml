@@ -71,3 +71,20 @@ jobs:
           & powershell -ExecutionPolicy Bypass -File uninstall.ps1
           Pop-Location
           Write-Output "Service hardening verified."
+
+      # Bundle the built binaries with the Intune scripts so IT can download one
+      # zip, wrap it with IntuneWinAppUtil, and deploy. Unsigned: sign before
+      # production so Defender/SmartScreen pass with Defender enabled.
+      - name: Stage install payload
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force payload | Out-Null
+          Copy-Item target\release\worktrack-svc.exe payload\
+          Copy-Item target\release\worktrack-session.exe payload\
+          Copy-Item ..\..\deploy\managed-agent\*.ps1 payload\
+      - uses: actions/upload-artifact@v4
+        with:
+          name: worktrack-managed-agent-unsigned
+          path: agent/managed/payload/*
+          if-no-files-found: error
+          retention-days: 7
