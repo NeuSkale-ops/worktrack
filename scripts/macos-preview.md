@@ -28,7 +28,8 @@ The explicit preview overlay repeats that boundary so CI cannot inherit a future
 
 ## Future pipeline
 
-`.github/workflows/macos-preview.yml` runs on relevant PRs and main pushes, accepts manual dispatch, and supports `workflow_call`.
+`.github/workflows/macos-preview.yml` accepts manual dispatch and supports `workflow_call`.
+Its automatic runs on PRs and main pushes are suspended while no Mac release is planned.
 The Windows updater release workflow calls it as an isolated job without inherited secrets, including when reusing a Windows candidate.
 Mac builds use the current reviewed source, while a reused Windows candidate keeps its recorded provenance.
 The Windows publish job requires Mac preview success in addition to every existing Windows approval and verification gate.
