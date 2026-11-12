@@ -2,27 +2,31 @@
 
 ## Managed-agent download (company-owned devices, owner only)
 
-The owner Devices card links `/downloads/managed-agent/worktrack-managed-agent.zip`,
-served from the same public `/srv/worktrack-downloads` mount and Caddy `/downloads/*`
-routes (now also sending `*.zip` as an attachment). The zip holds the Windows
-service and session binaries plus `install.ps1`, `uninstall.ps1`, `detect.ps1`
-and `SHA256SUMS`. It is IT-facing packaging for Intune, not a worker self-install.
+The owner-only managed agent card in Settings reads `/managed-agent/latest.json`
+and links `/managed-agent/worktrack-managed-agent-{version}.zip`. Both files ship
+inside the dashboard image, so no host or cluster volume is involved. The zip
+holds the Windows service and session binaries plus `install.ps1`,
+`uninstall.ps1`, `detect.ps1` and `SHA256SUMS`. It is IT-facing packaging for
+Intune, not a worker self-install.
 
-Place it on the host:
+`web/public/managed-agent/latest.json` pins the version and the zip's SHA-256.
+The `Deploy` workflow downloads that version from the GitHub release
+`managed-agent-v{version}`, verifies the checksum and fails the deploy on a
+mismatch.
 
-```sh
-sudo mkdir -p /srv/worktrack-downloads/managed-agent
-sudo cp worktrack-managed-agent.zip /srv/worktrack-downloads/managed-agent/
-```
-
-Build the zip from the green `Managed agent` CI run:
+Publish a new version from a green `Managed agent` CI run. Run `gh` from the
+repository directory so it uses the right account:
 
 ```sh
 gh run download <run-id> -n worktrack-managed-agent-unsigned -D payload
-cd payload && shasum -a 256 * > SHA256SUMS
-zip -j worktrack-managed-agent.zip worktrack-svc.exe worktrack-session.exe \
+cd payload && shasum -a 256 *.exe *.ps1 > SHA256SUMS
+zip -j -X worktrack-managed-agent-<version>.zip worktrack-svc.exe worktrack-session.exe \
   install.ps1 uninstall.ps1 detect.ps1 SHA256SUMS
+shasum -a 256 worktrack-managed-agent-<version>.zip
+gh release create managed-agent-v<version> --prerelease worktrack-managed-agent-<version>.zip
 ```
+
+Then set `version` and `sha256` in `latest.json`, merge, and push `deploy`.
 
 The binaries are unsigned; sign with Authenticode before fleet rollout so
 Defender/SmartScreen pass with Defender enabled. The link is visible only to

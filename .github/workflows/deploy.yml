@@ -43,6 +43,20 @@ jobs:
           tags: ghcr.io/neuskale-ops/worktrack-api:${{ github.sha }}
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
+      # The dashboard offers the managed agent zip from its own origin. The
+      # committed manifest pins the release and its checksum; a mismatch or a
+      # missing release fails the deploy instead of shipping a dead link.
+      - name: Bundle pinned managed agent release into the dashboard
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: web/public/managed-agent
+        run: |
+          set -euo pipefail
+          version=$(jq -er .version latest.json)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          zip="worktrack-managed-agent-$version.zip"
+          gh release download "managed-agent-v$version" --repo "$GITHUB_REPOSITORY" --pattern "$zip"
+          echo "$(jq -er .sha256 latest.json)  $zip" | sha256sum --check
       - name: Build and push web
         uses: docker/build-push-action@v6
         with:

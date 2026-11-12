@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api, post } from './api'
+import { fetchManagedAgentRelease } from './managedAgentRelease'
+import type { ManagedAgentRelease } from './managedAgentRelease'
 
 interface Device {
   id: string
@@ -38,6 +40,18 @@ export default function Devices() {
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState('')
   const [secret, setSecret] = useState('')
+  const [release, setRelease] = useState<ManagedAgentRelease | null>(null)
+  const [checking, setChecking] = useState(true)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchManagedAgentRelease(controller.signal)
+      .then(setRelease)
+      // No link is offered when the release is missing from this deployment.
+      .catch(() => {})
+      .finally(() => { if (!controller.signal.aborted) setChecking(false) })
+    return () => controller.abort()
+  }, [])
 
   async function load() {
     setBusy(true)
@@ -95,6 +109,26 @@ export default function Devices() {
   }
 
   return (
+    <>
+    <section className="card download" aria-labelledby="managed-agent-heading" aria-busy={checking}>
+      <div>
+        <h2 id="managed-agent-heading">WorkTrack managed agent for Windows</h2>
+        <p className="muted" role="status">{checking ? 'Checking managed agent release…' : release ? `Version ${release.version}, 64-bit, unsigned test build` : 'Managed agent download is not available in this deployment.'}</p>
+        <p className="muted">For company-owned laptops, installed by IT. Owner only.</p>
+      </div>
+      {release && <a className="button" href={release.url} download>Download (.zip)</a>}
+      <details>
+        <summary>Install steps</summary>
+        <ol>
+          <li>Below, select Add device and copy the enrollment secret.</li>
+          <li>Extract the zip on the laptop and open PowerShell as administrator in that folder.</li>
+          <li>Run <code>powershell.exe -ExecutionPolicy Bypass -File install.ps1 -EnrollSecret "SECRET" -Upn "user@company.com"</code>. Windows may show a publisher warning.</li>
+          <li>Select Load devices. The laptop appears as awaiting first check-in.</li>
+        </ol>
+        <p className="muted">This first build installs, hardens and enrolls the service only. It does not check in or capture yet. Remove it with <code>uninstall.ps1</code>.</p>
+        {release && <p className="muted">SHA-256 of the zip: <code style={{ overflowWrap: 'anywhere' }}>{release.sha256}</code></p>}
+      </details>
+    </section>
     <section className="card devices" aria-labelledby="devices-heading">
       <details>
         <summary id="devices-heading">Managed devices (owner only)</summary>
@@ -103,13 +137,6 @@ export default function Devices() {
           Capture is admin-controlled here and visible to the employee on the
           device. A stale check-in is the tamper signal; the agent is never
           hidden.
-        </p>
-        <p className="muted">
-          <a className="button" href="/downloads/managed-agent/worktrack-managed-agent.zip" download>
-            Download Windows agent (.zip)
-          </a>{' '}
-          Unsigned build for IT. Deploy via Intune with the enrollment secret
-          below. See <code>deploy/managed-agent/README.md</code>.
         </p>
         <div className="block-actions">
           <button onClick={() => void load()} disabled={busy}>
@@ -174,5 +201,6 @@ export default function Devices() {
         )}
       </details>
     </section>
+    </>
   )
 }
