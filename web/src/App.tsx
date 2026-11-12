@@ -4,6 +4,7 @@ import { api, ApiError, post } from './api'
 import type { Block, DaySpan, Hours, Invite, OpenSession, User, Worker } from './api'
 import { activity, applicationTotals, blockDuration, duration, isTimeOnly, localDate, locationText, minuteOfDay, ribbon, screenshotPlaceholder, utcDate, weekRange, zone } from './utils'
 import AgentLogs from './AgentLogs'
+import Devices from './Devices'
 import DownloadCard from './DownloadCard'
 import { canManage, MemberAdmin, PasswordForm, ResetPassword } from './Admin'
 
@@ -641,6 +642,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
               <InviteForm />
             </section>}
             <section className="settings-section"><h2>Your account</h2><PasswordForm /></section>
+            {user.role === 'owner' && <Devices />}
             {user.role === 'owner' && <AgentLogs />}
           </section>
         )}

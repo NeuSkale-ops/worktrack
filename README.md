@@ -12,6 +12,13 @@ Windows-first time tracking for a remote team, with a React dashboard and Go API
 ## Layout
 
 - `agent/`: Tauri Windows desktop app, Rust core and React interface.
+- `agent/managed/`: separate disclosed monitoring agent for **company-owned**
+  laptops deployed by Intune. A Windows service (LocalSystem) plus a visible
+  per-user session helper. Distinct from the personal-PC Start/Stop app above,
+  which is unchanged. Capture is admin-controlled, acknowledged once per user,
+  and shown by a persistent tray indicator; tamper resistance is least privilege
+  only (service/file ACLs, admin-gated uninstall), never stealth. See
+  `deploy/managed-agent/` and `docs/MANAGED-AGENT-QA.md`.
 - `server/`: Go API, PostgreSQL schema and authentication.
 - `web/`: React and TypeScript dashboard built with Vite.
 - `deploy/`: Docker Compose, Caddy HTTPS and Hetzner deployment guide.
