@@ -6,9 +6,15 @@
 # Features. Tamper resistance is least privilege only.
 #
 # Install command (Intune): powershell.exe -ExecutionPolicy Bypass -File install.ps1 -EnrollSecret "<secret>" -Server "https://worktrack.neuskale.com"
+#
+# Exit codes: 0 installed and enrolled, 1 installed but not enrolled. Intune
+# reports 1 as a failed install and retries it; detect.ps1 agrees because it
+# requires the enrollment file.
 param(
   [Parameter(Mandatory = $true)][string]$EnrollSecret,
   [string]$Server = "https://worktrack.neuskale.com",
+  # Work account that owns this laptop. Default: the Intune enrollment UPN.
+  [string]$Upn = "",
   [string]$InstallDir = "$env:ProgramFiles\WorkTrack Agent",
   [string]$DataDir = "$env:ProgramData\WorkTrack"
 )
@@ -58,17 +64,38 @@ $sddl = "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCLCSWRPWPDTLOCRRC;;;BA)(A;;CCLCSWLOR
 # 7. Harden the install dir: Users read/execute, no write.
 icacls "$InstallDir" /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-32-545:(OI)(CI)RX" | Out-Null
 
-# 8. Start the service and enroll this device with the one-time secret.
+# 8. Start the service and enroll this device. The secret is shared by every
+#    laptop in the Intune assignment; the server returns a per-device token.
 & sc.exe start $ServiceName | Out-Null
+$enrollment = "$DataDir\enrollment.json"
+if (Test-Path $enrollment) {
+  # Reinstall or Intune retry: keep the existing device identity.
+  Write-Output "WorkTrack agent installed (already enrolled)."
+  exit 0
+}
+# This script runs as SYSTEM, which has no UPN of its own, so `whoami /upn`
+# is only a last resort for a manual run by an admin.
+if (-not $Upn) {
+  $Upn = Get-ChildItem "HKLM:\SOFTWARE\Microsoft\Enrollments" -ErrorAction SilentlyContinue |
+    ForEach-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).UPN } |
+    Where-Object { $_ } | Select-Object -First 1
+}
+if (-not $Upn) {
+  try { $Upn = (& whoami.exe /upn) 2>$null } catch { $Upn = "" }
+}
 try {
-  $body = @{ secret = $EnrollSecret; upn = (whoami /upn 2>$null); hostname = $env:COMPUTERNAME } | ConvertTo-Json
+  if (-not $Upn) { throw "no user UPN found; pass -Upn" }
+  $body = @{ secret = $EnrollSecret; upn = "$Upn".Trim(); hostname = $env:COMPUTERNAME } | ConvertTo-Json
   $resp = Invoke-RestMethod -Method Post -Uri "$Server/api/devices/enroll" -ContentType "application/json" -Body $body
-  # The device token is stored by the service under machine DPAPI; the installer
-  # hands it over via the protected data dir, then clears it from memory.
-  $resp | ConvertTo-Json | Set-Content -Path "$DataDir\enrollment.json" -Encoding UTF8
-  (Get-Acl $DataDir) | Set-Acl -Path "$DataDir\enrollment.json"
+  # The device token is stored in the data dir, which only SYSTEM and
+  # Administrators can read.
+  $resp | ConvertTo-Json | Set-Content -Path $enrollment -Encoding UTF8
+  (Get-Acl $DataDir) | Set-Acl -Path $enrollment
 } catch {
-  Write-Warning "Enrollment deferred; the service will retry on next check-in: $_"
+  # Nothing retries enrollment later: the secret is not kept on disk. Fail the
+  # install so Intune shows it and runs this script again.
+  Write-Error "WorkTrack agent installed but NOT enrolled: $_" -ErrorAction Continue
+  exit 1
 }
 
 Write-Output "WorkTrack agent installed."

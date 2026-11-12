@@ -105,22 +105,27 @@ is a machine, mapped to a user by UPN (email) at enrollment, carrying its own
 bearer token. Capture on each device is disclosed and admin-gated by config.
 
 Enrollment and lifecycle:
-- `POST /api/devices/enrollments` (owner): mint a one-time secret, valid 7 days.
+- `POST /api/devices/enrollments` (owner): mint an enrollment secret, valid 7 days.
   Returns `{secret,expires_in_days}`. Pass the secret to the agent via Intune.
+  One secret enrolls every laptop in the assignment.
+- `POST /api/devices/enrollments/revoke` (owner): body `{}`. Invalidates every
+  outstanding secret, returns `{ok,revoked}`. Enrolled devices are unaffected.
 - `POST /api/devices/enroll` (no auth, secret only): body `{secret,upn,hostname?}`.
-  Consumes the one-time secret under row lock, maps `upn` to an existing user
+  Maps `upn` to an existing user
   (unknown UPN enrolls with no user link), returns `{device_id,token}`. 401 on
-  invalid/used/expired secret. Rate limited per client IP.
+  invalid/expired/revoked secret. Rate limited per client IP.
 - `POST /api/devices/checkin` (device token): body `{agent_version?,buffer_depth?,
   dropped_events?,config_version?}`. Updates observed health and returns desired
   state `{enabled,paused,uninstall,config_version,config?}`. `config` is sent
   only when the agent's `config_version` is older. Poll model, no inbound port.
+  Still answers after an uninstall command, so the agent receives it.
 - `POST /api/devices/events` (device token): body `{events:[{seq,event_id,kind,
   occurred_at,payload?}]}`, 1 to 500 events, 1 MiB cap. Inserts with
-  `ON CONFLICT(device_id,seq) DO NOTHING`, returns `{acked_seq}` = max stored
-  seq. At-least-once send plus idempotent ingest gives exactly-once delivery; the
-  agent prunes its buffer up to `acked_seq`. A reimaged laptop gets a new
-  `device_id`, so seq never collides across hardware lifetimes.
+  `ON CONFLICT(device_id,event_id) DO NOTHING`, returns `{acked_seq}` = highest
+  seq in the batch. At-least-once send plus idempotent ingest gives exactly-once
+  delivery; the agent prunes its buffer up to `acked_seq`. `event_id` must be
+  unique per event. `seq` is the agent's local order only and may restart at 1
+  when its buffer is recreated. 403 once the device is marked for uninstall.
 
 Admin (owner only):
 - `GET /api/devices`: fleet health (version, last check-in, last sync, buffer

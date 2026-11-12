@@ -73,7 +73,7 @@ impl<S: Sealer> Buffer<S> {
         payload: &serde_json::Value,
     ) -> Result<i64, String> {
         self.enforce_cap()?;
-        let sealed = self.sealer.seal(payload.to_string().as_bytes());
+        let sealed = self.sealer.seal(payload.to_string().as_bytes())?;
         self.conn
             .execute(
                 "INSERT INTO events(event_id,kind,occurred_at,sealed) VALUES(?1,?2,?3,?4)",
@@ -225,6 +225,26 @@ mod tests {
             )
             .unwrap();
         assert_eq!(text_cols, 0, "no plaintext payload column exists");
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn failed_seal_stores_nothing() {
+        struct Broken;
+        impl Sealer for Broken {
+            fn seal(&self, _: &[u8]) -> Result<Vec<u8>, String> {
+                Err("no key".into())
+            }
+            fn unseal(&self, _: &[u8]) -> Result<Vec<u8>, String> {
+                Err("no key".into())
+            }
+        }
+        let path = tmp();
+        let mut b = Buffer::open(&path, Broken, 100 * 1024 * 1024).unwrap();
+        let pushed = b.push("id", "idle", "2026-01-01T00:00:00Z", &serde_json::json!({}));
+        assert!(pushed.is_err());
+        // An unreadable row at the head would block every later batch.
+        assert_eq!(b.depth(), 0);
         std::fs::remove_file(path).ok();
     }
 

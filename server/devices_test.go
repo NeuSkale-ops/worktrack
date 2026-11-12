@@ -39,15 +39,25 @@ func TestDevicesHTTP(t *testing.T) {
 		t.Fatal(e)
 	}
 	var deviceID string
+	workerID := uuid.NewString()
+	// Leftover users make the server skip owner bootstrap, so every row that
+	// references these users must go before the users themselves.
 	defer func() {
-		if deviceID != "" {
-			_, _ = db.Exec(ctx, "DELETE FROM device_events WHERE device_id=$1", deviceID)
-			_, _ = db.Exec(ctx, "DELETE FROM admin_audit WHERE device_id=$1", deviceID)
-			_, _ = db.Exec(ctx, "DELETE FROM devices WHERE id=$1", deviceID)
+		for _, c := range []struct {
+			q    string
+			args []any
+		}{
+			{"DELETE FROM device_events WHERE device_id IN (SELECT id FROM devices WHERE upn=$1)", []any{upn}},
+			{"DELETE FROM admin_audit WHERE actor_id=$1", []any{ownerID}},
+			{"DELETE FROM devices WHERE upn=$1", []any{upn}},
+			{"DELETE FROM device_enrollments WHERE created_by=$1", []any{ownerID}},
+			{"DELETE FROM credentials WHERE user_id IN ($1,$2)", []any{ownerID, workerID}},
+			{"DELETE FROM users WHERE id IN ($1,$2)", []any{ownerID, workerID}},
+		} {
+			if _, e := db.Exec(ctx, c.q, c.args...); e != nil {
+				t.Errorf("cleanup %q: %v", c.q, e)
+			}
 		}
-		_, _ = db.Exec(ctx, "DELETE FROM admin_audit WHERE actor_id=$1", ownerID)
-		_, _ = db.Exec(ctx, "DELETE FROM device_enrollments WHERE created_by=$1", ownerID)
-		_, _ = db.Exec(ctx, "DELETE FROM users WHERE id=$1", ownerID)
 	}()
 
 	handler := a.routes()
@@ -79,7 +89,13 @@ func TestDevicesHTTP(t *testing.T) {
 	enrolled := call("", "POST", "/api/devices/enroll", map[string]any{"secret": secret, "upn": upn, "hostname": "LAPTOP-1"}, 200)
 	deviceID = enrolled["device_id"].(string)
 	deviceToken := enrolled["token"].(string)
-	call("", "POST", "/api/devices/enroll", map[string]any{"secret": secret, "upn": upn}, 401) // one-time
+	// Intune hands the same secret to every laptop, so it enrolls a second
+	// device, until the owner revokes it.
+	call("", "POST", "/api/devices/enroll", map[string]any{"secret": secret, "upn": upn, "hostname": "LAPTOP-2"}, 200)
+	if revoked := call(ownerToken, "POST", "/api/devices/enrollments/revoke", map[string]any{}, 200)["revoked"]; revoked.(float64) < 1 {
+		t.Fatalf("revoked want >=1 got %v", revoked)
+	}
+	call("", "POST", "/api/devices/enroll", map[string]any{"secret": secret, "upn": upn}, 401)
 
 	var mappedUser string
 	if e = db.QueryRow(ctx, "SELECT user_id::text FROM devices WHERE id=$1", deviceID).Scan(&mappedUser); e != nil || mappedUser != ownerID {
@@ -101,7 +117,9 @@ func TestDevicesHTTP(t *testing.T) {
 		t.Fatalf("acked_seq want 3 got %v", acked["acked_seq"])
 	}
 	// Replaying the same batch is idempotent: no duplicate rows, same high-water.
-	call(deviceToken, "POST", "/api/devices/events", map[string]any{"events": batch}, 200)
+	if acked = call(deviceToken, "POST", "/api/devices/events", map[string]any{"events": batch}, 200); acked["acked_seq"].(float64) != 3 {
+		t.Fatalf("replay acked_seq want 3 got %v", acked["acked_seq"])
+	}
 	var count int
 	if e = db.QueryRow(ctx, "SELECT count(*) FROM device_events WHERE device_id=$1", deviceID).Scan(&count); e != nil || count != 3 {
 		t.Fatalf("duplicate suppression failed: %d %v", count, e)
@@ -110,6 +128,13 @@ func TestDevicesHTTP(t *testing.T) {
 	acked = call(deviceToken, "POST", "/api/devices/events", map[string]any{"events": []map[string]any{ev(4, "logoff")}}, 200)
 	if acked["acked_seq"].(float64) != 4 {
 		t.Fatalf("resume acked_seq want 4 got %v", acked["acked_seq"])
+	}
+
+	// A recreated local buffer restarts seq at 1 with new event ids. Those are
+	// new events: stored, and acked at the batch's own seq, not the old maximum.
+	acked = call(deviceToken, "POST", "/api/devices/events", map[string]any{"events": []map[string]any{ev(1, "logon")}}, 200)
+	if e = db.QueryRow(ctx, "SELECT count(*) FROM device_events WHERE device_id=$1", deviceID).Scan(&count); e != nil || count != 5 || acked["acked_seq"].(float64) != 1 {
+		t.Fatalf("seq reset lost data: count=%d acked=%v %v", count, acked["acked_seq"], e)
 	}
 
 	// Admin changes config; version bumps and next check-in ships it.
@@ -132,24 +157,26 @@ func TestDevicesHTTP(t *testing.T) {
 	}
 	call(ownerToken, "POST", "/api/devices/"+deviceID+"/command", map[string]any{"command": "bogus"}, 400)
 
-	// Uninstall is one-way and revokes the device token afterwards.
+	// Uninstall is one-way. Check-in must still work so the agent learns it has
+	// to remove itself; only further uploads are refused.
 	call(ownerToken, "POST", "/api/devices/"+deviceID+"/command", map[string]any{"command": "uninstall"}, 200)
-	call(deviceToken, "POST", "/api/devices/checkin", map[string]any{"agent_version": "1.0.0"}, 401)
+	if ci = call(deviceToken, "POST", "/api/devices/checkin", map[string]any{"agent_version": "1.0.0"}, 200); ci["uninstall"] != true {
+		t.Fatal("uninstall command not delivered")
+	}
+	call(deviceToken, "POST", "/api/devices/events", map[string]any{"events": []map[string]any{ev(9, "idle")}}, 403)
 
 	// Owner lists the fleet; a non-owner cannot.
-	workerID := uuid.NewString()
 	workerPw := token()
 	if _, e = db.Exec(ctx, "INSERT INTO users(id,email,name,role,password_hash) VALUES($1,$2,'W','worker',$3)", workerID, workerID+"@example.test", passwordHash(workerPw)); e != nil {
 		t.Fatal(e)
 	}
-	defer db.Exec(ctx, "DELETE FROM users WHERE id=$1", workerID)
 	workerToken := call("", "POST", "/api/auth/login", map[string]any{"email": workerID + "@example.test", "password": workerPw, "device_name": "t"}, 200)["device_token"].(string)
 	call(workerToken, "GET", "/api/devices", nil, 403)
 
-	// This owner produced 3 audit rows: config, pause, uninstall.
+	// This owner produced 4 audit rows: revoke-enrollments, config, pause, uninstall.
 	var mine int
-	if e = db.QueryRow(ctx, "SELECT count(*) FROM admin_audit WHERE actor_id=$1", ownerID).Scan(&mine); e != nil || mine != 3 {
-		t.Fatalf("expected 3 audit rows, got %d %v", mine, e)
+	if e = db.QueryRow(ctx, "SELECT count(*) FROM admin_audit WHERE actor_id=$1", ownerID).Scan(&mine); e != nil || mine != 4 {
+		t.Fatalf("expected 4 audit rows, got %d %v", mine, e)
 	}
 	// The whole audit log is a contiguous hash chain: each prev_hash equals the
 	// prior row's hash. Tamper with any row and the chain breaks here.

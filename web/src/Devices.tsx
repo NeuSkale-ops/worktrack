@@ -66,6 +66,20 @@ export default function Devices() {
     }
   }
 
+  async function revokeSecrets() {
+    if (!confirm('Revoke every outstanding enrollment secret? Enrolled devices keep working.')) return
+    setBusy(true)
+    setError('')
+    try {
+      await post('/devices/enrollments/revoke', {})
+      setSecret('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unable to revoke enrollment secrets.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function command(d: Device, cmd: string, confirmText: string) {
     if (!confirm(confirmText)) return
     setBusy(true)
@@ -104,10 +118,15 @@ export default function Devices() {
           <button onClick={() => void addDevice()} disabled={busy}>
             Add device (enrollment secret)
           </button>
+          <button className="delete" onClick={() => void revokeSecrets()} disabled={busy}>
+            Revoke enrollment secrets
+          </button>
         </div>
         {secret && (
           <p role="status" className="enroll-secret">
-            One-time enrollment secret (valid 7 days). Pass to Intune install:
+            Enrollment secret (valid 7 days, enrolls every laptop in the
+            Intune assignment, revoke when the rollout is done). Pass to
+            Intune install:
             <code>{secret}</code>
           </p>
         )}

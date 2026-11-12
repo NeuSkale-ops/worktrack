@@ -9,7 +9,8 @@ reconfigure or remove it, using least privilege only, no stealth.
 
 - `install.ps1`   per-machine install run by Intune as SYSTEM: lays down the
   service and session helper, hardens ACLs/SDDL, sets service recovery, enrolls
-  the device with a one-time secret.
+  the device with the enrollment secret. Exits 1 when enrollment fails, so
+  Intune reports the failure and retries.
 - `uninstall.ps1` authorized removal (Intune uninstall assignment or dashboard
   `uninstall` command). Flushes the buffer, stops and deletes the service.
 - `detect.ps1`    Intune detection rule (service present + binary on disk).
@@ -31,8 +32,10 @@ scripts, then wrap the folder with the Microsoft Win32 Content Prep Tool
 
 - Install command:
   `powershell.exe -ExecutionPolicy Bypass -File install.ps1 -EnrollSecret "<secret>" -Server "https://worktrack.neuskale.com"`
-  Mint `<secret>` in the dashboard (owner -> Devices -> Add). It is one-time and
-  expires in 7 days. Prefer a per-ring secret via an Intune variable.
+  Mint `<secret>` in the dashboard (owner -> Devices -> Add). One secret enrolls
+  every laptop in the assignment and expires in 7 days. Revoke it from the same
+  card once the rollout is done. Prefer a per-ring secret via an Intune variable.
+  The device is mapped to the Intune enrollment UPN; pass `-Upn` to override.
 - Uninstall command:
   `powershell.exe -ExecutionPolicy Bypass -File uninstall.ps1`
 - Detection: custom script `detect.ps1`.

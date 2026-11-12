@@ -28,7 +28,8 @@ The binaries are unsigned; sign with Authenticode before fleet rollout so
 Defender/SmartScreen pass with Defender enabled. The link is visible only to
 owners inside the dashboard; the file path itself is public like other downloads,
 so do not treat the zip as a secret (it contains no credentials; enrollment
-still requires a one-time secret minted per device).
+still requires a secret minted by an owner, which expires after 7 days and can
+be revoked from the dashboard).
 
 The signed-in dashboard reads `/updates/windows/x86_64/latest.json` and offers that production release's Windows x64 installer and adjacent `SHA256SUMS`.
 It refreshes on mount, window focus, every five minutes, and explicit retry, without using a cached manifest.

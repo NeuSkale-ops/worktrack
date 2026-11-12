@@ -16,7 +16,8 @@ func (a *app) requireOwner(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-// createEnrollment mints a one-time secret for Intune to pass to the agent.
+// createEnrollment mints a secret for Intune to pass to the agent. It enrolls
+// any number of devices until it expires or revokeEnrollments runs.
 func (a *app) createEnrollment(w http.ResponseWriter, r *http.Request) {
 	if !a.requireOwner(w, r) {
 		return
@@ -29,6 +30,31 @@ func (a *app) createEnrollment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"secret": secret, "expires_in_days": 7})
+}
+
+// revokeEnrollments invalidates every outstanding enrollment secret, for use
+// when a rollout is finished or a secret has leaked. Enrolled devices keep
+// their own tokens.
+func (a *app) revokeEnrollments(w http.ResponseWriter, r *http.Request) {
+	if !a.requireOwner(w, r) {
+		return
+	}
+	tx, err := a.db.Begin(r.Context())
+	if err != nil {
+		fail(w, 503, "revoke unavailable")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	tag, err := tx.Exec(r.Context(),
+		"UPDATE device_enrollments SET revoked_at=now() WHERE revoked_at IS NULL AND expires_at>now()")
+	if err == nil {
+		err = a.audit(r.Context(), tx, current(r).ID, "revoke-enrollments", nil, map[string]any{"revoked": tag.RowsAffected()})
+	}
+	if err != nil || tx.Commit(r.Context()) != nil {
+		fail(w, 503, "revoke unavailable")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "revoked": tag.RowsAffected()})
 }
 
 // listDevices returns fleet health for the dashboard.

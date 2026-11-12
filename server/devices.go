@@ -19,12 +19,15 @@ import (
 // mapped to a WorkTrack user by UPN (email) at enrollment.
 
 type managedDevice struct {
-	id     string
-	userID *string
-	upn    string
+	id        string
+	userID    *string
+	upn       string
+	uninstall bool
 }
 
-// deviceToken resolves a managed-device bearer token to the device row.
+// deviceToken resolves a managed-device bearer token to the device row. A
+// device marked for uninstall still authenticates so check-in can deliver the
+// uninstall command; deviceEvents refuses its uploads.
 func (a *app) deviceToken(r *http.Request) (managedDevice, bool) {
 	h := r.Header.Get("Authorization")
 	if !strings.HasPrefix(h, "Bearer ") {
@@ -33,17 +36,18 @@ func (a *app) deviceToken(r *http.Request) (managedDevice, bool) {
 	hash := digest(strings.TrimPrefix(h, "Bearer "))
 	var d managedDevice
 	e := a.db.QueryRow(r.Context(),
-		"SELECT id::text,user_id::text,upn FROM devices WHERE token_hash=$1 AND uninstall=false",
-		hash).Scan(&d.id, &d.userID, &d.upn)
+		"SELECT id::text,user_id::text,upn,uninstall FROM devices WHERE token_hash=$1",
+		hash).Scan(&d.id, &d.userID, &d.upn, &d.uninstall)
 	if e != nil {
 		return managedDevice{}, false
 	}
 	return d, true
 }
 
-// enroll exchanges a one-time enrollment secret for a durable device token.
-// The secret is minted by an admin (createEnrollment) and passed to the agent
-// on the Intune install command line.
+// enroll exchanges an enrollment secret for a durable device token. The secret
+// is minted by an admin (createEnrollment) and passed to the agent on the
+// Intune install command line, which is shared by every laptop in the
+// assignment, so it stays valid until it expires or an owner revokes it.
 func (a *app) enroll(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Secret   string `json:"secret"`
@@ -69,16 +73,15 @@ func (a *app) enroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(r.Context())
-	// Consume the one-time secret under row lock so a leaked secret enrolls once.
 	tag, err := tx.Exec(r.Context(),
-		"UPDATE device_enrollments SET used_at=now() WHERE secret_hash=$1 AND used_at IS NULL AND expires_at>now()",
+		"UPDATE device_enrollments SET used_at=now() WHERE secret_hash=$1 AND revoked_at IS NULL AND expires_at>now()",
 		digest(in.Secret))
 	if err != nil {
 		fail(w, 503, "enrollment unavailable")
 		return
 	}
 	if tag.RowsAffected() != 1 {
-		fail(w, 401, "invalid or used enrollment secret")
+		fail(w, 401, "invalid, expired or revoked enrollment secret")
 		return
 	}
 	// Map UPN to an existing user. Unknown UPNs still enroll (user_id NULL) so IT
@@ -154,12 +157,18 @@ func (a *app) checkin(w http.ResponseWriter, r *http.Request) {
 }
 
 // events ingests a batch durably and idempotently. Returns acked_seq; the agent
-// prunes its local buffer up to that point. Duplicate batches are suppressed by
-// the (device_id,seq) primary key.
+// prunes its local buffer up to that point. Duplicate events are suppressed by
+// the (device_id,event_id) primary key, so the agent must give every event a
+// unique event_id. seq is only the agent's local ordering: it restarts at 1
+// when the local buffer is recreated.
 func (a *app) deviceEvents(w http.ResponseWriter, r *http.Request) {
 	d, okAuth := a.deviceToken(r)
 	if !okAuth {
 		fail(w, 401, "device token required")
+		return
+	}
+	if d.uninstall {
+		fail(w, 403, "device is uninstalling")
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
@@ -181,7 +190,9 @@ func (a *app) deviceEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
+	var acked int64
 	for _, e := range in.Events {
+		acked = max(acked, e.Seq)
 		if e.Seq < 1 || !validID(e.EventID) || e.Kind == "" || len(e.Kind) > 64 ||
 			e.OccurredAt.IsZero() || e.OccurredAt.After(now.Add(2*time.Minute)) {
 			fail(w, 400, "invalid event")
@@ -201,20 +212,15 @@ func (a *app) deviceEvents(w http.ResponseWriter, r *http.Request) {
 		}
 		if _, err = tx.Exec(r.Context(),
 			`INSERT INTO device_events(device_id,seq,event_id,kind,occurred_at,payload)
-			 VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(device_id,seq) DO NOTHING`,
+			 VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(device_id,event_id) DO NOTHING`,
 			d.id, e.Seq, e.EventID, e.Kind, e.OccurredAt, payload); err != nil {
 			fail(w, 503, "could not store events")
 			return
 		}
 	}
-	// High-water mark: contiguous seq delivered so far. The agent sends FIFO, so
-	// the max stored seq is the safe prune point.
-	var acked int64
-	if err = tx.QueryRow(r.Context(),
-		"SELECT COALESCE(MAX(seq),0) FROM device_events WHERE device_id=$1", d.id).Scan(&acked); err != nil {
-		fail(w, 503, "ingest unavailable")
-		return
-	}
+	// Every event in this batch is now stored, by this request or an earlier
+	// one, and the agent sends FIFO, so the highest seq in the batch is the safe
+	// prune point. The stored maximum is not: it outlives a recreated buffer.
 	if _, err = tx.Exec(r.Context(),
 		"UPDATE devices SET acked_seq=$2, last_sync_at=now() WHERE id=$1", d.id, acked); err != nil {
 		fail(w, 503, "ingest unavailable")
