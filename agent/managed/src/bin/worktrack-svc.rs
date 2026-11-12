@@ -72,7 +72,7 @@ mod win {
         let status_handle = service_control_handler::register(SERVICE_NAME, handler)?;
 
         let set = |state: ServiceState, accept: ServiceControlAccept| {
-            status_handle.set_service_status(&ServiceStatus {
+            status_handle.set_service_status(ServiceStatus {
                 service_type: SERVICE_TYPE,
                 current_state: state,
                 controls_accepted: accept,
