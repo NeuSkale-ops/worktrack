@@ -278,7 +278,7 @@ func (a *app) security(next http.Handler) http.Handler {
 			w.WriteHeader(204)
 			return
 		}
-		if r.Method != "GET" && r.Method != "HEAD" && !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") && origin == "" && r.URL.Path != "/api/auth/login" {
+		if r.Method != "GET" && r.Method != "HEAD" && !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") && origin == "" && r.URL.Path != "/api/auth/login" && r.URL.Path != "/api/devices/enroll" {
 			fail(w, 403, "Origin required for cookie requests")
 			return
 		}
@@ -326,7 +326,11 @@ func (a *app) routes() http.Handler {
 	m.HandleFunc("POST /api/auth/login", a.login)
 	m.HandleFunc("POST /api/auth/accept-invite", a.acceptInvite)
 	m.HandleFunc("POST /api/auth/reset-password", a.resetPassword)
-	for path, h := range map[string]http.HandlerFunc{"POST /api/auth/password": a.changePassword, "POST /api/users/{id}/disable": a.disableUser, "POST /api/users/{id}/enable": a.enableUser, "POST /api/users/{id}/revoke-devices": a.revokeDevices, "POST /api/users/{id}/password-reset": a.createPasswordReset, "GET /api/auth/me": func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, current(r).user) }, "POST /api/auth/logout": a.logout, "POST /api/invites": a.invite, "GET /api/team": a.team, "POST /api/agent/logs": a.ingestAgentLogs, "GET /api/agent/logs": a.agentLogs, "GET /api/sessions/current": a.openSession, "POST /api/sessions/recover": a.recoverSession, "POST /api/sessions/start": a.start, "POST /api/sessions/stop": a.stop, "POST /api/heartbeat": a.heartbeat, "POST /api/uploads/screenshot-url": a.upload, "POST /api/blocks": a.blocks, "DELETE /api/blocks/{id}/screenshot": a.deleteScreenshot, "DELETE /api/blocks/{id}": a.deleteBlock, "GET /api/timeline": a.timeline, "GET /api/reports/hours": a.hours, "GET /api/reports/day": a.day, "GET /api/reports/hours.csv": a.hours} {
+	// Managed-device agent endpoints self-authenticate with the device token.
+	m.HandleFunc("POST /api/devices/enroll", a.enroll)
+	m.HandleFunc("POST /api/devices/checkin", a.checkin)
+	m.HandleFunc("POST /api/devices/events", a.deviceEvents)
+	for path, h := range map[string]http.HandlerFunc{"POST /api/auth/password": a.changePassword, "POST /api/users/{id}/disable": a.disableUser, "POST /api/users/{id}/enable": a.enableUser, "POST /api/users/{id}/revoke-devices": a.revokeDevices, "POST /api/users/{id}/password-reset": a.createPasswordReset, "GET /api/auth/me": func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, current(r).user) }, "POST /api/auth/logout": a.logout, "POST /api/invites": a.invite, "GET /api/team": a.team, "POST /api/agent/logs": a.ingestAgentLogs, "POST /api/devices/enrollments": a.createEnrollment, "GET /api/devices": a.listDevices, "PUT /api/devices/{id}/config": a.updateConfig, "POST /api/devices/{id}/command": a.deviceCommand, "GET /api/agent/logs": a.agentLogs, "GET /api/sessions/current": a.openSession, "POST /api/sessions/recover": a.recoverSession, "POST /api/sessions/start": a.start, "POST /api/sessions/stop": a.stop, "POST /api/heartbeat": a.heartbeat, "POST /api/uploads/screenshot-url": a.upload, "POST /api/blocks": a.blocks, "DELETE /api/blocks/{id}/screenshot": a.deleteScreenshot, "DELETE /api/blocks/{id}": a.deleteBlock, "GET /api/timeline": a.timeline, "GET /api/reports/hours": a.hours, "GET /api/reports/day": a.day, "GET /api/reports/hours.csv": a.hours} {
 		m.HandleFunc(path, a.auth(h))
 	}
 	return a.security(m)
