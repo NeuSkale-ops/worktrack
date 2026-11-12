@@ -1,5 +1,35 @@
 # Worker installer downloads
 
+## Managed-agent download (company-owned devices, owner only)
+
+The owner Devices card links `/downloads/managed-agent/worktrack-managed-agent.zip`,
+served from the same public `/srv/worktrack-downloads` mount and Caddy `/downloads/*`
+routes (now also sending `*.zip` as an attachment). The zip holds the Windows
+service and session binaries plus `install.ps1`, `uninstall.ps1`, `detect.ps1`
+and `SHA256SUMS`. It is IT-facing packaging for Intune, not a worker self-install.
+
+Place it on the host:
+
+```sh
+sudo mkdir -p /srv/worktrack-downloads/managed-agent
+sudo cp worktrack-managed-agent.zip /srv/worktrack-downloads/managed-agent/
+```
+
+Build the zip from the green `Managed agent` CI run:
+
+```sh
+gh run download <run-id> -n worktrack-managed-agent-unsigned -D payload
+cd payload && shasum -a 256 * > SHA256SUMS
+zip -j worktrack-managed-agent.zip worktrack-svc.exe worktrack-session.exe \
+  install.ps1 uninstall.ps1 detect.ps1 SHA256SUMS
+```
+
+The binaries are unsigned; sign with Authenticode before fleet rollout so
+Defender/SmartScreen pass with Defender enabled. The link is visible only to
+owners inside the dashboard; the file path itself is public like other downloads,
+so do not treat the zip as a secret (it contains no credentials; enrollment
+still requires a one-time secret minted per device).
+
 The signed-in dashboard reads `/updates/windows/x86_64/latest.json` and offers that production release's Windows x64 installer and adjacent `SHA256SUMS`.
 It refreshes on mount, window focus, every five minutes, and explicit retry, without using a cached manifest.
 Only a stable version and its canonical same-origin `/updates/windows/x86_64/releases/{version}/worktrack-setup.exe` URL are accepted.

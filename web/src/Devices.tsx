@@ -90,6 +90,13 @@ export default function Devices() {
           device. A stale check-in is the tamper signal; the agent is never
           hidden.
         </p>
+        <p className="muted">
+          <a className="button" href="/downloads/managed-agent/worktrack-managed-agent.zip" download>
+            Download Windows agent (.zip)
+          </a>{' '}
+          Unsigned build for IT. Deploy via Intune with the enrollment secret
+          below. See <code>deploy/managed-agent/README.md</code>.
+        </p>
         <div className="block-actions">
           <button onClick={() => void load()} disabled={busy}>
             {busy ? 'Loading…' : 'Load devices'}
