@@ -32,7 +32,7 @@ mod dpapi {
     use super::Sealer;
     use windows::Win32::Foundation::{LocalFree, HLOCAL};
     use windows::Win32::Security::Cryptography::{
-        CryptProtectData, CryptUnprotectData, CRYPTOAPI_BLOB, CRYPTPROTECT_LOCAL_MACHINE,
+        CryptProtectData, CryptUnprotectData, CRYPTPROTECT_LOCAL_MACHINE, CRYPT_INTEGER_BLOB,
     };
 
     /// Machine-scope DPAPI. Any process on this machine can unseal, which is why
@@ -42,13 +42,13 @@ mod dpapi {
     impl Sealer for Dpapi {
         fn seal(&self, plain: &[u8]) -> Vec<u8> {
             unsafe {
-                let mut input = CRYPTOAPI_BLOB {
+                let input = CRYPT_INTEGER_BLOB {
                     cbData: plain.len() as u32,
                     pbData: plain.as_ptr() as *mut u8,
                 };
-                let mut out = CRYPTOAPI_BLOB::default();
+                let mut out = CRYPT_INTEGER_BLOB::default();
                 if CryptProtectData(
-                    &mut input,
+                    &input,
                     None,
                     None,
                     None,
@@ -58,9 +58,8 @@ mod dpapi {
                 )
                 .is_ok()
                 {
-                    let v =
-                        std::slice::from_raw_parts(out.pbData, out.cbData as usize).to_vec();
-                    let _ = LocalFree(HLOCAL(out.pbData as *mut _));
+                    let v = std::slice::from_raw_parts(out.pbData, out.cbData as usize).to_vec();
+                    let _ = LocalFree(Some(HLOCAL(out.pbData as *mut _)));
                     v
                 } else {
                     // Fail closed: never store plaintext if protection fails.
@@ -74,15 +73,15 @@ mod dpapi {
                 return Err("sealed payload is empty (seal failed at write time)".into());
             }
             unsafe {
-                let mut input = CRYPTOAPI_BLOB {
+                let input = CRYPT_INTEGER_BLOB {
                     cbData: sealed.len() as u32,
                     pbData: sealed.as_ptr() as *mut u8,
                 };
-                let mut out = CRYPTOAPI_BLOB::default();
-                CryptUnprotectData(&mut input, None, None, None, None, 0, &mut out)
+                let mut out = CRYPT_INTEGER_BLOB::default();
+                CryptUnprotectData(&input, None, None, None, None, 0, &mut out)
                     .map_err(|e| e.to_string())?;
                 let v = std::slice::from_raw_parts(out.pbData, out.cbData as usize).to_vec();
-                let _ = LocalFree(HLOCAL(out.pbData as *mut _));
+                let _ = LocalFree(Some(HLOCAL(out.pbData as *mut _)));
                 Ok(v)
             }
         }
