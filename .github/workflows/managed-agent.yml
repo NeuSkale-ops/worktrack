@@ -1,0 +1,73 @@
+name: Managed agent
+on:
+  pull_request:
+    paths:
+      - 'agent/managed/**'
+      - 'deploy/managed-agent/**'
+      - '.github/workflows/managed-agent.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'agent/managed/**'
+      - 'deploy/managed-agent/**'
+      - '.github/workflows/managed-agent.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: managed-agent-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build-and-security:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: agent/managed
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install stable Rust
+        run: rustup toolchain install stable --profile minimal
+      - run: rustup default stable
+      - run: rustup component add clippy
+      - run: cargo test --locked
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo build --locked --release
+
+      # No-credential-capture gate: the binaries must not import keyboard-hook or
+      # key-state APIs. Fail the build if any appear in the import table.
+      - name: Assert no keylogging imports
+        shell: pwsh
+        run: |
+          $bad = 'SetWindowsHookEx','GetAsyncKeyState','GetKeyboardState','RegisterRawInputDevices'
+          $dumpbin = (Get-ChildItem "C:\Program Files*\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" -ErrorAction SilentlyContinue | Select-Object -First 1)
+          foreach ($exe in 'worktrack-svc.exe','worktrack-session.exe') {
+            $path = "target\release\$exe"
+            $imports = & $dumpbin.FullName /imports $path 2>$null
+            foreach ($api in $bad) {
+              if ($imports -match $api) { throw "$exe imports $api (credential/keylogging API forbidden)" }
+            }
+          }
+          Write-Output "No keylogging imports found."
+
+      # Tamper enforcement: install as SYSTEM (the runner is admin), then verify a
+      # standard user cannot stop/delete the service and the ACLs hold. The SDDL
+      # must grant admins full and interactive users read/query only.
+      - name: Verify service hardening
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Copy-Item target\release\worktrack-svc.exe ..\..\deploy\managed-agent\
+          Copy-Item target\release\worktrack-session.exe ..\..\deploy\managed-agent\
+          Push-Location ..\..\deploy\managed-agent
+          # Enrollment will fail (no server) but install must still harden locally.
+          & powershell -ExecutionPolicy Bypass -File install.ps1 -EnrollSecret "ci-noop" -Server "http://127.0.0.1:1"
+          $sddl = (& sc.exe sdshow WorkTrackAgent) -join ''
+          if ($sddl -notmatch 'A;;CCLCSWRPWPDTLOCRRC;;;BA') { throw "admins lack full control: $sddl" }
+          if ($sddl -match '\(A;;CCLCSWRPWPDTLOCRRC;;;IU\)') { throw "interactive users must not get stop/config" }
+          # ProgramData must deny Users.
+          $acl = (icacls "$env:ProgramData\WorkTrack") -join "`n"
+          if ($acl -match 'BUILTIN\\Users') { throw "Users have access to data dir: $acl" }
+          & detect.ps1; if ($LASTEXITCODE -ne 0) { throw "detection failed after install" }
+          & powershell -ExecutionPolicy Bypass -File uninstall.ps1
+          Pop-Location
+          Write-Output "Service hardening verified."
