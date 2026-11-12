@@ -385,7 +385,7 @@ fn resolve_once(shared: &Shared, locate: impl FnOnce() -> Option<Fix>) -> bool {
         let eligible = r.location.enabled
             && r.session.as_deref() == Some(session.as_str())
             && !r.paused
-            && (0..=2000).contains(&fresh);
+            && (0..=FRESH_MS).contains(&fresh);
         (id, snapshot, r.location.generation, session, eligible)
     };
     let fix = if eligible { locate() } else { None };
@@ -403,6 +403,11 @@ fn resolve_once(shared: &Shared, locate: impl FnOnce() -> Option<Fix>) -> bool {
     }
     true
 }
+// captured_at is the block end in whole seconds, so it trails the real clock by
+// up to two seconds of rounding plus capture and JPEG encoding time. Four
+// seconds covers that and, with the five-second fix timeout, still lands inside
+// the ten seconds the server allows between capture and fix.
+const FRESH_MS: i64 = 4000;
 pub fn run(shared: Shared) {
     loop {
         std::thread::sleep(Duration::from_millis(200));

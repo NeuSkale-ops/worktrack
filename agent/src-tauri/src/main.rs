@@ -527,6 +527,11 @@ fn sync_one(shared: &Shared) -> Result<bool, String> {
             .send()
             .map_err(|e| e.to_string())?;
             if !response.status().is_success() {
+                // A refused reservation must not block the FIFO forever, for
+                // example once the server no longer accepts a week-old session.
+                if permanent_rejection(response.status()) {
+                    return refused(shared, item.id, response.status());
+                }
                 return Err(format!("Screenshot URL rejected ({})", response.status()));
             }
             let upload: serde_json::Value = response.json().map_err(|e| e.to_string())?;
@@ -585,16 +590,7 @@ fn sync_one(shared: &Shared) -> Result<bool, String> {
             );
         }
         if permanent_rejection(status) {
-            let mut r = shared.lock().map_err(|e| e.to_string())?;
-            if hold_or_reject(&mut r, item.id, status.as_u16(), utc_now())? {
-                r.error = Some(format!(
-                    "The server refused one record ({status}) for 24 hours. It was set aside locally so newer records can sync. Contact your manager."
-                ));
-                return Ok(true);
-            }
-            return Err(format!(
-                "Sync refused ({status}). Retrying. If this persists for 24 hours the record is set aside so newer records can sync."
-            ));
+            return refused(shared, item.id, status);
         }
         return Err(format!(
             "Sync rejected ({}). Records retained. Sign-in may need renewal.",
@@ -606,6 +602,18 @@ fn sync_one(shared: &Shared) -> Result<bool, String> {
     r.queue.set(HEAD_REJECTED, "")?;
     r.error = None;
     Ok(true)
+}
+fn refused(shared: &Shared, id: i64, status: reqwest::StatusCode) -> Result<bool, String> {
+    let mut r = shared.lock().map_err(|e| e.to_string())?;
+    if hold_or_reject(&mut r, id, status.as_u16(), utc_now())? {
+        r.error = Some(format!(
+            "The server refused one record ({status}) for 24 hours. It was set aside locally so newer records can sync. Contact your manager."
+        ));
+        return Ok(true);
+    }
+    Err(format!(
+        "Sync refused ({status}). Retrying. If this persists for 24 hours the record is set aside so newer records can sync."
+    ))
 }
 const HEAD_REJECTED: &str = "head_rejected";
 /// Hold time before a refused record is set aside. A rolled-back or misconfigured
@@ -973,7 +981,10 @@ mod tests {
         assert_eq!(SERVER_URL, "https://worktrack.neuskale.com");
         assert!(queue_matches_server("", 0));
         assert!(queue_matches_server(SERVER_URL, 3));
-        assert!(queue_matches_server("https://worktrack.178.156.213.40.sslip.io", 3));
+        assert!(queue_matches_server(
+            "https://worktrack.178.156.213.40.sslip.io",
+            3
+        ));
         assert!(queue_matches_server("https://previous.invalid", 0));
         assert!(!queue_matches_server("https://previous.invalid", 3));
         assert!(!queue_matches_server("", 3));
@@ -988,14 +999,20 @@ mod tests {
         let old = PREVIOUS_SERVER_URLS[0];
         let q = Queue::open(std::path::Path::new(":memory:")).unwrap();
         q.set("server", old).unwrap();
-        q.push("/api/sessions/stop", &json!({"id":"s"}), None).unwrap();
+        q.push("/api/sessions/stop", &json!({"id":"s"}), None)
+            .unwrap();
         let s = store();
         s.borrow_mut().insert(old.into(), "tok".into());
         let token = migrate_server(
             &q,
             |k| s.borrow().get(k).cloned(),
-            |k, v| { s.borrow_mut().insert(k.into(), v.into()); Ok(()) },
-            |k| { s.borrow_mut().remove(k); },
+            |k, v| {
+                s.borrow_mut().insert(k.into(), v.into());
+                Ok(())
+            },
+            |k| {
+                s.borrow_mut().remove(k);
+            },
         );
         assert_eq!(token.as_deref(), Some("tok"));
         assert_eq!(q.get("server").as_deref(), Some(SERVER_URL));
@@ -1015,7 +1032,9 @@ mod tests {
             &q,
             |k| s.borrow().get(k).cloned(),
             |_, _| Err("keychain locked".into()),
-            |k| { s.borrow_mut().remove(k); },
+            |k| {
+                s.borrow_mut().remove(k);
+            },
         );
         assert_eq!(token.as_deref(), Some("tok"));
         assert_eq!(q.get("server").as_deref(), Some(old), "not moved yet");
@@ -1027,7 +1046,8 @@ mod tests {
         let q = Queue::open(std::path::Path::new(":memory:")).unwrap();
         q.set("server", "https://other.invalid").unwrap();
         let s = store();
-        s.borrow_mut().insert("https://other.invalid".into(), "x".into());
+        s.borrow_mut()
+            .insert("https://other.invalid".into(), "x".into());
         let token = migrate_server(
             &q,
             |k| s.borrow().get(k).cloned(),
@@ -1297,6 +1317,48 @@ mod tests {
     #[test]
     fn expired_reservation_reuploads_retained_image() {
         upload_retry_case(true);
+    }
+    #[test]
+    fn refused_screenshot_reservation_is_held_then_set_aside() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let server = format!("http://{}", listener.local_addr().unwrap());
+        let worker = std::thread::spawn(move || {
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut buffer = [0u8; 4096];
+                let n = stream.read(&mut buffer).unwrap();
+                assert!(
+                    String::from_utf8_lossy(&buffer[..n]).contains("/api/uploads/screenshot-url")
+                );
+                write!(
+                    stream,
+                    "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                )
+                .unwrap();
+            }
+        });
+        let mut r = runtime();
+        r.server = server;
+        r.token = Some("test-device".into());
+        r.queue
+            .push("/api/blocks", &json!({"blocks":[{"id":"old"}]}), Some(&[1]))
+            .unwrap();
+        r.queue.push("/next", &json!({}), None).unwrap();
+        let shared = Arc::new(Mutex::new(r));
+        assert!(sync_one(&shared).is_err());
+        {
+            let r = shared.lock().unwrap();
+            assert_eq!((r.queue.count(), r.queue.rejected_count()), (2, 0));
+            let day_ago = utc_now() - chrono::Duration::hours(25);
+            r.queue.set(HEAD_REJECTED, &day_ago.to_rfc3339()).unwrap();
+        }
+        assert!(sync_one(&shared).unwrap());
+        let r = shared.lock().unwrap();
+        assert_eq!((r.queue.count(), r.queue.rejected_count()), (1, 1));
+        assert_eq!(r.queue.first().unwrap().unwrap().path, "/next");
+        drop(r);
+        worker.join().unwrap();
     }
     fn upload_retry_case(expired: bool) {
         use std::io::{Read, Write};
