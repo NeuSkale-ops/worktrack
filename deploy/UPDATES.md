@@ -2,7 +2,9 @@
 
 Status: signed candidates, manual installer distribution, and isolated update hosting are verified.
 On October 21, 2026, the approved host setup installed both restricted receivers and read-only public mounts.
-Both production and staging `latest.json` endpoints still return HTTP 404 because no accepted manifest has been published.
+Update, November 12, 2026: the production feed at `https://worktrack.neuskale.com/updates/windows/x86_64/latest.json` returns HTTP 200 and offers 0.1.11. The statements below about unpublished feeds describe October 21 and no longer hold for production.
+That release shipped from a local cross-build without a native Windows runtime test, see `docs/RELEASE-0.1.11.md`.
+On October 21, both production and staging `latest.json` endpoints returned HTTP 404 because no accepted manifest had been published.
 Signed workflow `39619325968` passed build and verification, but its publication job was skipped.
 Workflow `39663283701` passed real installed Windows 0.1.5-to-0.1.6 upgrade acceptance with the exact signed candidate from `39658013988` and `publish=false`. Sign-in/local data survived, tracking stayed stopped, and stalled-download recovery completed in 602.14 seconds. This offline-seeded test does not close the connected-worker release gates below.
 A successful candidate build, configured host, or GitHub release does not enable automatic updates.

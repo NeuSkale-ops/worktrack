@@ -1,5 +1,40 @@
 # Worker installer downloads
 
+## Managed-agent download (company-owned devices, owner only)
+
+The owner-only managed agent card in Settings reads `/managed-agent/latest.json`
+and links `/managed-agent/worktrack-managed-agent-{version}.zip`. Both files ship
+inside the dashboard image, so no host or cluster volume is involved. The zip
+holds the Windows service and session binaries plus `install.ps1`,
+`uninstall.ps1`, `detect.ps1` and `SHA256SUMS`. It is IT-facing packaging for
+Intune, not a worker self-install.
+
+`web/public/managed-agent/latest.json` pins the version and the zip's SHA-256.
+The `Deploy` workflow downloads that version from the GitHub release
+`managed-agent-v{version}`, verifies the checksum and fails the deploy on a
+mismatch.
+
+Publish a new version from a green `Managed agent` CI run. Run `gh` from the
+repository directory so it uses the right account:
+
+```sh
+gh run download <run-id> -n worktrack-managed-agent-unsigned -D payload
+cd payload && shasum -a 256 *.exe *.ps1 > SHA256SUMS
+zip -j -X worktrack-managed-agent-<version>.zip worktrack-svc.exe worktrack-session.exe \
+  install.ps1 uninstall.ps1 detect.ps1 SHA256SUMS
+shasum -a 256 worktrack-managed-agent-<version>.zip
+gh release create managed-agent-v<version> --prerelease worktrack-managed-agent-<version>.zip
+```
+
+Then set `version` and `sha256` in `latest.json`, merge, and push `deploy`.
+
+The binaries are unsigned; sign with Authenticode before fleet rollout so
+Defender/SmartScreen pass with Defender enabled. The link is visible only to
+owners inside the dashboard; the file path itself is public like other downloads,
+so do not treat the zip as a secret (it contains no credentials; enrollment
+still requires a secret minted by an owner, which expires after 7 days and can
+be revoked from the dashboard).
+
 The signed-in dashboard reads `/updates/windows/x86_64/latest.json` and offers that production release's Windows x64 installer and adjacent `SHA256SUMS`.
 It refreshes on mount, window focus, every five minutes, and explicit retry, without using a cached manifest.
 Only a stable version and its canonical same-origin `/updates/windows/x86_64/releases/{version}/worktrack-setup.exe` URL are accepted.

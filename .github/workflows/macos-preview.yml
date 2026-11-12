@@ -1,18 +1,8 @@
 name: macOS Apple Silicon preview
+# Suspended on pull requests and main pushes while no Mac release is planned.
+# Restore the pull_request and push triggers (paths: agent/**,
+# .github/workflows/macos*.yml, deploy/macos*.json, scripts/macos*) to resume.
 on:
-  pull_request:
-    paths:
-      - 'agent/**'
-      - '.github/workflows/macos*.yml'
-      - 'deploy/macos*.json'
-      - 'scripts/macos*'
-  push:
-    branches: [main]
-    paths:
-      - 'agent/**'
-      - '.github/workflows/macos*.yml'
-      - 'deploy/macos*.json'
-      - 'scripts/macos*'
   workflow_dispatch:
   workflow_call:
 permissions:

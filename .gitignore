@@ -15,3 +15,9 @@ coverage/
 *.sqlite3
 __pycache__/
 *.pyc
+
+# Local build output of the API (go build in server/)
+/server/server
+
+# Managed agent zip is fetched from its GitHub release at deploy time
+/web/public/managed-agent/*.zip

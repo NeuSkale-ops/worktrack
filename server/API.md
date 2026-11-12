@@ -97,6 +97,47 @@ Entries older than seven days by occurrence time are excluded from reads and del
 This retention applies to the live database. Existing encrypted backups retain their snapshots according to the backup policy.
 No logging failure changes tracking records, screenshot retention, or wages.
 
+## Managed devices (disclosed company-laptop agent)
+
+These endpoints serve the Windows service agent for company-owned devices. They
+are separate from the per-user Tauri `device` credential above: a managed device
+is a machine, mapped to a user by UPN (email) at enrollment, carrying its own
+bearer token. Capture on each device is disclosed and admin-gated by config.
+
+Enrollment and lifecycle:
+- `POST /api/devices/enrollments` (owner): mint an enrollment secret, valid 7 days.
+  Returns `{secret,expires_in_days}`. Pass the secret to the agent via Intune.
+  One secret enrolls every laptop in the assignment.
+- `POST /api/devices/enrollments/revoke` (owner): body `{}`. Invalidates every
+  outstanding secret, returns `{ok,revoked}`. Enrolled devices are unaffected.
+- `POST /api/devices/enroll` (no auth, secret only): body `{secret,upn,hostname?}`.
+  Maps `upn` to an existing user
+  (unknown UPN enrolls with no user link), returns `{device_id,token}`. 401 on
+  invalid/expired/revoked secret. Rate limited per client IP.
+- `POST /api/devices/checkin` (device token): body `{agent_version?,buffer_depth?,
+  dropped_events?,config_version?}`. Updates observed health and returns desired
+  state `{enabled,paused,uninstall,config_version,config?}`. `config` is sent
+  only when the agent's `config_version` is older. Poll model, no inbound port.
+  Still answers after an uninstall command, so the agent receives it.
+- `POST /api/devices/events` (device token): body `{events:[{seq,event_id,kind,
+  occurred_at,payload?}]}`, 1 to 500 events, 1 MiB cap. Inserts with
+  `ON CONFLICT(device_id,event_id) DO NOTHING`, returns `{acked_seq}` = highest
+  seq in the batch. At-least-once send plus idempotent ingest gives exactly-once
+  delivery; the agent prunes its buffer up to `acked_seq`. `event_id` must be
+  unique per event. `seq` is the agent's local order only and may restart at 1
+  when its buffer is recreated. 403 once the device is marked for uninstall.
+
+Admin (owner only):
+- `GET /api/devices`: fleet health (version, last check-in, last sync, buffer
+  depth, dropped events, desired state).
+- `PUT /api/devices/{id}/config`: replace capture config JSON; bumps
+  `config_version` so the next check-in delivers it.
+- `POST /api/devices/{id}/command`: `{command}` one of enable, disable, pause,
+  resume, uninstall. Uninstall is one-way and revokes the device token.
+
+Every config change and command appends a row to `admin_audit`, a tamper-evident
+hash chain (`hash = sha256(prev_hash + actor + action + timestamp)`).
+
 ## Environment
 
 DATABASE_URL, APP_ORIGIN (default http://localhost:5173), LISTEN_ADDR (default :8080), DEV_MODE (default false).
