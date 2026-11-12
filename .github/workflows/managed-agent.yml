@@ -67,7 +67,7 @@ jobs:
           # ProgramData must deny Users.
           $acl = (icacls "$env:ProgramData\WorkTrack") -join "`n"
           if ($acl -match 'BUILTIN\\Users') { throw "Users have access to data dir: $acl" }
-          & detect.ps1; if ($LASTEXITCODE -ne 0) { throw "detection failed after install" }
+          & .\detect.ps1; if ($LASTEXITCODE -ne 0) { throw "detection failed after install" }
           & powershell -ExecutionPolicy Bypass -File uninstall.ps1
           Pop-Location
           Write-Output "Service hardening verified."
