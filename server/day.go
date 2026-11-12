@@ -15,8 +15,9 @@ type daySpan struct {
 // day returns block spans for every person the caller may see on one local
 // date. It powers the team ribbon, so it never signs screenshot URLs.
 func (a *app) day(w http.ResponseWriter, r *http.Request) {
-	loc, okay := zone(w, r)
+	loc, okay := zone(r)
 	if !okay {
+		fail(w, 400, "invalid time zone")
 		return
 	}
 	date, e := dateValue(r.URL.Query().Get("date"), loc)

@@ -19,18 +19,17 @@ func dateValue(v string, loc *time.Location) (time.Time, error) {
 }
 
 // zone reads the optional IANA `tz` query parameter, defaulting to UTC.
-// Report days then start at local midnight in that zone.
-func zone(w http.ResponseWriter, r *http.Request) (*time.Location, bool) {
+// Report days start at local midnight in that zone.
+func zone(r *http.Request) (*time.Location, bool) {
 	name := r.URL.Query().Get("tz")
 	if name == "" {
 		return time.UTC, true
 	}
-	loc, e := time.LoadLocation(name)
-	if e != nil || name == "Local" || len(name) > 64 {
-		fail(w, 400, "invalid time zone")
+	if len(name) > 64 || strings.ContainsAny(name, " \\") || strings.HasPrefix(name, "/") {
 		return nil, false
 	}
-	return loc, true
+	loc, e := time.LoadLocation(name)
+	return loc, e == nil && name != "Local"
 }
 func (a *app) timeline(w http.ResponseWriter, r *http.Request) {
 	u := current(r)
@@ -46,8 +45,9 @@ func (a *app) timeline(w http.ResponseWriter, r *http.Request) {
 		fail(w, 403, "own timeline only")
 		return
 	}
-	loc, okay := zone(w, r)
+	loc, okay := zone(r)
 	if !okay {
+		fail(w, 400, "invalid time zone")
 		return
 	}
 	date, e := dateValue(r.URL.Query().Get("date"), loc)
@@ -109,8 +109,9 @@ type hourRow struct {
 }
 
 func (a *app) hours(w http.ResponseWriter, r *http.Request) {
-	loc, okay := zone(w, r)
+	loc, okay := zone(r)
 	if !okay {
+		fail(w, 400, "invalid time zone")
 		return
 	}
 	from, e := dateValue(r.URL.Query().Get("from"), loc)

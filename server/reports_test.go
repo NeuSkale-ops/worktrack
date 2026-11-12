@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -192,5 +193,14 @@ func TestDaySpansScopeAndScreenshotFlags(t *testing.T) {
 	}
 	if strings.Contains(w.Body.String(), "shot.jpg") {
 		t.Fatal("day report must not expose screenshot keys")
+	}
+}
+
+func TestZoneRejectsUnsafeOrUnknownNames(t *testing.T) {
+	for name, want := range map[string]bool{"": true, "Asia/Kolkata": true, "Local": false, "/etc/passwd": false, "No/Such": false, "a b": false, strings.Repeat("a", 65): false} {
+		r := httptest.NewRequest("GET", "/x?tz="+url.QueryEscape(name), nil)
+		if _, got := zone(r); got != want {
+			t.Errorf("zone(%q) = %v, want %v", name, got, want)
+		}
 	}
 }
