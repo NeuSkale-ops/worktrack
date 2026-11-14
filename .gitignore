@@ -21,3 +21,4 @@ __pycache__/
 
 # Managed agent zip is fetched from its GitHub release at deploy time
 /web/public/managed-agent/*.zip
+dist-managed-agent/

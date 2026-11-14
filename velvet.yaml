@@ -1,0 +1,6 @@
+# Links this repository to one Velvet project. Safe to commit: it holds no
+# secret. Each person runs "velvet init" once to get their own key, which the
+# server limits to exactly this organisation and project.
+server: https://velvet.sabarinarayana.com
+organisation: quantipeak
+project: wor
