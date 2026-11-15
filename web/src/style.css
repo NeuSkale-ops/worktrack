@@ -264,3 +264,9 @@ dialog > * + * { margin-top: 16px; }
   dialog { padding: 18px; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+.device-detail { margin-top: 18px; }
+.device-config { display: grid; gap: 8px; max-width: 520px; }
+.device-config textarea { width: 100%; }
+.device-shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.device-shots img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; }
+.device-shots figure { margin: 0; }

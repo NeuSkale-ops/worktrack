@@ -21,10 +21,23 @@ param(
 $ErrorActionPreference = "Stop"
 $ServiceName = "WorkTrackAgent"
 
+# 0. Reinstall or upgrade: stop the running service and its session helpers
+#    first, or Windows keeps the old executables locked and the copy fails.
+if (Get-Service $ServiceName -ErrorAction SilentlyContinue) {
+  & sc.exe stop $ServiceName | Out-Null
+  Start-Sleep -Seconds 3
+  & sc.exe delete $ServiceName | Out-Null
+  Start-Sleep -Seconds 2
+}
+Get-Process worktrack-session -ErrorAction SilentlyContinue | Stop-Process -Force
+
 # 1. Lay down binaries (packaged alongside this script by the Win32 wrapper).
+#    uninstall.ps1 is kept next to them so the dashboard uninstall command can
+#    run it.
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 Copy-Item -Force "$PSScriptRoot\worktrack-svc.exe" $InstallDir
 Copy-Item -Force "$PSScriptRoot\worktrack-session.exe" $InstallDir
+Copy-Item -Force "$PSScriptRoot\uninstall.ps1" $InstallDir
 
 # 2. Durable data dir. ACL: SYSTEM + Administrators full control, Users NO access.
 #    This is what stops a standard user reading or deleting the buffer. The
@@ -43,11 +56,6 @@ Set-Acl -Path $DataDir -AclObject $acl
 @{ server = $Server } | ConvertTo-Json | Set-Content -Path "$DataDir\config.json" -Encoding UTF8
 
 # 4. Register the service: LocalSystem, auto-start (begins before user login).
-if (Get-Service $ServiceName -ErrorAction SilentlyContinue) {
-  & sc.exe stop $ServiceName | Out-Null
-  & sc.exe delete $ServiceName | Out-Null
-  Start-Sleep -Seconds 2
-}
 & sc.exe create $ServiceName binPath= "`"$InstallDir\worktrack-svc.exe`"" start= auto obj= LocalSystem DisplayName= "WorkTrack Monitoring Agent" | Out-Null
 & sc.exe description $ServiceName "Disclosed activity monitoring for company-owned devices. Managed by IT." | Out-Null
 

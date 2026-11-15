@@ -54,7 +54,7 @@ scripts, then wrap the folder with the Microsoft Win32 Content Prep Tool
   - The session helper is launched by the service with a security descriptor that
     withholds PROCESS_TERMINATE from the user: it still shows in Task Manager
     (no hiding) but the user cannot kill it. If it dies anyway, the service
-    relaunches it and records a gap event.
+    relaunches it within 5 seconds. The gap shows as missing activity minutes.
 - Uninstall requires SYSTEM/admin (Intune or the dashboard command), so a user
   hits the elevation wall.
 
