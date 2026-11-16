@@ -135,7 +135,7 @@ func TestMonitoringHTTP(t *testing.T) {
 		if r == "other" {
 			r = "worker"
 		}
-		if _, err = db.Exec(ctx, "INSERT INTO users(id,email,name,role,password_hash) VALUES($1,$2,'Monitoring test',$3,'unused')", ids[role], ids[role]+"@example.test", r); err != nil {
+		if _, err = db.Exec(ctx, "INSERT INTO users(id,email,name,role,password_hash,org_id) VALUES($1,$2,'Monitoring test',$3,'unused',CASE WHEN $3='owner' THEN NULL ELSE 'neuskale' END)", ids[role], ids[role]+"@example.test", r); err != nil {
 			t.Fatal(err)
 		}
 		if _, err = db.Exec(ctx, "INSERT INTO credentials(token_hash,user_id,kind,expires_at) VALUES($1,$2,'device',now()+interval '1 hour')", digest(tokens[role]), ids[role]); err != nil {
@@ -195,7 +195,7 @@ func TestMonitoringHTTP(t *testing.T) {
 			t.Fatalf("%s timeline lost exact provenance including explicit false: %+v", role, location)
 		}
 	}
-	request("GET", path, "other", nil, 403)
+	request("GET", path, "other", nil, 404)
 	a.signer = s3.NewPresignClient(s3.New(s3.Options{Region: "auto", BaseEndpoint: aws.String("https://storage.invalid"), UsePathStyle: true, Credentials: credentials.NewStaticCredentialsProvider("fixture", "fixture", "")}))
 	a.bucket = "fixture"
 	var screenshots []struct {

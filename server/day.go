@@ -25,10 +25,10 @@ func (a *app) day(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid date")
 		return
 	}
-	u := current(r)
-	rows, e := a.db.Query(r.Context(), `SELECT user_id::text,start_at,end_at,screenshot_key<>'' AND screenshot_deleted_at IS NULL
- FROM blocks WHERE deleted_at IS NULL AND start_at<$2 AND end_at>$1 AND ($3<>'worker' OR user_id=$4)
- ORDER BY user_id,start_at LIMIT 20000`, date, date.AddDate(0, 0, 1), u.Role, u.ID)
+	cond, args := sees(r, "u.id", "u.org_id", 3)
+	rows, e := a.db.Query(r.Context(), `SELECT b.user_id::text,b.start_at,b.end_at,b.screenshot_key<>'' AND b.screenshot_deleted_at IS NULL
+ FROM blocks b JOIN users u ON u.id=b.user_id WHERE b.deleted_at IS NULL AND b.start_at<$2 AND b.end_at>$1 AND `+cond+`
+ ORDER BY b.user_id,b.start_at LIMIT 20000`, append([]any{date, date.AddDate(0, 0, 1)}, args...)...)
 	if e != nil {
 		fail(w, 500, "day report unavailable")
 		return

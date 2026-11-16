@@ -85,7 +85,7 @@ func TestAccountsHTTP(t *testing.T) {
 		ids[role] = id
 		passwords[role] = token()
 		dbRole := strings.TrimSuffix(role, "2")
-		if _, e = db.Exec(ctx, "INSERT INTO users(id,email,name,role,password_hash) VALUES($1,$2,$3,$4,$5)", id, id+"@example.test", role, dbRole, passwordHash(passwords[role])); e != nil {
+		if _, e = db.Exec(ctx, "INSERT INTO users(id,email,name,role,password_hash,org_id) VALUES($1,$2,$3,$4,$5,CASE WHEN $4='owner' THEN NULL ELSE 'neuskale' END)", id, id+"@example.test", role, dbRole, passwordHash(passwords[role])); e != nil {
 			t.Fatal(e)
 		}
 	}
@@ -124,8 +124,8 @@ func TestAccountsHTTP(t *testing.T) {
 	owner, manager, worker := login("owner", passwords["owner"], 200), login("manager", passwords["manager"], 200), login("worker", passwords["worker"], 200)
 
 	// Role boundaries.
-	call(worker, "POST", "/api/users/"+ids["worker2"]+"/disable", nil, 403)
-	call(manager, "POST", "/api/users/"+ids["owner"]+"/disable", nil, 403)
+	call(worker, "POST", "/api/users/"+ids["worker2"]+"/disable", nil, 404)
+	call(manager, "POST", "/api/users/"+ids["owner"]+"/disable", nil, 404)
 	call(owner, "POST", "/api/users/"+ids["owner"]+"/disable", nil, 403)
 	call(owner, "POST", "/api/users/"+uuid.NewString()+"/disable", nil, 404)
 	call(owner, "POST", "/api/users/bad/disable", nil, 400)

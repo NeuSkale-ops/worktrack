@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { api, ApiError, post } from './api.ts'
+import { api, ApiError, post, withOrg } from './api.ts'
 
 test('API client sends cookie credentials and JSON POST body', async () => {
   const original = globalThis.fetch
@@ -59,4 +59,10 @@ test('non-JSON proxy errors are readable', async () => {
   } finally {
     globalThis.fetch = original
   }
+})
+
+test('withOrg narrows only when an org is chosen', () => {
+  assert.equal(withOrg('/team', ''), '/team')
+  assert.equal(withOrg('/team', 'neuskale'), '/team?org=neuskale')
+  assert.equal(withOrg('/reports/day?date=2026-11-16', 'quantipeak'), '/reports/day?date=2026-11-16&org=quantipeak')
 })

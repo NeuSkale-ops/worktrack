@@ -71,12 +71,8 @@ func (a *app) deviceScreenshot(w http.ResponseWriter, r *http.Request) {
 // deviceActivity returns one device's events for a UTC day, newest first, with
 // short-lived signed screenshot URLs. Owner only, like the rest of the fleet.
 func (a *app) deviceActivity(w http.ResponseWriter, r *http.Request) {
-	if !a.requireOwner(w, r) {
-		return
-	}
-	id := r.PathValue("id")
-	if !validID(id) {
-		fail(w, 400, "invalid device id")
+	id, okay := a.deviceVisible(w, r)
+	if !okay {
 		return
 	}
 	loc, okZone := zone(r)

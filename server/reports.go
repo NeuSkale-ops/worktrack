@@ -41,9 +41,17 @@ func (a *app) timeline(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid user ID")
 		return
 	}
-	if u.Role == "worker" && uid != u.ID {
-		fail(w, 403, "own timeline only")
-		return
+	if uid != u.ID {
+		cond, args := sees(r, "id", "org_id", 2)
+		var visible bool
+		if e := a.db.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND "+cond+")", append([]any{uid}, args...)...).Scan(&visible); e != nil {
+			fail(w, 500, "timeline unavailable")
+			return
+		}
+		if !visible {
+			fail(w, 404, "user not found")
+			return
+		}
 	}
 	loc, okay := zone(r)
 	if !okay {
@@ -124,15 +132,15 @@ func (a *app) hours(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid date range (maximum 367 days)")
 		return
 	}
-	u := current(r)
 	// Split cross-midnight blocks so payroll counts exact seconds on each local
 	// date. d.day is a local wall-clock midnight, so DST days are 23 or 25 hours.
+	cond, args := sees(r, "u.id", "u.org_id", 6)
 	rows, e := a.db.Query(r.Context(), `SELECT u.id::text,u.name,to_char(d.day,'YYYY-MM-DD'),sum(extract(epoch FROM least(b.end_at,(d.day+interval '1 day') AT TIME ZONE $5)-greatest(b.start_at,d.day AT TIME ZONE $5)))::bigint
  FROM blocks b JOIN users u ON u.id=b.user_id
  CROSS JOIN LATERAL generate_series(date_trunc('day',b.start_at AT TIME ZONE $5),date_trunc('day',(b.end_at-interval '1 microsecond') AT TIME ZONE $5),interval '1 day') d(day)
  WHERE b.deleted_at IS NULL AND b.start_at>=$1::timestamptz-interval '600 seconds' AND b.start_at<$2 AND b.end_at>$1
- AND d.day>=$6::date AND d.day<=$7::date AND ($3<>'worker' OR u.id=$4)
- GROUP BY u.id,u.name,d.day ORDER BY d.day,u.name,u.id`, from, to.AddDate(0, 0, 1), u.Role, u.ID, loc.String(), from.Format("2006-01-02"), to.Format("2006-01-02"))
+ AND d.day>=$3::date AND d.day<=$4::date AND `+cond+`
+ GROUP BY u.id,u.name,d.day ORDER BY d.day,u.name,u.id`, append([]any{from, to.AddDate(0, 0, 1), from.Format("2006-01-02"), to.Format("2006-01-02"), loc.String()}, args...)...)
 	if e != nil {
 		fail(w, 500, "report unavailable")
 		return

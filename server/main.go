@@ -51,10 +51,11 @@ type app struct {
 	proxies   []*net.IPNet
 }
 type user struct {
-	ID    string `json:"id"`
-	Email string `json:"email"`
-	Name  string `json:"name"`
-	Role  string `json:"role"`
+	ID    string  `json:"id"`
+	Email string  `json:"email"`
+	Name  string  `json:"name"`
+	Role  string  `json:"role"`
+	OrgID *string `json:"org_id"`
 }
 type identity struct {
 	user
@@ -301,7 +302,7 @@ func (a *app) auth(next http.HandlerFunc) http.HandlerFunc {
 		var i identity
 		i.hash = digest(value)
 		i.kind = kind
-		e := a.db.QueryRow(r.Context(), "SELECT u.id::text,u.email,u.name,u.role FROM credentials c JOIN users u ON u.id=c.user_id WHERE c.token_hash=$1 AND c.kind=$2 AND c.expires_at>now() AND u.disabled_at IS NULL", i.hash, kind).Scan(&i.ID, &i.Email, &i.Name, &i.Role)
+		e := a.db.QueryRow(r.Context(), "SELECT u.id::text,u.email,u.name,u.role,u.org_id FROM credentials c JOIN users u ON u.id=c.user_id WHERE c.token_hash=$1 AND c.kind=$2 AND c.expires_at>now() AND u.disabled_at IS NULL", i.hash, kind).Scan(&i.ID, &i.Email, &i.Name, &i.Role, &i.OrgID)
 		if errors.Is(e, pgx.ErrNoRows) {
 			fail(w, 401, "invalid or expired session")
 			return
@@ -331,7 +332,7 @@ func (a *app) routes() http.Handler {
 	m.HandleFunc("POST /api/devices/checkin", a.checkin)
 	m.HandleFunc("POST /api/devices/events", a.deviceEvents)
 	m.HandleFunc("PUT /api/device-screenshots/{event}", a.deviceScreenshot)
-	for path, h := range map[string]http.HandlerFunc{"POST /api/auth/password": a.changePassword, "POST /api/users/{id}/disable": a.disableUser, "POST /api/users/{id}/enable": a.enableUser, "POST /api/users/{id}/revoke-devices": a.revokeDevices, "POST /api/users/{id}/password-reset": a.createPasswordReset, "GET /api/auth/me": func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, current(r).user) }, "POST /api/auth/logout": a.logout, "POST /api/invites": a.invite, "GET /api/team": a.team, "POST /api/agent/logs": a.ingestAgentLogs, "POST /api/devices/enrollments": a.createEnrollment, "POST /api/devices/enrollments/revoke": a.revokeEnrollments, "GET /api/devices": a.listDevices, "PUT /api/devices/{id}/config": a.updateConfig, "POST /api/devices/{id}/command": a.deviceCommand, "GET /api/devices/{id}/activity": a.deviceActivity, "GET /api/agent/logs": a.agentLogs, "GET /api/sessions/current": a.openSession, "POST /api/sessions/recover": a.recoverSession, "POST /api/sessions/start": a.start, "POST /api/sessions/stop": a.stop, "POST /api/heartbeat": a.heartbeat, "POST /api/uploads/screenshot-url": a.upload, "POST /api/blocks": a.blocks, "DELETE /api/blocks/{id}/screenshot": a.deleteScreenshot, "DELETE /api/blocks/{id}": a.deleteBlock, "GET /api/timeline": a.timeline, "GET /api/reports/hours": a.hours, "GET /api/reports/day": a.day, "GET /api/reports/hours.csv": a.hours} {
+	for path, h := range map[string]http.HandlerFunc{"POST /api/auth/password": a.changePassword, "POST /api/users/{id}/disable": a.disableUser, "POST /api/users/{id}/enable": a.enableUser, "POST /api/users/{id}/revoke-devices": a.revokeDevices, "POST /api/users/{id}/password-reset": a.createPasswordReset, "GET /api/auth/me": func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, current(r).user) }, "POST /api/auth/logout": a.logout, "POST /api/invites": a.invite, "GET /api/team": a.team, "GET /api/orgs": a.listOrgs, "PUT /api/users/{id}/org": a.setUserOrg, "POST /api/agent/logs": a.ingestAgentLogs, "POST /api/devices/enrollments": a.createEnrollment, "POST /api/devices/enrollments/revoke": a.revokeEnrollments, "GET /api/devices": a.listDevices, "PUT /api/devices/{id}/config": a.updateConfig, "POST /api/devices/{id}/command": a.deviceCommand, "GET /api/devices/{id}/activity": a.deviceActivity, "GET /api/agent/logs": a.agentLogs, "GET /api/sessions/current": a.openSession, "POST /api/sessions/recover": a.recoverSession, "POST /api/sessions/start": a.start, "POST /api/sessions/stop": a.stop, "POST /api/heartbeat": a.heartbeat, "POST /api/uploads/screenshot-url": a.upload, "POST /api/blocks": a.blocks, "DELETE /api/blocks/{id}/screenshot": a.deleteScreenshot, "DELETE /api/blocks/{id}": a.deleteBlock, "GET /api/timeline": a.timeline, "GET /api/reports/hours": a.hours, "GET /api/reports/day": a.day, "GET /api/reports/hours.csv": a.hours} {
 		m.HandleFunc(path, a.auth(h))
 	}
 	return a.security(m)

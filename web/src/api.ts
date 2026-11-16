@@ -3,6 +3,7 @@ export interface User {
   name: string
   email: string
   role: 'owner' | 'manager' | 'worker'
+  org_id?: string | null
 }
 export interface OpenSession {
   id: string
@@ -67,6 +68,12 @@ export interface Invite {
   url: string
   expires_at: string
 }
+export interface Org { id: string; name: string }
+
+/** Appends ?org= when an owner has narrowed the view to one organisation. */
+export const withOrg = (path: string, org: string) =>
+  org ? `${path}${path.includes('?') ? '&' : '?'}org=${encodeURIComponent(org)}` : path
+
 export class ApiError extends Error {
   status: number
   constructor(message: string, status: number) {

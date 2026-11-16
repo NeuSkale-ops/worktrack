@@ -5,8 +5,9 @@ import (
 	"time"
 )
 
-// Admin surface for the managed-device fleet. Owner-only, mutations recorded in
-// admin_audit. These power the dashboard Devices page.
+// Admin surface for the managed-device fleet. Enrollment secrets are owner
+// only. Owners manage every device, managers the devices of users in their org.
+// Mutations are recorded in admin_audit. These power the dashboard Devices page.
 
 func (a *app) requireOwner(w http.ResponseWriter, r *http.Request) bool {
 	if current(r).Role != "owner" {
@@ -14,6 +15,39 @@ func (a *app) requireOwner(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	return true
+}
+
+// requireAdmin admits owners and managers.
+func (a *app) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
+	if current(r).Role == "worker" {
+		fail(w, 403, "manager access required")
+		return false
+	}
+	return true
+}
+
+// deviceVisible validates the path device id and checks the caller may manage
+// it. A device in another org is reported as not found.
+func (a *app) deviceVisible(w http.ResponseWriter, r *http.Request) (string, bool) {
+	if !a.requireAdmin(w, r) {
+		return "", false
+	}
+	id := r.PathValue("id")
+	if !validID(id) {
+		fail(w, 400, "invalid device id")
+		return "", false
+	}
+	cond, args := sees(r, "u.id", "u.org_id", 2)
+	var found bool
+	if e := a.db.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM devices d LEFT JOIN users u ON u.id=d.user_id WHERE d.id=$1 AND "+cond+")", append([]any{id}, args...)...).Scan(&found); e != nil {
+		fail(w, 503, "device unavailable")
+		return "", false
+	}
+	if !found {
+		fail(w, 404, "device not found")
+		return "", false
+	}
+	return id, true
 }
 
 // createEnrollment mints a secret for Intune to pass to the agent. It enrolls
@@ -59,14 +93,16 @@ func (a *app) revokeEnrollments(w http.ResponseWriter, r *http.Request) {
 
 // listDevices returns fleet health for the dashboard.
 func (a *app) listDevices(w http.ResponseWriter, r *http.Request) {
-	if !a.requireOwner(w, r) {
+	if !a.requireAdmin(w, r) {
 		return
 	}
+	cond, args := sees(r, "u.id", "u.org_id", 1)
 	rows, err := a.db.Query(r.Context(), `SELECT d.id::text,d.upn,d.hostname,u.name,
 	  d.enabled,d.paused,d.uninstall,d.agent_version,d.config_version,d.config,
 	  d.last_checkin_at,d.last_sync_at,d.buffer_depth,d.dropped_events,d.acked_seq
 	 FROM devices d LEFT JOIN users u ON u.id=d.user_id
-	 ORDER BY d.last_checkin_at DESC NULLS LAST`)
+	 WHERE `+cond+`
+	 ORDER BY d.last_checkin_at DESC NULLS LAST`, args...)
 	if err != nil {
 		fail(w, 503, "devices unavailable")
 		return
@@ -110,12 +146,8 @@ func (a *app) listDevices(w http.ResponseWriter, r *http.Request) {
 // updateConfig replaces capture config and bumps config_version so the next
 // check-in delivers it.
 func (a *app) updateConfig(w http.ResponseWriter, r *http.Request) {
-	if !a.requireOwner(w, r) {
-		return
-	}
-	id := r.PathValue("id")
-	if !validID(id) {
-		fail(w, 400, "invalid device id")
+	id, okay := a.deviceVisible(w, r)
+	if !okay {
 		return
 	}
 	var cfg map[string]any
@@ -152,12 +184,8 @@ func (a *app) updateConfig(w http.ResponseWriter, r *http.Request) {
 // deviceCommand sets desired lifecycle state: enable/disable, pause/resume,
 // uninstall. Applied by the agent on next check-in.
 func (a *app) deviceCommand(w http.ResponseWriter, r *http.Request) {
-	if !a.requireOwner(w, r) {
-		return
-	}
-	id := r.PathValue("id")
-	if !validID(id) {
-		fail(w, 400, "invalid device id")
+	id, okay := a.deviceVisible(w, r)
+	if !okay {
 		return
 	}
 	var in struct {

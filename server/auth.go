@@ -44,7 +44,7 @@ func (a *app) login(w http.ResponseWriter, r *http.Request) {
 	defer func() { <-a.authSlots }()
 	var u user
 	var hash string
-	e := a.db.QueryRow(r.Context(), "SELECT id::text,email,name,role,password_hash FROM users WHERE email=$1 AND disabled_at IS NULL", strings.ToLower(strings.TrimSpace(in.Email))).Scan(&u.ID, &u.Email, &u.Name, &u.Role, &hash)
+	e := a.db.QueryRow(r.Context(), "SELECT id::text,email,name,role,org_id,password_hash FROM users WHERE email=$1 AND disabled_at IS NULL", strings.ToLower(strings.TrimSpace(in.Email))).Scan(&u.ID, &u.Email, &u.Name, &u.Role, &u.OrgID, &hash)
 	if e != nil {
 		hash = "AAAAAAAAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 	}
@@ -91,6 +91,7 @@ func (a *app) invite(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Email string `json:"email"`
 		Role  string `json:"role"`
+		OrgID string `json:"org_id"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -108,11 +109,23 @@ func (a *app) invite(w http.ResponseWriter, r *http.Request) {
 		fail(w, 403, "only owner may invite managers")
 		return
 	}
+	// Managers always invite into their own org. Owners choose one, or leave
+	// the person unassigned for the Organisations page.
+	org := u.OrgID
+	if u.Role == "owner" {
+		org = nil
+		if in.OrgID != "" {
+			org = &in.OrgID
+		}
+	} else if org == nil {
+		fail(w, 403, "manager has no organisation")
+		return
+	}
 	raw := token()
 	expiry := time.Now().UTC().Add(7 * 24 * time.Hour)
-	_, e = a.db.Exec(r.Context(), "INSERT INTO invites(token_hash,email,role,expires_at) VALUES($1,$2,$3,$4)", digest(raw), in.Email, in.Role, expiry)
+	_, e = a.db.Exec(r.Context(), "INSERT INTO invites(token_hash,email,role,expires_at,org_id) VALUES($1,$2,$3,$4,$5)", digest(raw), in.Email, in.Role, expiry, org)
 	if e != nil {
-		fail(w, 500, "invite failed")
+		fail(w, 400, "invite failed: check the organisation")
 		return
 	}
 	writeJSON(w, 201, map[string]any{"token": raw, "url": a.origin + "/invite?token=" + raw, "expires_at": expiry})
@@ -146,12 +159,13 @@ func (a *app) acceptInvite(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	var email, role string
-	e = tx.QueryRow(r.Context(), "UPDATE invites SET used_at=now() WHERE token_hash=$1 AND used_at IS NULL AND expires_at>now() RETURNING email,role", digest(in.Token)).Scan(&email, &role)
+	var org *string
+	e = tx.QueryRow(r.Context(), "UPDATE invites SET used_at=now() WHERE token_hash=$1 AND used_at IS NULL AND expires_at>now() RETURNING email,role,org_id", digest(in.Token)).Scan(&email, &role, &org)
 	if e != nil {
 		fail(w, 400, "invalid or expired invite")
 		return
 	}
-	_, e = tx.Exec(r.Context(), "INSERT INTO users(id,email,name,role,password_hash) VALUES($1,$2,$3,$4,$5)", uuid.NewString(), email, in.Name, role, hash)
+	_, e = tx.Exec(r.Context(), "INSERT INTO users(id,email,name,role,password_hash,org_id) VALUES($1,$2,$3,$4,$5,$6)", uuid.NewString(), email, in.Name, role, hash, org)
 	if e != nil {
 		fail(w, 409, "email already registered")
 		return
@@ -171,8 +185,8 @@ func (a *app) heartbeat(w http.ResponseWriter, r *http.Request) {
 	ok(w)
 }
 func (a *app) team(w http.ResponseWriter, r *http.Request) {
-	u := current(r)
-	rows, e := a.db.Query(r.Context(), `SELECT u.id::text,u.email,u.name,u.role,u.last_seen_at,EXISTS(SELECT 1 FROM work_sessions s WHERE s.user_id=u.id AND s.stopped_at IS NULL) AND u.last_seen_at>now()-interval '2 minutes',u.disabled_at IS NOT NULL FROM users u WHERE $1<>'worker' OR u.id=$2 ORDER BY u.name,u.id`, u.Role, u.ID)
+	cond, args := sees(r, "u.id", "u.org_id", 1)
+	rows, e := a.db.Query(r.Context(), `SELECT u.id::text,u.email,u.name,u.role,u.org_id,u.last_seen_at,EXISTS(SELECT 1 FROM work_sessions s WHERE s.user_id=u.id AND s.stopped_at IS NULL) AND u.last_seen_at>now()-interval '2 minutes',u.disabled_at IS NOT NULL FROM users u WHERE `+cond+` ORDER BY u.name,u.id`, args...)
 	if e != nil {
 		fail(w, 500, "team unavailable")
 		return
@@ -184,11 +198,11 @@ func (a *app) team(w http.ResponseWriter, r *http.Request) {
 		var seen *time.Time
 		var working *bool
 		var disabled bool
-		if e = rows.Scan(&v.ID, &v.Email, &v.Name, &v.Role, &seen, &working, &disabled); e != nil {
+		if e = rows.Scan(&v.ID, &v.Email, &v.Name, &v.Role, &v.OrgID, &seen, &working, &disabled); e != nil {
 			fail(w, 500, "team unavailable")
 			return
 		}
-		out = append(out, map[string]any{"id": v.ID, "email": v.Email, "name": v.Name, "role": v.Role, "last_seen_at": seen, "working": working != nil && *working, "disabled": disabled})
+		out = append(out, map[string]any{"id": v.ID, "email": v.Email, "name": v.Name, "role": v.Role, "org_id": v.OrgID, "last_seen_at": seen, "working": working != nil && *working, "disabled": disabled})
 	}
 	if rows.Err() != nil {
 		fail(w, 500, "team unavailable")

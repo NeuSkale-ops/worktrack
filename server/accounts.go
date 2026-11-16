@@ -24,13 +24,19 @@ func (a *app) target(w http.ResponseWriter, r *http.Request) (string, bool) {
 		return "", false
 	}
 	var role string
-	e := a.db.QueryRow(r.Context(), "SELECT role FROM users WHERE id=$1", id).Scan(&role)
+	var org *string
+	e := a.db.QueryRow(r.Context(), "SELECT role,org_id FROM users WHERE id=$1", id).Scan(&role, &org)
 	if errors.Is(e, pgx.ErrNoRows) {
 		fail(w, 404, "user not found")
 		return "", false
 	}
 	if e != nil {
 		fail(w, 500, "user unavailable")
+		return "", false
+	}
+	// Another org's user is reported as missing, not forbidden.
+	if !sameOrg(current(r), org) {
+		fail(w, 404, "user not found")
 		return "", false
 	}
 	if !canManage(current(r), id, role) {
