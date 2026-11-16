@@ -126,10 +126,25 @@ Enrollment and lifecycle:
   delivery; the agent prunes its buffer up to `acked_seq`. `event_id` must be
   unique per event. `seq` is the agent's local order only and may restart at 1
   when its buffer is recreated. 403 once the device is marked for uninstall.
+- `PUT /api/device-screenshots/{event_id}` (device token): raw `image/jpeg`
+  body, up to 5 MiB, 30 per minute per device. Stores the object at
+  `devices/{device_id}/{event_id}.jpg` and returns `{screenshot_key}`. The agent
+  then sends the matching `screenshot` event with that key in its payload.
+  Re-uploading the same event overwrites the same object. 403 once uninstalling.
+
+Event kinds sent by the agent: `activity` (one per minute: `user`,
+`active_secs`, `idle_secs`, `locked_secs`, `apps` map of executable to seconds),
+`screenshot` (`user`, `app`, `screenshot_key`, optional `location`), `session`
+(`event` logon/logoff/lock/unlock, `user`) and `acknowledged` (`user`, the
+monitoring notice was shown). `user` is set by the service from the Windows
+session, never by the helper.
 
 Admin (owner only):
 - `GET /api/devices`: fleet health (version, last check-in, last sync, buffer
   depth, dropped events, desired state).
+- `GET /api/devices/{id}/activity?date=YYYY-MM-DD&tz=Area/City`: that day's
+  events, newest first, max 2000. Screenshot events carry a 5-minute signed
+  `screenshot_url`. Only keys minted for that device and event are signed.
 - `PUT /api/devices/{id}/config`: replace capture config JSON; bumps
   `config_version` so the next check-in delivers it.
 - `POST /api/devices/{id}/command`: `{command}` one of enable, disable, pause,

@@ -3,12 +3,16 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -137,6 +141,81 @@ func TestDevicesHTTP(t *testing.T) {
 		t.Fatalf("seq reset lost data: count=%d acked=%v %v", count, acked["acked_seq"], e)
 	}
 
+	// Screenshot: JPEG goes to object storage under a key derived from the
+	// event, then the event references it. Only owners see it, signed.
+	var stored []string
+	storage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "PUT" {
+			t.Errorf("unexpected storage method %s", r.Method)
+		}
+		stored = append(stored, r.URL.Path)
+		w.WriteHeader(200)
+	}))
+	defer storage.Close()
+	a.s3 = s3.New(s3.Options{Region: "auto", BaseEndpoint: aws.String(storage.URL), UsePathStyle: true, Credentials: credentials.NewStaticCredentialsProvider("test", "test", "")})
+	a.signer = s3.NewPresignClient(a.s3)
+	a.bucket = "test"
+	shot := func(eventID, ctype string, body []byte, want int) map[string]any {
+		t.Helper()
+		r := httptest.NewRequest("PUT", "/api/device-screenshots/"+eventID, strings.NewReader(string(body)))
+		r.Header.Set("Authorization", "Bearer "+deviceToken)
+		r.Header.Set("Content-Type", ctype)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		if w.Code != want {
+			t.Fatalf("screenshot: want %d got %d %s", want, w.Code, w.Body.String())
+		}
+		var out map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &out)
+		return out
+	}
+	jpeg := []byte{0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3}
+	shotID := uuid.NewString()
+	shot(shotID, "image/png", jpeg, 400)
+	shot(shotID, "image/jpeg", []byte("not a jpeg"), 400)
+	shot("nope", "image/jpeg", jpeg, 400)
+	key := shot(shotID, "image/jpeg", jpeg, 200)["screenshot_key"].(string)
+	if key != "devices/"+deviceID+"/"+shotID+".jpg" || len(stored) != 1 || !strings.HasSuffix(stored[0], key) {
+		t.Fatalf("screenshot key %q stored %v", key, stored)
+	}
+	shotEv := ev(2, "screenshot")
+	shotEv["event_id"] = shotID
+	shotEv["payload"] = map[string]any{"screenshot_key": key, "app": "code.exe"}
+	// A forged key pointing elsewhere is stored but never signed.
+	forged := ev(3, "screenshot")
+	forged["payload"] = map[string]any{"screenshot_key": "other-user/secret.jpg"}
+	call(deviceToken, "POST", "/api/devices/events", map[string]any{"events": []map[string]any{shotEv, forged}}, 200)
+	activity := func(bearer string, want int) []map[string]any {
+		t.Helper()
+		r := httptest.NewRequest("GET", "/api/devices/"+deviceID+"/activity", nil)
+		r.Header.Set("Authorization", "Bearer "+bearer)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		if w.Code != want {
+			t.Fatalf("activity: want %d got %d %s", want, w.Code, w.Body.String())
+		}
+		var out []map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &out)
+		return out
+	}
+	signed, unsigned := 0, 0
+	for _, e := range activity(ownerToken, 200) {
+		if e["kind"] != "screenshot" {
+			continue
+		}
+		if _, leaked := e["payload"].(map[string]any)["screenshot_key"]; leaked {
+			t.Fatal("raw object key leaked to the dashboard")
+		}
+		if u, _ := e["screenshot_url"].(string); strings.Contains(u, key) {
+			signed++
+		} else {
+			unsigned++
+		}
+	}
+	if signed != 1 || unsigned != 1 {
+		t.Fatalf("signed=%d unsigned=%d, want 1 each", signed, unsigned)
+	}
+
 	// Admin changes config; version bumps and next check-in ships it.
 	call(ownerToken, "PUT", "/api/devices/"+deviceID+"/config", map[string]any{"screenshots": true, "location": true}, 200)
 	ci = call(deviceToken, "POST", "/api/devices/checkin", map[string]any{"agent_version": "1.0.0", "config_version": 1}, 200)
@@ -172,6 +251,9 @@ func TestDevicesHTTP(t *testing.T) {
 	}
 	workerToken := call("", "POST", "/api/auth/login", map[string]any{"email": workerID + "@example.test", "password": workerPw, "device_name": "t"}, 200)["device_token"].(string)
 	call(workerToken, "GET", "/api/devices", nil, 403)
+	activity(workerToken, 403)
+	// After uninstall the device can no longer upload screenshots.
+	shot(uuid.NewString(), "image/jpeg", jpeg, 403)
 
 	// This owner produced 4 audit rows: revoke-enrollments, config, pause, uninstall.
 	var mine int

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, post } from './api'
+import { DeviceActivity, DeviceConfigForm } from './DeviceDetail'
 import { fetchManagedAgentRelease } from './managedAgentRelease'
 import type { ManagedAgentRelease } from './managedAgentRelease'
 
@@ -42,6 +43,8 @@ export default function Devices() {
   const [secret, setSecret] = useState('')
   const [release, setRelease] = useState<ManagedAgentRelease | null>(null)
   const [checking, setChecking] = useState(true)
+  const [open, setOpen] = useState('')
+  const openDevice = devices.find(d => d.id === open)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -125,7 +128,7 @@ export default function Devices() {
           <li>Run <code>powershell.exe -ExecutionPolicy Bypass -File install.ps1 -EnrollSecret "SECRET" -Upn "user@company.com"</code>. Windows may show a publisher warning.</li>
           <li>Select Load devices. The laptop appears as awaiting first check-in.</li>
         </ol>
-        <p className="muted">This first build installs, hardens and enrolls the service only. It does not check in or capture yet. Remove it with <code>uninstall.ps1</code>.</p>
+        <p className="muted">After install the service checks in within a minute. Each signed-in user sees a one-time monitoring notice and a tray icon. Capture defaults to time, program names and session events. Turn on screenshots per device under Settings. Remove it with Uninstall below or <code>uninstall.ps1</code>.</p>
         {release && <p className="muted">SHA-256 of the zip: <code style={{ overflowWrap: 'anywhere' }}>{release.sha256}</code></p>}
       </details>
     </section>
@@ -171,6 +174,7 @@ export default function Devices() {
                 <th scope="col">Last check-in</th><th scope="col">Last sync</th>
                 <th scope="col">Buffer</th><th scope="col">Dropped</th>
                 <th scope="col">Controls</th>
+                <th scope="col">Details</th>
               </tr></thead>
               <tbody>{devices.map(d => (
                 <tr key={d.id}>
@@ -194,9 +198,24 @@ export default function Devices() {
                       Uninstall
                     </button>
                   </td>
+                  <td>
+                    <button aria-expanded={open === d.id} onClick={() => setOpen(open === d.id ? '' : d.id)}>
+                      {open === d.id ? 'Hide' : 'Activity and settings'}
+                    </button>
+                  </td>
                 </tr>
               ))}</tbody>
             </table>
+          </div>
+        )}
+        {openDevice && (
+          <div className="device-detail">
+            <h3>{openDevice.hostname || '(unknown)'}: {openDevice.name || openDevice.upn}</h3>
+            <DeviceActivity key={`a-${openDevice.id}`} deviceId={openDevice.id} hostname={openDevice.hostname} />
+            <details>
+              <summary>Settings (current: config v{openDevice.config_version})</summary>
+              <DeviceConfigForm key={`c-${openDevice.id}`} deviceId={openDevice.id} onSaved={() => void load()} />
+            </details>
           </div>
         )}
       </details>
