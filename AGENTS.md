@@ -21,5 +21,6 @@ Windows-first time tracking with screenshots, a Go API and a React dashboard on 
 
 - Privacy constraints in `README.md` are requirements. Never capture outside tracking sessions, window titles, keystrokes, full paths or continuous location. Managed agent must stay visible, never stealthy.
 - Screenshot interval is a fixed 10 elapsed minutes.
-- Ship by pushing the `deploy` branch. CI builds images and bumps `infra/apps/neuskale/worktrack`. Migrations run at API startup.
+- Ship by pushing the `deploy` branch. This is a production release. `.github/workflows/deploy.yml` pushes `ghcr.io/neuskale-ops/worktrack-api` and `worktrack-web` tagged with the commit SHA, then runs `scripts/bump-image.sh apps/neuskale/worktrack` in `NeuSkale-ops/infra` (secret `INFRA_DEPLOY_KEY`). Flux on the `app-nbg` k3s cluster rolls it out. Migrations run at API startup. Roll back by reverting the tag commit in `infra`. Kubernetes manifests live in `infra`, not here. `deploy/` holds the older Compose setup.
+- The desktop agent is not deployed through k3s. It ships via the updater and Windows workflows.
 - See `docs/VALIDATION.md` for release gates before deploying to workers.
