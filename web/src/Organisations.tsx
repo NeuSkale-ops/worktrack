@@ -36,6 +36,23 @@ export default function Organisations({ orgs, onChange }: { orgs: Org[]; onChang
     }
   }
 
+  async function setRole(person: Worker, role: 'worker' | 'manager') {
+    if (!confirm(role === 'manager'
+      ? `Make ${person.name || person.email} a manager? They will see every person, report and device in their organisation.`
+      : `Make ${person.name || person.email} a worker? They will see only their own time.`)) return
+    setSaving(person.id)
+    setError('')
+    try {
+      await api(`/users/${encodeURIComponent(person.id)}/role`, { method: 'PUT', body: JSON.stringify({ role }) })
+      setPeople(list => list.map(p => (p.id === person.id ? { ...p, role } : p)))
+      onChange()
+    } catch (e) {
+      setError(message(e))
+    } finally {
+      setSaving('')
+    }
+  }
+
   const shown = people
     .filter(p => p.role !== 'owner' && (filter === 'all' || !p.org_id))
     .sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email))
@@ -45,9 +62,9 @@ export default function Organisations({ orgs, onChange }: { orgs: Org[]; onChang
     <section className="settings-view" aria-labelledby="orgs-heading">
       <div className="page-heading">
         <div>
-          <h1 id="orgs-heading">Organisations</h1>
+          <h1 id="orgs-heading">Organisations and roles</h1>
           <p className="muted">
-            Managers see only the people and devices in their own organisation. Unassigned people are visible to owners only.
+            Set each person's organisation and role. Managers see only the people and devices in their own organisation. Unassigned people are visible to owners only.
           </p>
         </div>
       </div>
@@ -72,7 +89,17 @@ export default function Organisations({ orgs, onChange }: { orgs: Org[]; onChang
               <tr key={p.id}>
                 <td>{p.name || '—'}{p.disabled ? ' (disabled)' : ''}</td>
                 <td>{p.email}</td>
-                <td>{p.role}</td>
+                <td>
+                  <select
+                    aria-label={`Role for ${p.name || p.email}`}
+                    value={p.role}
+                    disabled={saving === p.id}
+                    onChange={e => void setRole(p, e.target.value as 'worker' | 'manager')}
+                  >
+                    <option value="worker">Worker</option>
+                    <option value="manager">Manager</option>
+                  </select>
+                </td>
                 <td>
                   <select
                     aria-label={`Organisation for ${p.name || p.email}`}

@@ -94,3 +94,36 @@ func (a *app) setUserOrg(w http.ResponseWriter, r *http.Request) {
 	}
 	ok(w)
 }
+
+// setUserRole makes a person a worker or a manager. Owner only. The owner
+// role itself is never granted or removed here.
+func (a *app) setUserRole(w http.ResponseWriter, r *http.Request) {
+	if !a.requireOwner(w, r) {
+		return
+	}
+	id := r.PathValue("id")
+	if !validID(id) {
+		fail(w, 400, "invalid user ID")
+		return
+	}
+	var in struct {
+		Role string `json:"role"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if in.Role != "worker" && in.Role != "manager" {
+		fail(w, 400, "role must be worker or manager")
+		return
+	}
+	tag, e := a.db.Exec(r.Context(), "UPDATE users SET role=$2 WHERE id=$1 AND role<>'owner'", id, in.Role)
+	if e != nil {
+		fail(w, 503, "role change unavailable")
+		return
+	}
+	if tag.RowsAffected() != 1 {
+		fail(w, 404, "user not found")
+		return
+	}
+	ok(w)
+}
