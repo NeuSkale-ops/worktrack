@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, post } from './api'
+import { api, post, withOrg } from './api'
 import { DeviceActivity, DeviceConfigForm } from './DeviceDetail'
 import { fetchManagedAgentRelease } from './managedAgentRelease'
 import type { ManagedAgentRelease } from './managedAgentRelease'
@@ -37,7 +37,7 @@ function health(d: Device): string {
   return 'active'
 }
 
-export default function Devices() {
+export default function Devices({ owner, org }: { owner: boolean; org: string }) {
   const [devices, setDevices] = useState<Device[]>([])
   const [busy, setBusy] = useState(false)
   const [loaded, setLoaded] = useState(false)
@@ -62,7 +62,7 @@ export default function Devices() {
     setBusy(true)
     setError('')
     try {
-      setDevices(await api<Device[]>('/devices'))
+      setDevices(await api<Device[]>(withOrg('/devices', org)))
       setLoaded(true)
     } catch (e) {
       setDevices([])
@@ -72,12 +72,15 @@ export default function Devices() {
     }
   }
 
+  // Devices is its own page now, so load on open.
+  useEffect(() => { void load() }, [])
+
   // Health is derived from check-in age, so a stale table shows a false
   // "possible tamper". Refresh quietly every minute once loaded.
   useEffect(() => {
     if (!loaded) return
     const t = setInterval(() => {
-      api<Device[]>('/devices').then(setDevices).catch(() => {})
+      api<Device[]>(withOrg('/devices', org)).then(setDevices).catch(() => {})
     }, 60_000)
     return () => clearInterval(t)
   }, [loaded])
@@ -125,11 +128,11 @@ export default function Devices() {
 
   return (
     <>
-    <section className="card download" aria-labelledby="managed-agent-heading" aria-busy={checking}>
+    {owner && <section className="card download" aria-labelledby="managed-agent-heading" aria-busy={checking}>
       <div>
         <h2 id="managed-agent-heading">WorkTrack managed agent for Windows</h2>
         <p className="muted" role="status">{checking ? 'Checking managed agent release…' : release ? `Version ${release.version}, 64-bit, unsigned test build` : 'Managed agent download is not available in this deployment.'}</p>
-        <p className="muted">For company-owned laptops, installed by IT. Owner only.</p>
+        <p className="muted">For company-owned laptops, installed by IT.</p>
       </div>
       {release && <a className="button" href={release.url} download>Download (.zip)</a>}
       <details>
@@ -138,15 +141,15 @@ export default function Devices() {
           <li>Below, select Add device and copy the enrollment secret.</li>
           <li>Extract the zip on the laptop and open PowerShell as administrator in that folder.</li>
           <li>Run <code>powershell.exe -ExecutionPolicy Bypass -File install.ps1 -EnrollSecret "SECRET" -Upn "user@company.com"</code>. Windows may show a publisher warning.</li>
-          <li>Select Load devices. The laptop appears as awaiting first check-in.</li>
+          <li>The laptop appears below within a minute.</li>
         </ol>
         <p className="muted">After install the service checks in within a minute. Each signed-in user sees a one-time monitoring notice and a tray icon. Capture defaults to time, program names and session events. Turn on screenshots per device under Settings. Remove it with Uninstall below or <code>uninstall.ps1</code>.</p>
         {release && <p className="muted">SHA-256 of the zip: <code style={{ overflowWrap: 'anywhere' }}>{release.sha256}</code></p>}
       </details>
-    </section>
+    </section>}
     <section className="card devices" aria-labelledby="devices-heading">
-      <details>
-        <summary id="devices-heading">Managed devices (owner only)</summary>
+      <details open>
+        <summary id="devices-heading">Managed devices</summary>
         <p className="muted">
           Company-owned Windows laptops running the disclosed monitoring agent.
           Capture is admin-controlled here and visible to the employee on the
@@ -155,14 +158,14 @@ export default function Devices() {
         </p>
         <div className="block-actions">
           <button onClick={() => void load()} disabled={busy}>
-            {busy ? 'Loading…' : 'Load devices'}
+            {busy ? 'Loading…' : 'Refresh'}
           </button>
-          <button onClick={() => void addDevice()} disabled={busy}>
+          {owner && <button onClick={() => void addDevice()} disabled={busy}>
             Add device (enrollment secret)
-          </button>
-          <button className="delete" onClick={() => void revokeSecrets()} disabled={busy}>
+          </button>}
+          {owner && <button className="delete" onClick={() => void revokeSecrets()} disabled={busy}>
             Revoke enrollment secrets
-          </button>
+          </button>}
         </div>
         {secret && (
           <p role="status" className="enroll-secret">

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { api, ApiError, post } from './api'
-import type { Block, DaySpan, Hours, Invite, OpenSession, User, Worker } from './api'
+import { api, ApiError, post, withOrg } from './api'
+import type { Block, DaySpan, Hours, Invite, OpenSession, Org, User, Worker } from './api'
 import { activity, applicationTotals, blockDuration, duration, isTimeOnly, localDate, locationText, minuteOfDay, ribbon, screenshotPlaceholder, utcDate, weekRange, zone } from './utils'
 import AgentLogs from './AgentLogs'
 import Devices from './Devices'
 import DownloadCard from './DownloadCard'
+import Organisations from './Organisations'
 import { canManage, MemberAdmin, PasswordForm, ResetPassword } from './Admin'
 
 const time = (value: string) =>
@@ -165,7 +166,7 @@ function Auth({ onLogin }: { onLogin: (user: User) => void }) {
   )
 }
 
-function InviteForm() {
+function InviteForm({ user, orgs, org }: { user: User; orgs: Org[]; org: string }) {
   const [invite, setInvite] = useState<Invite | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -181,6 +182,7 @@ function InviteForm() {
         await post<Invite>('/invites', {
           email: new FormData(event.currentTarget).get('email'),
           role: 'worker',
+          org_id: new FormData(event.currentTarget).get('org') ?? '',
         }),
       )
     } catch (error) {
@@ -202,6 +204,17 @@ function InviteForm() {
             placeholder="name@company.com"
           />
         </label>
+        {user.role === 'owner' ? (
+          <label>
+            Organisation
+            <select name="org" defaultValue={org}>
+              <option value="">Unassigned (assign later)</option>
+              {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+            </select>
+          </label>
+        ) : (
+          <p className="muted">Joins {orgs.find(o => o.id === user.org_id)?.name ?? 'your organisation'}.</p>
+        )}
         <button className="primary" disabled={busy}>
           {busy ? 'Creating…' : 'Create invite link'}
         </button>
@@ -243,6 +256,13 @@ function InviteForm() {
   )
 }
 
+type View = 'Day view' | 'Weekly report' | 'People' | 'Devices' | 'Organisations' | 'Settings'
+// Navigation by role. Workers see their own day, week and account only.
+const views = (user: User): View[] =>
+  user.role === 'owner' ? ['Day view', 'Weekly report', 'People', 'Devices', 'Organisations', 'Settings']
+    : user.role === 'manager' ? ['Day view', 'Weekly report', 'People', 'Devices', 'Settings']
+      : ['Day view', 'Weekly report', 'Settings']
+
 function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
   const manager = user.role !== 'worker'
   const [team, setTeam] = useState<Worker[]>([])
@@ -252,7 +272,17 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
   const [hours, setHours] = useState<Hours[]>([])
   const [spans, setSpans] = useState<DaySpan[]>([])
   const [workingFirst, setWorkingFirst] = useState(true)
-  const [view, setView] = useState<'Day view' | 'Weekly report' | 'Settings'>('Day view')
+  const [view, setView] = useState<View>('Day view')
+  const [orgs, setOrgs] = useState<Org[]>([])
+  // Owner-only narrowing to one org. Empty means every org. Kept in the URL.
+  const [org, setOrgState] = useState(() => new URLSearchParams(location.search).get('org') ?? '')
+  const setOrg = (value: string) => {
+    const url = new URL(location.href)
+    if (value) url.searchParams.set('org', value)
+    else url.searchParams.delete('org')
+    history.replaceState(null, '', url)
+    setOrgState(value)
+  }
   const [tab, setTab] = useState<'Screenshots' | 'Activity details' | 'Applications'>('Screenshots')
   const [openSession, setOpenSession] = useState<OpenSession | null>(null)
   const [error, setError] = useState('')
@@ -268,13 +298,13 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
     const current = ++generation.current
     try {
       const [members, timeline, report, session, day] = await Promise.all([
-        manager ? api<Worker[]>('/team') : Promise.resolve([]),
+        manager ? api<Worker[]>(withOrg('/team', org)) : Promise.resolve([]),
         api<Block[]>(
           `/timeline?${new URLSearchParams({ user: selected, date, tz: zone })}`,
         ),
-        api<Hours[]>(`/reports/hours?${new URLSearchParams({ ...weekRange(date), tz: zone })}`),
+        api<Hours[]>(withOrg(`/reports/hours?${new URLSearchParams({ ...weekRange(date), tz: zone })}`, org)),
         api<OpenSession | null>('/sessions/current'),
-        manager ? api<DaySpan[]>(`/reports/day?${new URLSearchParams({ date, tz: zone })}`) : Promise.resolve([]),
+        manager ? api<DaySpan[]>(withOrg(`/reports/day?${new URLSearchParams({ date, tz: zone })}`, org)) : Promise.resolve([]),
       ])
       if (generation.current !== current) return
       setTeam(members || [])
@@ -291,7 +321,10 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
     } finally {
       if (generation.current === current) setBusy(false)
     }
-  }, [manager, selected, date, onLogout])
+  }, [manager, selected, date, org, onLogout])
+  useEffect(() => {
+    if (manager) api<Org[]>('/orgs').then(setOrgs).catch(() => {})
+  }, [manager])
   useEffect(() => {
     setBusy(true)
     setBlocks([])
@@ -423,14 +456,23 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
           <Logo /> WorkTrack
         </a>
         <nav className="global-nav" aria-label="Main navigation">
-          {(['Day view', 'Weekly report', 'Settings'] as const).map(item => (
+          {views(user).map(item => (
             <button key={item} aria-current={view === item ? 'page' : undefined} onClick={() => setView(item)}>{item}</button>
           ))}
         </nav>
+        {user.role === 'owner' && orgs.length > 0 && (
+          <label className="org-switch">
+            <span className="sr-only">Organisation</span>
+            <select value={org} onChange={e => setOrg(e.target.value)}>
+              <option value="">All organisations</option>
+              {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+            </select>
+          </label>
+        )}
         <div className="account">
           <span>
             {user.name}
-            <small>{user.role}</small>
+            <small>{user.role}{user.role !== 'owner' && orgs.length === 1 ? ` · ${orgs[0].name}` : ''}</small>
           </span>
           <span className="avatar" aria-hidden="true">{initials(user)}</span>
           <button onClick={logout} disabled={actionBusy}>
@@ -626,11 +668,10 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
           {!busy && !hours.length && <p className="empty">No recorded hours this week.</p>}
         </section>
         )}
-        {view === 'Settings' && (
-          <section className="settings-view" aria-labelledby="settings-heading">
-            <div className="page-heading"><div><h1 id="settings-heading">Settings</h1><p className="muted">Desktop app, team access and your account.</p></div></div>
-            <DownloadCard />
-            {manager && <section className="settings-section" aria-labelledby="team-settings-heading">
+        {view === 'People' && manager && (
+          <section className="settings-view" aria-labelledby="people-heading">
+            <div className="page-heading"><div><h1 id="people-heading">People</h1><p className="muted">Invite people and manage their access.</p></div></div>
+            <section className="settings-section" aria-labelledby="team-settings-heading">
               <h2 id="team-settings-heading">Team members</h2>
               <label className="member-chooser">Person
                 <select value={selected} onChange={event => setSelected(event.target.value)}>
@@ -638,12 +679,24 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
                   {people.map(person => <option key={person.id} value={person.id}>{person.name || person.email}{person.disabled ? ' (disabled)' : ''}</option>)}
                 </select>
               </label>
-              {selectedPerson && canManage(user, selectedPerson) ? <MemberAdmin key={selectedPerson.id} person={selectedPerson} onChange={() => void load()} /> : <p className="muted">{selected === user.id ? 'Manage your own password below. Choose another member to manage their access.' : 'You do not have permission to manage this member.'}</p>}
-              <InviteForm />
-            </section>}
-            <section className="settings-section"><h2>Your account</h2><PasswordForm /></section>
-            {user.role === 'owner' && <Devices />}
+              {selectedPerson && canManage(user, selectedPerson) ? <MemberAdmin key={selectedPerson.id} person={selectedPerson} onChange={() => void load()} /> : <p className="muted">{selected === user.id ? 'Manage your own password in Settings. Choose another member to manage their access.' : 'You do not have permission to manage this member.'}</p>}
+              <InviteForm user={user} orgs={orgs} org={org} />
+            </section>
+          </section>
+        )}
+        {view === 'Devices' && manager && (
+          <section className="settings-view" aria-labelledby="devices-page-heading">
+            <div className="page-heading"><div><h1 id="devices-page-heading">Devices</h1><p className="muted">Company laptops running the managed agent.</p></div></div>
+            <Devices key={org} owner={user.role === 'owner'} org={org} />
             {user.role === 'owner' && <AgentLogs />}
+          </section>
+        )}
+        {view === 'Organisations' && user.role === 'owner' && <Organisations orgs={orgs} onChange={() => void load()} />}
+        {view === 'Settings' && (
+          <section className="settings-view" aria-labelledby="settings-heading">
+            <div className="page-heading"><div><h1 id="settings-heading">Settings</h1><p className="muted">Desktop app and your account.</p></div></div>
+            <DownloadCard />
+            <section className="settings-section"><h2>Your account</h2><PasswordForm /></section>
           </section>
         )}
         <footer>
