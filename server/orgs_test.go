@@ -156,6 +156,15 @@ func TestOrgIsolationHTTP(t *testing.T) {
 	call("owner", "PUT", "/api/users/"+ids["loose"]+"/org", map[string]any{"org_id": nil}, 200)
 	expect(seen("nsMgr", "/api/team", "id"), "nsMgr", "nsWorker")
 
+	// Promotion is owner only, never touches the owner, and widens the view.
+	call("nsMgr", "PUT", "/api/users/"+ids["nsWorker"]+"/role", map[string]any{"role": "manager"}, 403)
+	call("owner", "PUT", "/api/users/"+ids["owner"]+"/role", map[string]any{"role": "manager"}, 404)
+	call("owner", "PUT", "/api/users/"+ids["nsWorker"]+"/role", map[string]any{"role": "owner"}, 400)
+	call("owner", "PUT", "/api/users/"+ids["nsWorker"]+"/role", map[string]any{"role": "manager"}, 200)
+	expect(seen("nsWorker", "/api/team", "id"), "nsMgr", "nsWorker")
+	call("owner", "PUT", "/api/users/"+ids["nsWorker"]+"/role", map[string]any{"role": "worker"}, 200)
+	expect(seen("nsWorker", "/api/team", "id"), "nsWorker")
+
 	var orgs []map[string]any
 	_ = json.Unmarshal(call("qpMgr", "GET", "/api/orgs", nil, 200), &orgs)
 	if len(orgs) != 1 || orgs[0]["id"] != "quantipeak" {

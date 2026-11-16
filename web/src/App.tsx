@@ -181,7 +181,7 @@ function InviteForm({ user, orgs, org }: { user: User; orgs: Org[]; org: string 
       setInvite(
         await post<Invite>('/invites', {
           email: new FormData(event.currentTarget).get('email'),
-          role: 'worker',
+          role: new FormData(event.currentTarget).get('role') ?? 'worker',
           org_id: new FormData(event.currentTarget).get('org') ?? '',
         }),
       )
@@ -193,10 +193,10 @@ function InviteForm({ user, orgs, org }: { user: User; orgs: Org[]; org: string 
   }
   return (
     <details className="invite">
-      <summary>Invite a worker</summary>
+      <summary>{user.role === 'owner' ? 'Invite a person' : 'Invite a worker'}</summary>
       <form onSubmit={submit}>
         <label>
-          Worker email
+          Email
           <input
             name="email"
             type="email"
@@ -204,6 +204,15 @@ function InviteForm({ user, orgs, org }: { user: User; orgs: Org[]; org: string 
             placeholder="name@company.com"
           />
         </label>
+        {user.role === 'owner' && (
+          <label>
+            Role
+            <select name="role" defaultValue="worker">
+              <option value="worker">Worker</option>
+              <option value="manager">Manager</option>
+            </select>
+          </label>
+        )}
         {user.role === 'owner' ? (
           <label>
             Organisation
