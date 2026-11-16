@@ -21,8 +21,11 @@ param(
   # Work account that owns this laptop. Default: the Intune enrollment UPN.
   [string]$Upn = "",
   [string]$InstallDir = "$env:ProgramFiles\WorkTrack Agent",
-  [string]$DataDir = "$env:ProgramData\WorkTrack"
+  [string]$DataDir = "$env:ProgramData\WorkTrack",
+  # Self-update passes this so a failed upgrade leaves a record.
+  [string]$LogPath = ""
 )
+if ($LogPath) { Start-Transcript -Path $LogPath -Force | Out-Null }
 $ErrorActionPreference = "Stop"
 $ServiceName = "WorkTrackAgent"
 

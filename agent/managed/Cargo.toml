@@ -1,6 +1,6 @@
 [package]
 name = "worktrack-managed-agent"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 
 [lib]
@@ -23,6 +23,7 @@ uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 base64 = "0.22"
 sha2 = "0.10"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [target.'cfg(windows)'.dependencies]
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
