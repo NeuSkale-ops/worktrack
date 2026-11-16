@@ -180,7 +180,7 @@ func TestPostgresHTTP(t *testing.T) {
 	request("POST", "/api/blocks", map[string]any{"blocks": []block{b}}, 409)
 	request("POST", "/api/sessions/stop", map[string]any{"id": sid, "stopped_at": now.Add(29 * time.Second)}, 409)
 	request("POST", "/api/sessions/stop", map[string]any{"id": sid, "stopped_at": now.Add(30 * time.Second)}, 200)
-	request("GET", "/api/timeline?user="+uuid.NewString(), nil, 403)
+	request("GET", "/api/timeline?user="+uuid.NewString(), nil, 404)
 	request("POST", "/api/invites", map[string]string{"email": "new@example.test", "role": "worker"}, 403)
 	// Real AWS presigner with a local S3-compatible delete endpoint, no live secrets.
 	failDelete := true
