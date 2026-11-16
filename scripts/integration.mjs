@@ -55,7 +55,7 @@ assert.equal(diagnostics.find(row => row.id === diagnostic.id).status, 503);
 await request('/api/agent/logs', { method: 'POST', token, body: { ...diagnosticBody, events: [{ ...diagnostic, message: 'Bearer must-not-store' }] }, status: 400 });
 console.log('PASS: real diagnostic ingestion, retry deduplication, owner-only reads and free-form text rejection');
 await request('/api/invites', { method: 'POST', token, body: { email: 'forbidden@example.test', role: 'manager' }, status: 403 });
-await request(`/api/timeline?user=${owner.user.id}&date=${new Date().toISOString().slice(0, 10)}`, { token, status: 403 });
+await request(`/api/timeline?user=${owner.user.id}&date=${new Date().toISOString().slice(0, 10)}`, { token, status: 404 });
 const sessionID = randomUUID();
 const start = new Date(Math.floor((Date.now() - 120_000) / 60_000) * 60_000);
 const end = new Date(start.getTime() + 60_000);
