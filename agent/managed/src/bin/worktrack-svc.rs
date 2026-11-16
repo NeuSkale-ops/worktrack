@@ -54,7 +54,7 @@ mod win {
         SECURITY_ATTRIBUTES, TOKEN_ALL_ACCESS,
     };
     use windows::Win32::Storage::FileSystem::{
-        ReadFile, WriteFile, FILE_FLAG_FIRST_PIPE_INSTANCE, PIPE_ACCESS_DUPLEX,
+        FlushFileBuffers, ReadFile, WriteFile, FILE_FLAG_FIRST_PIPE_INSTANCE, PIPE_ACCESS_DUPLEX,
     };
     use windows::Win32::System::Environment::{CreateEnvironmentBlock, DestroyEnvironmentBlock};
     use windows::Win32::System::Pipes::{
@@ -533,6 +533,10 @@ mod win {
     impl Drop for Pipe {
         fn drop(&mut self) {
             unsafe {
+                // Wait until the helper has read the reply. DisconnectNamedPipe
+                // discards unread data, so without this the reply can be lost
+                // and the helper shows "monitoring is paused".
+                let _ = FlushFileBuffers(self.0);
                 let _ = DisconnectNamedPipe(self.0);
                 let _ = CloseHandle(self.0);
             }
