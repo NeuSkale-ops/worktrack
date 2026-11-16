@@ -72,6 +72,16 @@ export default function Devices() {
     }
   }
 
+  // Health is derived from check-in age, so a stale table shows a false
+  // "possible tamper". Refresh quietly every minute once loaded.
+  useEffect(() => {
+    if (!loaded) return
+    const t = setInterval(() => {
+      api<Device[]>('/devices').then(setDevices).catch(() => {})
+    }, 60_000)
+    return () => clearInterval(t)
+  }, [loaded])
+
   async function addDevice() {
     setBusy(true)
     setError('')
