@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { configError, defaultConfig, parseExcluded, summarize } from './deviceActivity.ts'
+import { configError, defaultConfig, parseExcluded, savedConfig, summarize } from './deviceActivity.ts'
 
 test('config validation mirrors the agent', () => {
   assert.equal(configError(defaultConfig), '')
@@ -23,4 +23,12 @@ test('activity summary adds minutes and ranks programs', () => {
   assert.equal(s.idleSecs, 10)
   assert.equal(s.lockedSecs, 30)
   assert.deepEqual(s.apps, [['b.exe', 50], ['a.exe', 40]])
+})
+
+test('saved device config fills the form over defaults', () => {
+  assert.deepEqual(savedConfig({}), defaultConfig)
+  assert.deepEqual(savedConfig(null), defaultConfig)
+  const c = savedConfig({ screenshots: true, location: true, version: 4 } as never)
+  assert.equal(c.screenshots && c.location && c.idle_time, true)
+  assert.equal('version' in c, false)
 })

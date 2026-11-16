@@ -63,7 +63,7 @@ func (a *app) listDevices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := a.db.Query(r.Context(), `SELECT d.id::text,d.upn,d.hostname,u.name,
-	  d.enabled,d.paused,d.uninstall,d.agent_version,d.config_version,
+	  d.enabled,d.paused,d.uninstall,d.agent_version,d.config_version,d.config,
 	  d.last_checkin_at,d.last_sync_at,d.buffer_depth,d.dropped_events,d.acked_seq
 	 FROM devices d LEFT JOIN users u ON u.id=d.user_id
 	 ORDER BY d.last_checkin_at DESC NULLS LAST`)
@@ -73,26 +73,27 @@ func (a *app) listDevices(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 	type dev struct {
-		ID            string     `json:"id"`
-		UPN           string     `json:"upn"`
-		Hostname      string     `json:"hostname"`
-		Name          *string    `json:"name"`
-		Enabled       bool       `json:"enabled"`
-		Paused        bool       `json:"paused"`
-		Uninstall     bool       `json:"uninstall"`
-		AgentVersion  string     `json:"agent_version"`
-		ConfigVersion int        `json:"config_version"`
-		LastCheckinAt *time.Time `json:"last_checkin_at"`
-		LastSyncAt    *time.Time `json:"last_sync_at"`
-		BufferDepth   int        `json:"buffer_depth"`
-		DroppedEvents int64      `json:"dropped_events"`
-		AckedSeq      int64      `json:"acked_seq"`
+		ID            string         `json:"id"`
+		UPN           string         `json:"upn"`
+		Hostname      string         `json:"hostname"`
+		Name          *string        `json:"name"`
+		Enabled       bool           `json:"enabled"`
+		Paused        bool           `json:"paused"`
+		Uninstall     bool           `json:"uninstall"`
+		AgentVersion  string         `json:"agent_version"`
+		ConfigVersion int            `json:"config_version"`
+		Config        map[string]any `json:"config"`
+		LastCheckinAt *time.Time     `json:"last_checkin_at"`
+		LastSyncAt    *time.Time     `json:"last_sync_at"`
+		BufferDepth   int            `json:"buffer_depth"`
+		DroppedEvents int64          `json:"dropped_events"`
+		AckedSeq      int64          `json:"acked_seq"`
 	}
 	out := []dev{}
 	for rows.Next() {
 		var d dev
 		if err = rows.Scan(&d.ID, &d.UPN, &d.Hostname, &d.Name, &d.Enabled, &d.Paused,
-			&d.Uninstall, &d.AgentVersion, &d.ConfigVersion, &d.LastCheckinAt, &d.LastSyncAt,
+			&d.Uninstall, &d.AgentVersion, &d.ConfigVersion, &d.Config, &d.LastCheckinAt, &d.LastSyncAt,
 			&d.BufferDepth, &d.DroppedEvents, &d.AckedSeq); err != nil {
 			fail(w, 503, "devices unavailable")
 			return

@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { api } from './api'
-import { configError, defaultConfig, hm, parseExcluded, summarize } from './deviceActivity'
+import { configError, hm, savedConfig, parseExcluded, summarize } from './deviceActivity'
 import type { DeviceConfig, DeviceEvent } from './deviceActivity'
 
 const localDay = () => new Date().toLocaleDateString('en-CA')
 
-export function DeviceConfigForm({ deviceId, onSaved }: { deviceId: string; onSaved: () => void }) {
-  const [cfg, setCfg] = useState<DeviceConfig>(defaultConfig)
-  const [excluded, setExcluded] = useState('')
+export function DeviceConfigForm({ deviceId, saved, onSaved }: { deviceId: string; saved?: Partial<DeviceConfig>; onSaved: () => void }) {
+  const [cfg, setCfg] = useState<DeviceConfig>(() => savedConfig(saved))
+  const [excluded, setExcluded] = useState(() => savedConfig(saved).excluded_apps.join('\n'))
   const [status, setStatus] = useState('')
   const [busy, setBusy] = useState(false)
   const next = { ...cfg, excluded_apps: parseExcluded(excluded) }

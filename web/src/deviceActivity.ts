@@ -47,6 +47,13 @@ export function configError(c: DeviceConfig): string {
   return ''
 }
 
+// Saved device config merged over defaults. The server keeps exactly what the
+// owner saved, which is {} for a device that was never configured.
+export function savedConfig(saved: Partial<DeviceConfig> | null | undefined): DeviceConfig {
+  const { version: _v, ...rest } = (saved ?? {}) as Partial<DeviceConfig> & { version?: number }
+  return { ...defaultConfig, ...rest }
+}
+
 export function parseExcluded(text: string): string[] {
   return [...new Set(text.split(/[\n,]/).map(s => s.trim().toLowerCase()).filter(Boolean))]
 }

@@ -3,6 +3,7 @@ import { api, post } from './api'
 import { DeviceActivity, DeviceConfigForm } from './DeviceDetail'
 import { fetchManagedAgentRelease } from './managedAgentRelease'
 import type { ManagedAgentRelease } from './managedAgentRelease'
+import type { DeviceConfig } from './deviceActivity'
 
 interface Device {
   id: string
@@ -14,6 +15,7 @@ interface Device {
   uninstall: boolean
   agent_version: string
   config_version: number
+  config?: Partial<DeviceConfig>
   last_checkin_at: string | null
   last_sync_at: string | null
   buffer_depth: number
@@ -214,7 +216,7 @@ export default function Devices() {
             <DeviceActivity key={`a-${openDevice.id}`} deviceId={openDevice.id} hostname={openDevice.hostname} />
             <details>
               <summary>Settings (current: config v{openDevice.config_version})</summary>
-              <DeviceConfigForm key={`c-${openDevice.id}`} deviceId={openDevice.id} onSaved={() => void load()} />
+              <DeviceConfigForm key={`c-${openDevice.id}`} deviceId={openDevice.id} saved={openDevice.config} onSaved={() => void load()} />
             </details>
           </div>
         )}
