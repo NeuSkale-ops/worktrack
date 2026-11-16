@@ -30,11 +30,14 @@ mod win {
     use std::time::{Duration, Instant};
 
     use windows::core::{w, PCWSTR};
-    use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS, HWND, LPARAM, LRESULT, WPARAM};
+    use windows::Win32::Foundation::{
+        GetLastError, ERROR_ALREADY_EXISTS, HWND, LPARAM, LRESULT, WPARAM,
+    };
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::System::Threading::CreateMutexW;
     use windows::Win32::UI::Shell::{
-        Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
+        Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY,
+        NOTIFYICONDATAW,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DispatchMessageW, LoadIconW, MessageBoxW, PeekMessageW,
@@ -50,30 +53,27 @@ mod win {
     const TRAY_MSG: u32 = WM_APP + 1;
     const POLL_EVERY: Duration = Duration::from_secs(5);
 
-    const NOTICE_TITLE: PCWSTR = w!("WorkTrack monitoring notice");
-    const NOTICE: PCWSTR = w!(
-        "This is a company-owned device. Your employer monitors its use with WorkTrack.\n\n\
-While you are signed in and monitoring is active, WorkTrack records:\n\
-  - active and idle time, and when the device is locked or unlocked\n\
-  - the names of the programs you use (not window titles, files, websites or keystrokes)\n\
-  - screenshots of the main display at fixed intervals, if your administrator enabled them\n\
-  - an approximate location with each screenshot, if your administrator enabled it\n\n\
-Nothing is captured while the screen is locked. The WorkTrack icon in the\n\
-notification area shows when monitoring is active or paused. Select it to\n\
-see this notice again. Ask IT or your manager about how this data is used."
-    );
+    const NOTICE_TITLE: PCWSTR = w!("Welcome to QuantiPeak");
+    const NOTICE: PCWSTR = w!("Welcome to QuantiPeak.\n\n\
+This is a company device. While you are signed in.");
 
     // ---- pipe client ------------------------------------------------------
 
     fn call(req: &Request, attachment: &[u8]) -> Option<Reply> {
         for _ in 0..10 {
-            match std::fs::OpenOptions::new().read(true).write(true).open(ipc::PIPE_NAME) {
+            match std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(ipc::PIPE_NAME)
+            {
                 Ok(mut pipe) => {
                     ipc::write_msg(&mut pipe, req, attachment).ok()?;
                     return ipc::read_msg::<_, Reply>(&mut pipe).ok().map(|(r, _)| r);
                 }
                 // All instances busy: the server creates the next one shortly.
-                Err(e) if e.raw_os_error() == Some(231) => std::thread::sleep(Duration::from_millis(50)),
+                Err(e) if e.raw_os_error() == Some(231) => {
+                    std::thread::sleep(Duration::from_millis(50))
+                }
                 Err(_) => return None,
             }
         }
@@ -103,7 +103,12 @@ see this notice again. Ask IT or your manager about how this data is used."
 
     fn show_notice() {
         unsafe {
-            MessageBoxW(None, NOTICE, NOTICE_TITLE, MB_OK | MB_ICONINFORMATION | MB_TOPMOST | MB_SETFOREGROUND);
+            MessageBoxW(
+                None,
+                NOTICE,
+                NOTICE_TITLE,
+                MB_OK | MB_ICONINFORMATION | MB_TOPMOST | MB_SETFOREGROUND,
+            );
         }
     }
 
@@ -148,7 +153,7 @@ see this notice again. Ask IT or your manager about how this data is used."
                 let hwnd = CreateWindowExW(
                     WINDOW_EX_STYLE::default(),
                     class,
-                    w!("WorkTrack"),
+                    w!("QuantiPeak"),
                     WINDOW_STYLE::default(),
                     0,
                     0,
@@ -176,9 +181,9 @@ see this notice again. Ask IT or your manager about how this data is used."
         /// Update the tooltip. Re-adds the icon if Explorer restarted and lost it.
         fn set(&mut self, active: bool) {
             let tip = if active {
-                "WorkTrack: monitoring is active on this company device"
+                "QuantiPeak: active"
             } else {
-                "WorkTrack: monitoring is paused"
+                "QuantiPeak: paused"
             };
             let mut buf = [0u16; 128];
             for (i, c) in tip.encode_utf16().take(127).enumerate() {
@@ -186,7 +191,8 @@ see this notice again. Ask IT or your manager about how this data is used."
             }
             self.data.szTip = buf;
             unsafe {
-                let ok = self.shown.is_some() && Shell_NotifyIconW(NIM_MODIFY, &self.data).as_bool();
+                let ok =
+                    self.shown.is_some() && Shell_NotifyIconW(NIM_MODIFY, &self.data).as_bool();
                 if !ok {
                     let _ = Shell_NotifyIconW(NIM_ADD, &self.data);
                 }
@@ -232,13 +238,24 @@ see this notice again. Ask IT or your manager about how this data is used."
             fn OpenInputDesktop(flags: u32, inherit: i32, access: u32) -> *mut c_void;
             fn CloseDesktop(desktop: *mut c_void) -> i32;
             fn SwitchDesktop(desktop: *mut c_void) -> i32;
-            fn GetUserObjectInformationW(h: *mut c_void, index: i32, value: *mut c_void, len: u32, needed: *mut u32) -> i32;
+            fn GetUserObjectInformationW(
+                h: *mut c_void,
+                index: i32,
+                value: *mut c_void,
+                len: u32,
+                needed: *mut u32,
+            ) -> i32;
         }
         #[link(name = "kernel32")]
         extern "system" {
             fn GetTickCount() -> u32;
             fn OpenProcess(access: u32, inherit: i32, id: u32) -> *mut c_void;
-            fn QueryFullProcessImageNameW(process: *mut c_void, flags: u32, path: *mut u16, size: *mut u32) -> i32;
+            fn QueryFullProcessImageNameW(
+                process: *mut c_void,
+                flags: u32,
+                path: *mut u16,
+                size: *mut u32,
+            ) -> i32;
             fn CloseHandle(handle: *mut c_void) -> i32;
         }
 
@@ -262,12 +279,16 @@ see this notice again. Ask IT or your manager about how this data is used."
                 }
                 let path = String::from_utf16_lossy(&path[..size as usize]);
                 let name = path.rsplit(['\\', '/']).next()?.trim().to_lowercase();
-                (!name.is_empty() && !name.chars().any(|c| c.is_control() || c == ':')).then_some(name)
+                (!name.is_empty() && !name.chars().any(|c| c.is_control() || c == ':'))
+                    .then_some(name)
             }
         }
 
         pub fn idle_seconds() -> Option<f64> {
-            let mut input = LastInput { size: std::mem::size_of::<LastInput>() as u32, tick: 0 };
+            let mut input = LastInput {
+                size: std::mem::size_of::<LastInput>() as u32,
+                tick: 0,
+            };
             unsafe {
                 if GetLastInputInfo(&mut input) == 0 {
                     None
@@ -287,7 +308,13 @@ see this notice again. Ask IT or your manager about how this data is used."
                 }
                 let mut name = [0u16; 128];
                 let mut needed = 0;
-                let read = GetUserObjectInformationW(desktop, 2, name.as_mut_ptr().cast(), 256, &mut needed);
+                let read = GetUserObjectInformationW(
+                    desktop,
+                    2,
+                    name.as_mut_ptr().cast(),
+                    256,
+                    &mut needed,
+                );
                 let end = name.iter().position(|c| *c == 0).unwrap_or(name.len());
                 let safe = read != 0
                     && String::from_utf16_lossy(&name[..end]).eq_ignore_ascii_case("Default")
@@ -323,20 +350,26 @@ see this notice again. Ask IT or your manager about how this data is used."
         use windows::Devices::Geolocation::{Geolocator, PositionAccuracy};
         use windows::Foundation::TimeSpan;
         let unavailable = serde_json::json!({ "status": "unavailable" });
-        let Ok(locator) = Geolocator::new() else { return unavailable };
+        let Ok(locator) = Geolocator::new() else {
+            return unavailable;
+        };
         if locator.SetDesiredAccuracy(PositionAccuracy::High).is_err() {
             return unavailable;
         }
         let Ok(op) = locator.GetGeopositionAsyncWithAgeAndTimeout(
             TimeSpan { Duration: 0 },
-            TimeSpan { Duration: 50_000_000 },
+            TimeSpan {
+                Duration: 50_000_000,
+            },
         ) else {
             return unavailable;
         };
         let started = Instant::now();
         loop {
             match op.Status().map(|s| s.0) {
-                Ok(0) if started.elapsed() < Duration::from_secs(5) => std::thread::sleep(Duration::from_millis(100)),
+                Ok(0) if started.elapsed() < Duration::from_secs(5) => {
+                    std::thread::sleep(Duration::from_millis(100))
+                }
                 Ok(1) => break,
                 _ => {
                     let _ = op.Cancel();
@@ -364,7 +397,9 @@ see this notice again. Ask IT or your manager about how this data is used."
             if GetLastError() == ERROR_ALREADY_EXISTS {
                 return;
             }
-            let _ = windows::Win32::System::WinRT::RoInitialize(windows::Win32::System::WinRT::RO_INIT_MULTITHREADED);
+            let _ = windows::Win32::System::WinRT::RoInitialize(
+                windows::Win32::System::WinRT::RO_INIT_MULTITHREADED,
+            );
         }
         let mut tray = Tray::new();
         let mut state: Option<Reply> = None;
@@ -416,11 +451,25 @@ see this notice again. Ask IT or your manager about how this data is used."
             }
             let cfg: Config = state.as_ref().map(|s| s.config.clone()).unwrap_or_default();
             let unlocked = platform::unlocked();
-            let idle = if unlocked && cfg.idle_time { platform::idle_seconds() } else { None };
-            let fg = if unlocked { platform::foreground_app() } else { None };
+            let idle = if unlocked && cfg.idle_time {
+                platform::idle_seconds()
+            } else {
+                None
+            };
+            let fg = if unlocked {
+                platform::foreground_app()
+            } else {
+                None
+            };
             let app = fg.as_deref().map(|a| redact::apply_exclusion(&cfg, a));
             let interval = cfg.screenshots.then_some(cfg.screenshot_interval_secs);
-            let tick = agg.sample(dt, unlocked, idle, app.as_deref().filter(|_| cfg.foreground_apps), interval);
+            let tick = agg.sample(
+                dt,
+                unlocked,
+                idle,
+                app.as_deref().filter(|_| cfg.foreground_apps),
+                interval,
+            );
             if let Some(m) = tick.minute {
                 // `user` is overwritten by the service from the session identity.
                 send("activity", m.to_payload(""), &[]);
@@ -435,7 +484,11 @@ see this notice again. Ask IT or your manager about how this data is used."
                         send("screenshot", payload, &jpeg);
                     }
                     Err(_) => {
-                        send("activity", serde_json::json!({ "capture_failed": true }), &[]);
+                        send(
+                            "activity",
+                            serde_json::json!({ "capture_failed": true }),
+                            &[],
+                        );
                     }
                 }
             }
