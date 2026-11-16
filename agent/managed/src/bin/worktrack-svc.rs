@@ -734,16 +734,14 @@ mod win {
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         let zip_path = dir.join("agent.zip");
         std::fs::write(&zip_path, &zip).map_err(|e| e.to_string())?;
+        // Unpack here, not with PowerShell Expand-Archive: that step failed
+        // silently in the detached process and the install never ran.
         let out = dir.join("payload");
-        let server = net.server.replace('\'', "''");
+        update::unpack(&zip, &out)?;
+        // -File, not -Command: no quoting of paths into a script string.
+        // install.ps1 writes its own transcript to -LogPath.
         spawn_detached(
-            &format!(
-                "-Command \"Expand-Archive -Force -LiteralPath '{}' -DestinationPath '{}'; & '{}\\install.ps1' -Server '{server}' *> '{}'; exit $LASTEXITCODE\"",
-                zip_path.display(),
-                out.display(),
-                out.display(),
-                dir.join("install.log").display(),
-            ),
+            &format!("-File \"{}\" -Server \"{}\" -LogPath \"{}\"", out.join("install.ps1").display(), net.server, dir.join("install.log").display()),
             &format!("upgrade to {}", rel.version),
         );
         Ok(())

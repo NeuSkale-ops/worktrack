@@ -63,10 +63,15 @@ func TestOrgIsolationHTTP(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
+	// Leftover users make the server skip owner bootstrap and break later
+	// tests. Audit rows reference devices of other users, so remove all of
+	// them before any device (map order is random).
 	defer func() {
 		for _, id := range ids {
+			_, _ = db.Exec(ctx, "DELETE FROM admin_audit WHERE actor_id=$1", id)
+		}
+		for _, id := range ids {
 			for _, q := range []string{
-				"DELETE FROM admin_audit WHERE actor_id=$1",
 				"DELETE FROM devices WHERE user_id=$1",
 				"DELETE FROM blocks WHERE user_id=$1",
 				"DELETE FROM work_sessions WHERE user_id=$1",
