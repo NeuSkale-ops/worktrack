@@ -5,13 +5,18 @@
 # service and program stay visible in the Services console and Programs and
 # Features. Tamper resistance is least privilege only.
 #
+# Self-update: the service downloads a newer release, verifies its pinned
+# SHA-256 and runs this script with only -Server. Enrollment is kept.
+#
 # Install command (Intune): powershell.exe -ExecutionPolicy Bypass -File install.ps1 -EnrollSecret "<secret>" -Server "https://worktrack.neuskale.com"
 #
 # Exit codes: 0 installed and enrolled, 1 installed but not enrolled. Intune
 # reports 1 as a failed install and retries it; detect.ps1 agrees because it
 # requires the enrollment file.
 param(
-  [Parameter(Mandatory = $true)][string]$EnrollSecret,
+  # Not needed for an upgrade of an enrolled device (the service self-update
+  # runs this script without it).
+  [string]$EnrollSecret = "",
   [string]$Server = "https://worktrack.neuskale.com",
   # Work account that owns this laptop. Default: the Intune enrollment UPN.
   [string]$Upn = "",
@@ -92,6 +97,7 @@ if (-not $Upn) {
   try { $Upn = (& whoami.exe /upn) 2>$null } catch { $Upn = "" }
 }
 try {
+  if (-not $EnrollSecret) { throw "-EnrollSecret is required for a new install" }
   if (-not $Upn) { throw "no user UPN found; pass -Upn" }
   $body = @{ secret = $EnrollSecret; upn = "$Upn".Trim(); hostname = $env:COMPUTERNAME } | ConvertTo-Json
   $resp = Invoke-RestMethod -Method Post -Uri "$Server/api/devices/enroll" -ContentType "application/json" -Body $body

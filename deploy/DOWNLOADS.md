@@ -167,3 +167,13 @@ The production-configured v0.1.2 installer includes the production updater endpo
 Publishing an installer for manual installation does not publish a production update manifest.
 Actual old-to-new signed Windows upgrade, identity/data preservation, and tracking/queue gate acceptance remain required before announcing production automatic updates.
 Windows publisher identity warnings are separate from Tauri update signatures.
+
+### Auto-update
+
+Enrolled services poll `/managed-agent/latest.json` five minutes after start and
+every six hours. When it names a strictly newer version, the service downloads
+the zip, checks the pinned SHA-256, unpacks it under
+`C:\ProgramData\WorkTrack\update` and runs its `install.ps1` with `-Server` only.
+Enrollment is kept. Output goes to `update\install.log`. Pushing `deploy` with a
+bumped `latest.json` therefore rolls the agent out to every device. Older
+versions in the feed are ignored, so roll back by shipping a higher version.

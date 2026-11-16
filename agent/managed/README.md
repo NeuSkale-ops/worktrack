@@ -20,6 +20,7 @@ still serves personal PCs with explicit Start/Stop). Nothing here is covert:
 - `src/buffer.rs`  durable SQLite WAL buffer: seq, encryption-at-rest hook, caps,
   coarsening under pressure, corruption recovery.
 - `src/sync.rs`    batch builder, backoff schedule, ack-prune (exactly-once).
+- `src/update.rs`  self-update: pick a newer pinned release, verify SHA-256.
 - `src/bin/worktrack-svc.rs`     Windows service host (LocalSystem). cfg(windows).
 - `src/bin/worktrack-session.rs` per-user helper: tray, ack screen, collectors.
 

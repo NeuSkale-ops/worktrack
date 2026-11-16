@@ -11,5 +11,6 @@ pub mod ipc;
 pub mod redact;
 pub mod seal;
 pub mod sync;
+pub mod update;
 
 pub use config::Config;

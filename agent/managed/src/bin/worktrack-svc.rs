@@ -85,12 +85,14 @@ mod win {
     use worktrack_managed::ipc::{self, Reply, Request};
     use worktrack_managed::seal::Dpapi;
     use worktrack_managed::sync;
+    use worktrack_managed::update;
 
     const SERVICE_NAME: &str = "WorkTrackAgent";
     const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
     const VERSION: &str = env!("CARGO_PKG_VERSION");
     const CHECKIN_EVERY: Duration = Duration::from_secs(60);
     const RECONCILE_EVERY: Duration = Duration::from_secs(5);
+    const UPDATE_EVERY: Duration = Duration::from_secs(6 * 3600);
     /// Local buffer cap. Screenshots dominate; this holds days of offline use.
     const BUFFER_MAX_BYTES: i64 = 512 * 1024 * 1024;
     /// Pipe: SYSTEM and admins full, interactive users read/write only. Remote
@@ -668,15 +670,17 @@ mod win {
 
     fn start_uninstall() {
         let script = install_dir().join("uninstall.ps1");
-        let mut cmd: Vec<u16> = format!(
-            "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"{}\"\0",
-            script.display()
-        )
-        .encode_utf16()
-        .collect();
+        spawn_detached(&format!("-File \"{}\"", script.display()), "uninstall.ps1");
+    }
+
+    /// Run a PowerShell command detached so it survives this service stopping,
+    /// which uninstall.ps1 and install.ps1 both do.
+    fn spawn_detached(args: &str, what: &str) {
+        let mut cmd: Vec<u16> = format!("powershell.exe -NoProfile -ExecutionPolicy Bypass {args}\0")
+            .encode_utf16()
+            .collect();
         let si = STARTUPINFOW { cb: std::mem::size_of::<STARTUPINFOW>() as u32, ..Default::default() };
         let mut pi = PROCESS_INFORMATION::default();
-        // Detached so it survives this service stopping, which the script does.
         let r = unsafe {
             windows::Win32::System::Threading::CreateProcessW(
                 PCWSTR::null(),
@@ -695,10 +699,50 @@ mod win {
             Ok(()) => unsafe {
                 let _ = CloseHandle(pi.hThread);
                 let _ = CloseHandle(pi.hProcess);
-                log("uninstall command received; uninstall.ps1 started");
+                log(&format!("{what} started"));
             },
-            Err(e) => log(&format!("could not start uninstall.ps1: {e}")),
+            Err(e) => log(&format!("could not start {what}: {e}")),
         }
+    }
+
+    // ---- self-update ------------------------------------------------------
+
+    /// Poll the dashboard's pinned release feed. When it names a newer version,
+    /// download the zip into the SYSTEM-only data dir, check the pinned SHA-256,
+    /// unpack it and run its install.ps1 in upgrade mode (keeps enrollment).
+    fn check_update(net: &Net) -> Result<(), String> {
+        let get = |path: &str| -> Result<Vec<u8>, String> {
+            let resp = net.http.get(format!("{}{path}", net.server)).send().map_err(|e| e.to_string())?;
+            if !resp.status().is_success() {
+                return Err(format!("{path}: HTTP {}", resp.status().as_u16()));
+            }
+            resp.bytes().map(|b| b.to_vec()).map_err(|e| e.to_string())
+        };
+        let Some(rel) = update::pick(VERSION, &get("/managed-agent/latest.json")?) else {
+            return Ok(());
+        };
+        let zip = get(&rel.zip_path())?;
+        if !update::verify(&rel, &zip) {
+            return Err(format!("update {} failed SHA-256 check", rel.version));
+        }
+        let dir = data_dir().join("update");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let zip_path = dir.join("agent.zip");
+        std::fs::write(&zip_path, &zip).map_err(|e| e.to_string())?;
+        let out = dir.join("payload");
+        let server = net.server.replace('\'', "''");
+        spawn_detached(
+            &format!(
+                "-Command \"Expand-Archive -Force -LiteralPath '{}' -DestinationPath '{}'; & '{}\\install.ps1' -Server '{server}' *> '{}'; exit $LASTEXITCODE\"",
+                zip_path.display(),
+                out.display(),
+                out.display(),
+                dir.join("install.log").display(),
+            ),
+            &format!("upgrade to {}", rel.version),
+        );
+        Ok(())
     }
 
     // ---- service lifecycle ------------------------------------------------
@@ -771,6 +815,8 @@ mod win {
         let mut next_reconcile = Instant::now();
         let mut sync_failures = 0u32;
         let mut uninstalling = false;
+        // First update check a few minutes after boot, not during logon rush.
+        let mut next_update = Instant::now() + Duration::from_secs(300);
 
         loop {
             match rx.recv_timeout(Duration::from_secs(1)) {
@@ -818,6 +864,14 @@ mod win {
                     uninstalling = true;
                     helpers.stop_all();
                     start_uninstall();
+                }
+                if !uninstall && now >= next_update {
+                    next_update = now + UPDATE_EVERY;
+                    // A failed install leaves this service running, so the
+                    // next interval retries it.
+                    if let Err(e) = check_update(n) {
+                        log(&format!("update check failed: {e}"));
+                    }
                 }
                 if !uninstall && depth > 0 && now >= next_sync {
                     match sync_once(n, &state) {
