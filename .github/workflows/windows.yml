@@ -3,12 +3,14 @@ on:
   pull_request:
     paths:
       - 'agent/**'
+      - '!agent/managed/**'
       - '.github/workflows/windows.yml'
       - 'deploy/windows-ci.json'
   push:
     branches: [main]
     paths:
       - 'agent/**'
+      - '!agent/managed/**'
       - '.github/workflows/windows.yml'
       - 'deploy/windows-ci.json'
   workflow_dispatch:
