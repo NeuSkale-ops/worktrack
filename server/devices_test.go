@@ -88,7 +88,7 @@ func TestDevicesHTTP(t *testing.T) {
 	// Admin mints an enrollment secret.
 	secret := call(ownerToken, "POST", "/api/devices/enrollments", map[string]any{}, 200)["secret"].(string)
 
-	// A used or invalid secret is rejected; the valid one enrolls and maps UPN.
+	// A used or invalid secret is rejected; the valid one enrolls unassigned.
 	call("", "POST", "/api/devices/enroll", map[string]any{"secret": "nope", "upn": upn}, 401)
 	enrolled := call("", "POST", "/api/devices/enroll", map[string]any{"secret": secret, "upn": upn, "hostname": "LAPTOP-1"}, 200)
 	deviceID = enrolled["device_id"].(string)
@@ -101,9 +101,11 @@ func TestDevicesHTTP(t *testing.T) {
 	}
 	call("", "POST", "/api/devices/enroll", map[string]any{"secret": secret, "upn": upn}, 401)
 
-	var mappedUser string
-	if e = db.QueryRow(ctx, "SELECT user_id::text FROM devices WHERE id=$1", deviceID).Scan(&mappedUser); e != nil || mappedUser != ownerID {
-		t.Fatalf("UPN not mapped: %s %v", mappedUser, e)
+	// Enrollment never links a laptop to a person, even when the UPN matches a
+	// user's email. Assignment is an explicit owner or manager action.
+	var unassigned bool
+	if e = db.QueryRow(ctx, "SELECT user_id IS NULL FROM devices WHERE id=$1", deviceID).Scan(&unassigned); e != nil || !unassigned {
+		t.Fatalf("enrollment assigned the laptop by email: unassigned=%v %v", unassigned, e)
 	}
 
 	// Check-in reports health and receives desired state. config_version starts 1.

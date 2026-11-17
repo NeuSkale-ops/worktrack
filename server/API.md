@@ -102,8 +102,8 @@ No logging failure changes tracking records, screenshot retention, or wages.
 
 These endpoints serve the Windows service agent for company-owned devices. They
 are separate from the per-user Tauri `device` credential above: a managed device
-is a machine, mapped to a user by UPN (email) at enrollment, carrying its own
-bearer token. Capture on each device is disclosed and admin-gated by config.
+is a machine, enrolled unassigned and assigned to a person by an owner or
+manager, carrying its own bearer token. Capture on each device is disclosed and admin-gated by config.
 
 Enrollment and lifecycle:
 - `POST /api/devices/enrollments` (owner): mint an enrollment secret, valid 7 days.
@@ -112,8 +112,8 @@ Enrollment and lifecycle:
 - `POST /api/devices/enrollments/revoke` (owner): body `{}`. Invalidates every
   outstanding secret, returns `{ok,revoked}`. Enrolled devices are unaffected.
 - `POST /api/devices/enroll` (no auth, secret only): body `{secret,upn,hostname?}`.
-  Maps `upn` to an existing user
-  (unknown UPN enrolls with no user link), returns `{device_id,token}`. 401 on
+  The laptop enrolls unassigned. `upn` is stored as a label only and never
+  links the laptop to a user. Returns `{device_id,token}`. 401 on
   invalid/expired/revoked secret. Rate limited per client IP.
 - `POST /api/devices/checkin` (device token): body `{agent_version?,buffer_depth?,
   dropped_events?,config_version?}`. Updates observed health and returns desired
@@ -145,8 +145,7 @@ Admin (owners, and managers for laptops assigned to people in their org):
   last sync, buffer depth, dropped events, desired state).
 - `PUT /api/devices/{id}/user`: `{user_id}` assigns the laptop to a person, or
   `null` unassigns it (owner only). Managers may assign only to people in
-  their own org. Enrollment still links a laptop to the user whose email
-  matches its UPN. Reassigning sets `assigned_at`: the laptop's earlier
+  their own org. Enrollment never assigns a laptop. Reassigning sets `assigned_at`: the laptop's earlier
   activity is not shown under the new person, and managers cannot read it
   through the activity endpoint. An unassigned laptop is visible to owners
   only.
