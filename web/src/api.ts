@@ -44,6 +44,14 @@ export interface DaySpan {
   start_at: string
   end_at: string
   screenshot: boolean
+  active_seconds?: number
+}
+/** A run of active time on an assigned company laptop. */
+export interface DeviceSpan {
+  device_id: string
+  start_at: string
+  end_at: string
+  active_seconds: number
 }
 export interface Hours {
   user_id: string

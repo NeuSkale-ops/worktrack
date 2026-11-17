@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { configError, defaultConfig, parseExcluded, savedConfig, summarize } from './deviceActivity.ts'
+import { configError, defaultConfig, health, parseExcluded, savedConfig, summarize } from './deviceActivity.ts'
 
 test('config validation mirrors the agent', () => {
   assert.equal(configError(defaultConfig), '')
@@ -31,4 +31,15 @@ test('saved device config fills the form over defaults', () => {
   const c = savedConfig({ screenshots: true, location: true, version: 4 } as never)
   assert.equal(c.screenshots && c.location && c.idle_time, true)
   assert.equal('version' in c, false)
+})
+
+test('device health treats silence as the tamper signal', () => {
+  const now = Date.parse('2026-11-17T12:00:00Z')
+  const d = { last_checkin_at: '2026-11-17T11:59:00Z', uninstall: false, paused: false, enabled: true }
+  assert.deepEqual(health(d, now), { label: 'active', tone: 'ok' })
+  assert.equal(health({ ...d, last_checkin_at: null }, now).label, 'awaiting first check-in')
+  // Silence outranks every desired state, so a paused laptop that stops reporting still shows as stale.
+  assert.deepEqual(health({ ...d, paused: true, last_checkin_at: '2026-11-17T11:40:00Z' }, now), { label: 'stale (possible tamper)', tone: 'bad' })
+  assert.equal(health({ ...d, paused: true }, now).label, 'paused')
+  assert.equal(health({ ...d, enabled: false }, now).tone, 'warn')
 })
