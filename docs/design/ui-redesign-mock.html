@@ -365,7 +365,7 @@ function viewDay() {
       <div><b>${shots.length}</b><span>Screenshots</span></div>
       <div><b>${first ? hm(first[0]) + ' to ' + (p.working ? 'now' : hm(last[1])) : 'None'}</b><span>First start to last stop</span></div>
     </div>
-    <div class="pad day-ribbon">${ribbon(p, a, b)}${scale(a, b, step)}${devOf(p).map(d => `<div class="devline"><p class="muted"><b>${d.host}</b>, assigned company laptop. ${dur(total(d))} active today. Health: ${d.health.toLowerCase()}. <button class="plain" data-open="device" data-id="${DEV.indexOf(d)}">Open laptop</button></p>${devRibbon(d, a, b)}</div>`).join('')}</div>
+    <div class="pad day-ribbon">${ribbon(p, a, b)}${scale(a, b, step)}${devOf(p).map(d => `<div class="devline"><p class="muted"><b>${d.host}</b>, assigned company laptop. ${dur(total(d))} active today. Health: ${d.health.toLowerCase()}. ${own ? '' : `<button class="plain" data-open="device" data-id="${DEV.indexOf(d)}">Open laptop</button>`}</p>${devRibbon(d, a, b)}</div>`).join('')}</div>
   </section>
   <div class="tabs" role="tablist" aria-label="Day review">${['Screenshots', 'Activity details', 'Applications'].map(t => `<button role="tab" aria-selected="${S.tab === t}" data-tab="${t}">${t}</button>`).join('')}</div>
   <div role="tabpanel">${panel}</div>`
