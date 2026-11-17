@@ -1,8 +1,11 @@
 package main
 
 import (
+	"errors"
 	"net/http"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // Admin surface for the managed-device fleet. Enrollment secrets are owner
@@ -97,7 +100,7 @@ func (a *app) listDevices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cond, args := sees(r, "u.id", "u.org_id", 1)
-	rows, err := a.db.Query(r.Context(), `SELECT d.id::text,d.upn,d.hostname,u.name,
+	rows, err := a.db.Query(r.Context(), `SELECT d.id::text,d.user_id::text,d.upn,d.hostname,u.name,
 	  d.enabled,d.paused,d.uninstall,d.agent_version,d.config_version,d.config,
 	  d.last_checkin_at,d.last_sync_at,d.buffer_depth,d.dropped_events,d.acked_seq
 	 FROM devices d LEFT JOIN users u ON u.id=d.user_id
@@ -110,6 +113,7 @@ func (a *app) listDevices(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	type dev struct {
 		ID            string         `json:"id"`
+		UserID        *string        `json:"user_id"`
 		UPN           string         `json:"upn"`
 		Hostname      string         `json:"hostname"`
 		Name          *string        `json:"name"`
@@ -128,7 +132,7 @@ func (a *app) listDevices(w http.ResponseWriter, r *http.Request) {
 	out := []dev{}
 	for rows.Next() {
 		var d dev
-		if err = rows.Scan(&d.ID, &d.UPN, &d.Hostname, &d.Name, &d.Enabled, &d.Paused,
+		if err = rows.Scan(&d.ID, &d.UserID, &d.UPN, &d.Hostname, &d.Name, &d.Enabled, &d.Paused,
 			&d.Uninstall, &d.AgentVersion, &d.ConfigVersion, &d.Config, &d.LastCheckinAt, &d.LastSyncAt,
 			&d.BufferDepth, &d.DroppedEvents, &d.AckedSeq); err != nil {
 			fail(w, 503, "devices unavailable")
@@ -227,6 +231,62 @@ func (a *app) deviceCommand(w http.ResponseWriter, r *http.Request) {
 	}
 	if tx.Commit(r.Context()) != nil {
 		fail(w, 503, "command unavailable")
+		return
+	}
+	ok(w)
+}
+
+// assignDevice links a laptop to the person who uses it, or unlinks it with
+// null. Its activity from then on is shown under that person. Owners assign
+// anyone. Managers reassign laptops they can already see to people in their
+// own org, and cannot unassign: an unassigned laptop belongs to no org, so
+// only owners see it.
+func (a *app) assignDevice(w http.ResponseWriter, r *http.Request) {
+	id, okay := a.deviceVisible(w, r)
+	if !okay {
+		return
+	}
+	var in struct {
+		UserID *string `json:"user_id"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	actor := current(r)
+	if in.UserID == nil && actor.Role != "owner" {
+		fail(w, 403, "only an owner can unassign a laptop")
+		return
+	}
+	if in.UserID != nil && !validID(*in.UserID) {
+		fail(w, 400, "invalid user ID")
+		return
+	}
+	tx, err := a.db.Begin(r.Context())
+	if err != nil {
+		fail(w, 503, "assignment unavailable")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	if in.UserID != nil {
+		var org *string
+		err = tx.QueryRow(r.Context(), "SELECT org_id FROM users WHERE id=$1", *in.UserID).Scan(&org)
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && !sameOrg(actor, org)) {
+			fail(w, 404, "user not found")
+			return
+		}
+		if err != nil {
+			fail(w, 503, "assignment unavailable")
+			return
+		}
+	}
+	// Saving the same person again must not move assigned_at, which would hide
+	// the laptop's earlier activity.
+	tag, err := tx.Exec(r.Context(), "UPDATE devices SET user_id=$2, assigned_at=now() WHERE id=$1 AND user_id IS DISTINCT FROM $2", id, in.UserID)
+	if err == nil && tag.RowsAffected() == 1 {
+		err = a.audit(r.Context(), tx, actor.ID, "assign", &id, map[string]any{"user_id": in.UserID})
+	}
+	if err != nil || tx.Commit(r.Context()) != nil {
+		fail(w, 503, "assignment unavailable")
 		return
 	}
 	ok(w)

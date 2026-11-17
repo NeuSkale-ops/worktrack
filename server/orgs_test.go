@@ -70,6 +70,11 @@ func TestOrgIsolationHTTP(t *testing.T) {
 		for _, id := range ids {
 			_, _ = db.Exec(ctx, "DELETE FROM admin_audit WHERE actor_id=$1", id)
 		}
+		// By device id: reassignment changes or clears devices.user_id.
+		for _, id := range devices {
+			_, _ = db.Exec(ctx, "DELETE FROM device_events WHERE device_id=$1", id)
+			_, _ = db.Exec(ctx, "DELETE FROM devices WHERE id=$1", id)
+		}
 		for _, id := range ids {
 			for _, q := range []string{
 				"DELETE FROM devices WHERE user_id=$1",
@@ -151,6 +156,76 @@ func TestOrgIsolationHTTP(t *testing.T) {
 	call("nsMgr", "POST", "/api/devices/"+devices["qpWorker"]+"/command", map[string]any{"command": "pause"}, 404)
 	call("nsMgr", "POST", "/api/devices/"+devices["nsWorker"]+"/command", map[string]any{"command": "pause"}, 200)
 	call("nsWorker", "GET", "/api/devices", nil, 403)
+
+	// Laptop activity is reported under the assigned person as merged runs.
+	at := time.Now().UTC().Truncate(time.Second)
+	for i, payload := range []map[string]any{{"active_secs": 30}, {"active_secs": 30}, {"active_secs": 30}, {"active_secs": "junk"}} {
+		if _, e = db.Exec(ctx, "INSERT INTO device_events(device_id,seq,event_id,kind,occurred_at,payload) VALUES($1,$2,$3,'activity',$4,$5)", devices["nsWorker"], i+1, uuid.NewString(), at.Add(time.Duration(i-4)*time.Minute), payload); e != nil {
+			t.Fatal(e)
+		}
+	}
+	laptopSpans := func(who string) []map[string]any {
+		t.Helper()
+		var rows, mine []map[string]any
+		if e := json.Unmarshal(call(who, "GET", "/api/reports/device-day"+q, nil, 200), &rows); e != nil {
+			t.Fatal(e)
+		}
+		for _, row := range rows {
+			if row["device_id"] == devices["nsWorker"] {
+				mine = append(mine, row)
+			}
+		}
+		return mine
+	}
+	if spans := laptopSpans("nsMgr"); len(spans) != 1 || spans[0]["active_seconds"].(float64) != 90 {
+		t.Fatalf("laptop spans %v, want one merged run of 90 active seconds", spans)
+	}
+	if spans := laptopSpans("qpMgr"); len(spans) != 0 {
+		t.Fatalf("other org saw laptop spans %v", spans)
+	}
+	call("nsWorker", "GET", "/api/reports/device-day"+q, nil, 403)
+
+	// Owners and managers assign laptops. Managers stay inside their org.
+	assign := "/api/devices/" + devices["nsWorker"] + "/user"
+	call("nsWorker", "PUT", assign, map[string]any{"user_id": ids["nsWorker"]}, 403)
+	call("nsMgr", "PUT", assign, map[string]any{"user_id": ids["qpWorker"]}, 404)
+	call("nsMgr", "PUT", assign, map[string]any{"user_id": ids["loose"]}, 404)
+	call("nsMgr", "PUT", "/api/devices/"+devices["qpWorker"]+"/user", map[string]any{"user_id": ids["nsWorker"]}, 404)
+	call("nsMgr", "PUT", assign, map[string]any{"user_id": nil}, 403)
+	call("owner", "PUT", assign, map[string]any{"user_id": "nope"}, 400)
+	call("owner", "PUT", assign, map[string]any{"user_id": uuid.NewString()}, 404)
+	// Saving the current person changes nothing, so history stays visible.
+	call("nsMgr", "PUT", assign, map[string]any{"user_id": ids["nsWorker"]}, 200)
+	if spans := laptopSpans("nsMgr"); len(spans) != 1 {
+		t.Fatalf("no-op assignment hid history: %v", spans)
+	}
+	call("nsMgr", "PUT", assign, map[string]any{"user_id": ids["nsMgr"]}, 200)
+	var assignee string
+	var audited int
+	if e = db.QueryRow(ctx, "SELECT user_id::text,(SELECT count(*) FROM admin_audit WHERE device_id=$1 AND action='assign') FROM devices WHERE id=$1", devices["nsWorker"]).Scan(&assignee, &audited); e != nil || assignee != ids["nsMgr"] || audited != 1 {
+		t.Fatalf("assignee %q audited %d %v", assignee, audited, e)
+	}
+	// Earlier activity does not follow the laptop to its new person.
+	if spans := laptopSpans("owner"); len(spans) != 0 {
+		t.Fatalf("history moved to the new assignee: %v", spans)
+	}
+	events := func(who string) int {
+		t.Helper()
+		var rows []map[string]any
+		if e := json.Unmarshal(call(who, "GET", "/api/devices/"+devices["nsWorker"]+"/activity"+q, nil, 200), &rows); e != nil {
+			t.Fatal(e)
+		}
+		return len(rows)
+	}
+	if events("owner") != 4 || events("nsMgr") != 0 {
+		t.Fatalf("owner saw %d events, manager %d, want 4 and 0", events("owner"), events("nsMgr"))
+	}
+	// An unassigned laptop belongs to no org, so only owners see it.
+	call("owner", "PUT", assign, map[string]any{"user_id": nil}, 200)
+	expect(seen("nsMgr", "/api/devices", "id"), "nsMgr")
+	call("nsMgr", "PUT", assign, map[string]any{"user_id": ids["nsWorker"]}, 404)
+	call("owner", "PUT", assign, map[string]any{"user_id": ids["nsWorker"]}, 200)
+	expect(seen("nsMgr", "/api/devices", "id"), "nsMgr", "nsWorker")
 
 	// Assignment is owner only and moves visibility with the user.
 	call("nsMgr", "PUT", "/api/users/"+ids["loose"]+"/org", map[string]any{"org_id": "neuskale"}, 403)
