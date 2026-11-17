@@ -109,7 +109,8 @@ summary { color: var(--clock); font-size: 14px; font-weight: 500; }
 .global-nav button[aria-current='page'] { color: var(--ink); background: var(--white); }
 .account { display: flex; align-items: center; gap: 10px; margin-top: auto; padding: 14px 8px 0; border-top: 1px solid #ffffff26; font-size: 14px; }
 .account > span:nth-child(2) { flex: 1; min-width: 0; }
-.account b, .account small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account b { display: block; overflow-wrap: anywhere; }
 .account small { color: #a9bcb9; }
 .account button { padding: 5px 9px; border-color: #ffffff4d; color: #dfe8e6; background: none; font-size: 13px; }
 .account button:hover:not(:disabled) { border-color: var(--white); }
@@ -212,9 +213,11 @@ button.board-row:focus-visible { outline-offset: -3px; }
 .fill i { display: block; height: 100%; border-radius: 4px; background: var(--clock); }
 
 /* Tables */
-.table-scroll { max-width: 100%; overflow-x: auto; }
+/* Positioned so visually hidden labels in far columns scroll with the table and cannot widen the page. */
+.table-scroll { position: relative; max-width: 100%; overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
 th, td { padding: 11px 14px; border-top: 1px solid var(--rule); font-size: 14px; font-weight: 400; text-align: left; vertical-align: middle; }
+tbody th[scope=row] { white-space: nowrap; }
 thead th { border-top: 0; color: var(--quiet); font-size: 13px; font-weight: 500; white-space: nowrap; }
 tbody th { font-weight: 600; }
 td select { width: auto; max-width: 220px; min-height: 32px; padding: 3px 8px; }

@@ -341,6 +341,17 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
     setView(next)
     window.scrollTo(0, 0)
   }
+  const openPerson = (id: string) => {
+    // Clear the previous person's day in the same render, so their screenshots
+    // never show under the new name while the new day loads.
+    if (id !== selected) {
+      setBusy(true)
+      setBlocks([])
+      setSelected(id)
+    }
+    setTab('Screenshots')
+    go('day')
+  }
   const today = localDate()
   const isToday = date === today
   const now = isToday ? minuteOfDay(new Date()) : null
@@ -526,7 +537,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
             <TeamBoard people={people} devices={devices} win={win} now={now} busy={busy}
               segments={personSegments} laptopSegments={laptopSegments}
               seconds={personSeconds} input={personInput} laptopSeconds={laptopSeconds} status={statusLine}
-              onPerson={id => { setSelected(id); setTab('Screenshots'); go('day') }}
+              onPerson={openPerson}
               onDevice={id => { setOpenDevice(id); go('devices') }} />
             {laptopError && <p className="muted" role="status">Company laptop activity could not be loaded. Recorded time is unaffected.</p>}
             {unassignedLaptops > 0 && (

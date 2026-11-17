@@ -63,7 +63,8 @@ export function DeviceActivity({ deviceId, hostname, sinceAssigned }: { deviceId
   const [date, setDate] = useState(localDay())
   const [events, setEvents] = useState<DeviceEvent[] | null>(null)
   const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
+  // Loads on open, so it starts busy and never shows an empty frame first.
+  const [busy, setBusy] = useState(true)
 
   async function load(day = date) {
     setBusy(true)
