@@ -107,11 +107,21 @@ button.board-row:hover { background: #0d7a630d; border-color: var(--line); }
 .board-row.top { border-top: 0; padding-bottom: 4px; font-size: 12px; color: var(--quiet); }
 .board-row .now { top: -12px; bottom: -12px; }
 .who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.who > span:last-child { min-width: 0; }
 .who b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .who small { display: block; color: var(--quiet); font-size: 12px; }
 .board-row .num { font-size: 17px; font-weight: 600; text-align: right; }
 .board-row .pct { text-align: right; color: var(--quiet); font-size: 14px; }
 .off .who b, .off .num { color: var(--quiet); }
+.board-row.sub { border-top: 0; padding-top: 0; padding-bottom: 12px; }
+.board-row.sub .who { padding-left: 44px; }
+.board-row.sub .who b { font-size: 13px; }
+.board-row.sub .track { height: 10px; }
+.board-row.sub .num { font-size: 14px; color: var(--quiet); }
+.board-row.sub .now { top: 0; bottom: 0; }
+.seg.dev { background: #6b7f8f; }
+.devline { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); display: grid; gap: 6px; }
+.day-ribbon .devline .track { height: 12px; }
 
 /* Day */
 .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
@@ -246,11 +256,11 @@ const P = [
 ]
 const APPS = ['Code.exe', 'chrome.exe', 'Teams.exe', 'EXCEL.EXE', 'Figma.exe', 'explorer.exe']
 const DEV = [
-  { host: 'NS-LT-0142', upn: 'karthik@neuskale.com', org: 'NeuSkale', health: 'Active', seen: '15:39', ver: '0.4.2', buf: 0 },
-  { host: 'NS-LT-0138', upn: 'priya@neuskale.com', org: 'NeuSkale', health: 'Active', seen: '15:40', ver: '0.4.2', buf: 0 },
-  { host: 'NS-LT-0117', upn: 'vikram@neuskale.com', org: 'NeuSkale', health: 'Stale, possible tamper', seen: 'Yesterday 18:12', ver: '0.4.1', buf: 212 },
-  { host: 'SL-LT-0021', upn: 'rahul@skalelabs.in', org: 'Skale Labs', health: 'Paused', seen: '15:38', ver: '0.4.2', buf: 0 },
-  { host: 'SL-LT-0024', upn: 'arjun@skalelabs.in', org: 'Skale Labs', health: 'Awaiting first check-in', seen: 'Never', ver: '', buf: 0 },
+  { host: 'NS-LT-0142', upn: 'karthik@neuskale.com', org: 'NeuSkale', health: 'Active', seen: '15:39', ver: '0.4.2', buf: 0, user: 2, spans: [[590, 770], [800, 940]] },
+  { host: 'NS-LT-0138', upn: 'priya@neuskale.com', org: 'NeuSkale', health: 'Active', seen: '15:40', ver: '0.4.2', buf: 0, user: 3, spans: [[470, 660], [695, 940]] },
+  { host: 'NS-LT-0117', upn: 'vikram@neuskale.com', org: 'NeuSkale', health: 'Stale, possible tamper', seen: 'Yesterday 18:12', ver: '0.4.1', buf: 212, user: 8, spans: [] },
+  { host: 'SL-LT-0021', upn: 'rahul@skalelabs.in', org: 'Skale Labs', health: 'Paused', seen: '15:38', ver: '0.4.2', buf: 0, user: 4, spans: [[560, 725], [775, 880]] },
+  { host: 'SL-LT-0024', upn: '', org: 'Skale Labs', health: 'Awaiting first check-in', seen: 'Never', ver: '', buf: 0, user: null, spans: [] },
 ]
 const ME = { owner: 0, manager: 1, worker: 2 }
 const S = { role: 'owner', view: 'team', sel: 3, tab: 'Screenshots', zoom: true, org: '', wk: 0, dtab: 'Laptops' }
@@ -267,10 +277,18 @@ const me = () => P[ME[S.role]]
 const team = () => P.filter(p => p.role !== 'owner' && (S.role === 'owner' ? !S.org || p.org === S.org : p.org === me().org))
 const avatar = p => `<span class="avatar ${p.working ? 'on' : ''}" aria-hidden="true">${ini(p)}</span>`
 
-function ribbon(p, a, b) {
+// Laptops are assigned to a person. Their activity shows under that person.
+const inScope = x => S.role === 'owner' ? !S.org || x.org === S.org : x.org === me().org
+const devOf = p => DEV.filter(d => d.user === p.id)
+const devRibbon = (d, a, b) => ribbon({ name: d.host + ' laptop', spans: d.spans }, a, b, 'dev')
+const devRows = (p, a, b) => devOf(p).map(d => `<button class="board-row sub" data-open="device" data-id="${DEV.indexOf(d)}" aria-label="${d.host}, laptop assigned to ${p.name}, ${dur(total(d))} active. Open laptop.">
+  <span class="who"><span><b>${d.host}</b><small>Company laptop, ${d.health.toLowerCase()}</small></span></span>${devRibbon(d, a, b)}<span class="num">${dur(total(d))}</span><span class="pct">active</span></button>`).join('')
+const assignSel = d => `<select data-assign="${DEV.indexOf(d)}" aria-label="Person assigned to ${d.host}"><option value="">Unassigned</option>${P.filter(p => p.role !== 'owner' && inScope(p)).map(p => `<option value="${p.id}" ${d.user === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}</select>`
+
+function ribbon(p, a, b, cls = '') {
   const pos = m => (Math.min(Math.max(m, a), b) - a) / (b - a) * 100
   return `<div class="track" style="--hrs:${(b - a) / 60}" role="img" aria-label="${p.name}: ${dur(total(p))} recorded">` +
-    p.spans.map(([s, e, c]) => `<i class="seg" style="left:${pos(s)}%;width:${pos(e) - pos(s)}%;opacity:${.45 + c * .55}"></i>`).join('') +
+    p.spans.map(([s, e, c]) => `<i class="seg ${cls}" style="left:${pos(s)}%;width:${pos(e) - pos(s)}%;opacity:${.45 + (c ?? 1) * .55}"></i>`).join('') +
     (NOW >= a && NOW <= b ? `<i class="now" style="left:${pos(NOW)}%"></i>` : '') + '</div>'
 }
 function scale(a, b, step) {
@@ -306,10 +324,11 @@ function viewTeam() {
     <div class="board-row top"><span>Person</span>${scale(a, b, step)}<span class="r">Recorded</span><span class="r">Input</span></div>
     ${sorted.map(p => `<button class="board-row ${total(p) ? '' : 'off'}" data-person="${p.id}" aria-label="${p.name}, ${status(p)}, ${dur(total(p))} recorded. Open their day.">
       <span class="who">${avatar(p)}<span><b>${p.name}</b><small>${status(p)}</small></span></span>
-      ${ribbon(p, a, b)}<span class="num">${dur(total(p))}</span><span class="pct">${total(p) ? act(p) + '%' : ''}</span></button>`).join('')}
+      ${ribbon(p, a, b)}<span class="num">${dur(total(p))}</span><span class="pct">${total(p) ? act(p) + '%' : ''}</span></button>${devRows(p, a, b)}`).join('')}
   </section>
+  ${DEV.some(x => x.user === null && inScope(x)) ? `<p class="muted" style="margin-top:12px">${DEV.filter(x => x.user === null && inScope(x)).length} laptop is not assigned to anyone, so its activity is not shown here. <button class="plain" data-go="devices">Assign it in Devices</button></p>` : ''}
   <div class="row" style="margin-top:12px;justify-content:space-between">
-    <p class="muted">Green marks recorded time, darker where input activity was higher. The amber line is now. Times in Asia/Kolkata.</p>
+    <p class="muted">Green is time recorded by the desktop timer, darker where input activity was higher. Grey is active time on the person's assigned company laptop. The amber line is now. Times in Asia/Kolkata.</p>
     <label class="check"><input type="checkbox" id="zoom" ${S.zoom ? 'checked' : ''}>Show 06:00 to 22:00 only</label>
   </div>`
 }
@@ -345,7 +364,7 @@ function viewDay() {
       <div><b>${shots.length}</b><span>Screenshots</span></div>
       <div><b>${first ? hm(first[0]) + ' to ' + (p.working ? 'now' : hm(last[1])) : 'None'}</b><span>First start to last stop</span></div>
     </div>
-    <div class="pad day-ribbon">${ribbon(p, a, b)}${scale(a, b, step)}</div>
+    <div class="pad day-ribbon">${ribbon(p, a, b)}${scale(a, b, step)}${devOf(p).map(d => `<div class="devline"><p class="muted"><b>${d.host}</b>, assigned company laptop. ${dur(total(d))} active today. Health: ${d.health.toLowerCase()}. <button class="plain" data-open="device" data-id="${DEV.indexOf(d)}">Open laptop</button></p>${devRibbon(d, a, b)}</div>`).join('')}</div>
   </section>
   <div class="tabs" role="tablist" aria-label="Day review">${['Screenshots', 'Activity details', 'Applications'].map(t => `<button role="tab" aria-selected="${S.tab === t}" data-tab="${t}">${t}</button>`).join('')}</div>
   <div role="tabpanel">${panel}</div>`
@@ -400,10 +419,10 @@ function viewDevices() {
     <tr><th scope="row">Meera Shah</th><td>17 Nov, 08:41</td><td>0.9.3</td><td><span class="pill bad">error</span> location_denied</td><td>Windows location permission is off.</td></tr>
     <tr><th scope="row">Karthik Iyer</th><td>16 Nov, 12:15</td><td>0.9.2</td><td><span class="pill">info</span> update_applied</td><td>Updated to 0.9.3.</td></tr></tbody></table></section>
     <p class="muted" style="margin-top:10px">Newest 100 events from the last seven days. Fixed error codes only, never raw error text or screenshots.</p>`
-  const laptops = `<div class="chips" style="margin-bottom:14px"><span class="pill ok">${d.filter(x => x.health === 'Active').length} active</span><span class="pill bad">${d.filter(x => x.health.startsWith('Stale')).length} stale</span><span class="pill warn">${d.filter(x => !['Active'].includes(x.health) && !x.health.startsWith('Stale')).length} need attention</span></div>
+  const laptops = `<div class="chips" style="margin-bottom:14px"><span class="pill ok">${d.filter(x => x.health === 'Active').length} active</span><span class="pill bad">${d.filter(x => x.health.startsWith('Stale')).length} stale</span><span class="pill warn">${d.filter(x => !['Active'].includes(x.health) && !x.health.startsWith('Stale')).length} need attention</span><span class="pill warn">${d.filter(x => x.user === null).length} unassigned</span></div>
     <section class="panel scroll"><table><caption class="sr">Managed laptops</caption>
-    <thead><tr><th>Laptop</th><th>Signed-in user</th><th>Health</th><th>Last check-in</th><th>Agent</th><th class="r">Unsent events</th><th></th></tr></thead>
-    <tbody>${d.map((x, i) => `<tr><th scope="row">${x.host}<small class="muted" style="display:block;font-weight:400">${x.org}</small></th><td>${x.upn}</td><td><span class="pill ${cls(x.health)}">${x.health}</span></td><td>${x.seen}</td><td>${x.ver}</td><td class="r num">${x.buf || ''}</td><td class="r"><button data-open="device" data-id="${DEV.indexOf(x)}">Open</button></td></tr>`).join('')}</tbody></table></section>
+    <thead><tr><th>Laptop</th><th>Assigned to</th><th>Signed-in user</th><th>Health</th><th>Last check-in</th><th>Agent</th><th class="r">Unsent events</th><th></th></tr></thead>
+    <tbody>${d.map((x, i) => `<tr><th scope="row">${x.host}<small class="muted" style="display:block;font-weight:400">${x.org}</small></th><td>${assignSel(x)}</td><td>${x.upn || '<span class="muted">None yet</span>'}</td><td><span class="pill ${cls(x.health)}">${x.health}</span></td><td>${x.seen}</td><td>${x.ver}</td><td class="r num">${x.buf || ''}</td><td class="r"><button data-open="device" data-id="${DEV.indexOf(x)}">Open</button></td></tr>`).join('')}</tbody></table></section>
     <p class="muted" style="margin-top:10px">A laptop silent for more than 15 minutes is shown as stale. Silence is the only signal that the agent was stopped, and it is never hidden.</p>
     ${owner ? `<section class="panel pad" style="margin-top:18px"><div class="dl"><div><h2>Managed agent for Windows</h2><p class="muted">Version 0.4.2, 64-bit, unsigned test build. For company-owned laptops, installed by IT.</p></div><button>Download (.zip)</button></div>
       <details><summary>Install steps</summary><ol><li>Select Add laptop and copy the enrollment secret.</li><li>Extract the zip on the laptop and open PowerShell as administrator in that folder.</li><li>Run <code>install.ps1 -EnrollSecret "SECRET" -Upn "user@company.com"</code>.</li><li>The laptop appears here within a minute. Each signed-in user sees a one-time monitoring notice and a tray icon.</li></ol></details></section>` : ''}`
@@ -489,7 +508,8 @@ function openDialog(kind, id) {
   }
   const d = DEV[id]
   $('drawer').innerHTML = `<div class="dhead"><h2 id="drawer-h">${d.host}</h2>${close('drawer')}</div><div class="dbody">
-    <p class="muted">${d.upn}. Last check-in ${d.seen.toLowerCase()}.</p>
+    <p class="muted">${d.upn || 'No one signed in yet'}. Last check-in ${d.seen.toLowerCase()}.</p>
+    <label>Assigned to${assignSel(d)}<span class="muted" style="font-weight:400">This laptop's activity shows under this person in Team today and on their day.</span></label>
     <div class="facts"><div><b>5h 12m</b><span>Active</span></div><div><b>0h 48m</b><span>Idle</span></div><div><b>0h 31m</b><span>Locked</span></div></div>
     <ul class="apps" style="padding:0">${[['Code.exe', 142], ['chrome.exe', 96], ['Teams.exe', 51]].map(([n, m]) => `<li style="grid-template-columns:100px 1fr 60px"><b>${n}</b><span class="bar"><i style="width:${m / 1.42}%"></i></span><span class="num r">${dur(m)}</span></li>`).join('')}</ul>
     <fieldset><legend>Capture settings</legend>
@@ -548,6 +568,7 @@ document.addEventListener('click', e => {
 document.addEventListener('change', e => {
   if (e.target.id === 'org') S.org = e.target.value
   else if (e.target.id === 'zoom') S.zoom = e.target.checked
+  else if (e.target.dataset.assign) DEV[+e.target.dataset.assign].user = e.target.value === '' ? null : +e.target.value
   else return
   render()
 })
