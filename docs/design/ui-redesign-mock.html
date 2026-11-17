@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WorkTrack redesign mock</title>
+<!-- Static review mock. Sample data only, no API calls. Open in a browser. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #13262b;
+  --quiet: #55686c;
+  --clock: #0d7a63;
+  --clock-soft: #dcefe9;
+  --mist: #f1f4f3;
+  --card: #fff;
+  --line: #13262b1f;
+  --amber: #a15f00;
+  --amber-soft: #fbefd9;
+  --red: #b23a2e;
+  --display: 'Bricolage Grotesque', 'Segoe UI', system-ui, sans-serif;
+  font-family: 'Instrument Sans', 'Segoe UI', system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--mist);
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+h1, h2, h3, p, ul, ol { margin: 0; }
+h1 { font: 600 30px/1.15 var(--display); letter-spacing: -.4px; }
+h2 { font: 600 18px/1.3 var(--display); }
+h3 { font-size: 14px; font-weight: 600; }
+a { color: var(--clock); }
+button, input, select, textarea { font: inherit; color: inherit; }
+button, .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); font-weight: 500; cursor: pointer; text-decoration: none; color: var(--ink); white-space: nowrap; }
+button:hover:not(:disabled), .btn:hover { border-color: var(--clock); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+.primary { background: var(--clock); border-color: var(--clock); color: #fff; }
+.primary:hover:not(:disabled) { background: var(--ink); border-color: var(--ink); }
+.danger { color: var(--red); }
+.danger:hover:not(:disabled) { border-color: var(--red); }
+.plain { border: 0; background: none; padding: 0; color: var(--clock); }
+:focus-visible { outline: 3px solid var(--clock); outline-offset: 2px; }
+input, select, textarea { width: 100%; min-height: 38px; padding: 7px 10px; border: 1px solid #13262b55; border-radius: 6px; background: var(--card); }
+input[type=checkbox] { width: 16px; min-height: 16px; accent-color: var(--clock); margin: 0; }
+label { display: grid; gap: 5px; font-size: 14px; font-weight: 500; }
+label.check { display: flex; align-items: center; gap: 8px; font-weight: 400; }
+.muted { color: var(--quiet); font-size: 14px; }
+.num { font-family: var(--display); font-variant-numeric: tabular-nums; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Shell */
+.shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh; }
+.side { display: flex; flex-direction: column; gap: 22px; padding: 22px 14px; background: var(--ink); color: #dfe8e6; position: sticky; top: 0; height: 100vh; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 0 8px; font: 600 20px var(--display); color: #fff; }
+.mark { width: 22px; height: 22px; border-radius: 50%; border: 2px solid currentColor; position: relative; flex: none; }
+.mark::after { content: ''; position: absolute; left: 8px; top: 3px; width: 6px; height: 7px; border-left: 2px solid; border-bottom: 2px solid; }
+.side select { background: #ffffff14; border-color: #ffffff30; color: #fff; }
+.side select option { color: var(--ink); }
+.nav { display: grid; gap: 2px; }
+.nav p { padding: 12px 10px 4px; font-size: 12px; color: #9fb3b0; }
+.nav button { width: 100%; justify-content: flex-start; border: 0; background: none; color: #dfe8e6; padding: 9px 10px; font-weight: 500; }
+.nav button:hover { background: #ffffff12; }
+.nav button[aria-current] { background: #fff; color: var(--ink); }
+.me { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 12px 8px 0; border-top: 1px solid #ffffff22; }
+.me div { min-width: 0; flex: 1; font-size: 14px; }
+.me small { display: block; color: #9fb3b0; }
+.me b, .me small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.me button { background: none; color: #dfe8e6; border-color: #ffffff30; padding: 5px 9px; font-size: 13px; }
+.avatar { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 50%; background: var(--clock-soft); color: var(--clock); font-size: 12px; font-weight: 600; position: relative; }
+.avatar.on::after { content: ''; position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px; border-radius: 50%; background: var(--clock); border: 2px solid var(--card); }
+main { padding: 26px 34px 90px; max-width: 1500px; min-width: 0; }
+.head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.head .actions, .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.datenav { display: flex; align-items: center; gap: 6px; }
+.datenav b { min-width: 172px; text-align: center; font-weight: 500; }
+.sync { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--quiet); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--clock); }
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+.pad { padding: 18px 20px; }
+.banner { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 14px 18px; margin-bottom: 18px; border-radius: 10px; background: var(--amber-soft); border: 1px solid #a15f0055; }
+.pill { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 12px; font-weight: 500; background: var(--mist); color: var(--quiet); }
+.pill.ok { background: var(--clock-soft); color: var(--clock); }
+.pill.warn { background: var(--amber-soft); color: var(--amber); }
+.pill.bad { background: #f7e1de; color: var(--red); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chips button { border-radius: 99px; padding: 5px 12px; font-size: 13px; }
+.chips button[aria-pressed=true] { background: var(--ink); border-color: var(--ink); color: #fff; }
+footer { margin-top: 28px; font-size: 13px; color: var(--quiet); }
+
+/* Ribbon: the 24 hour day is the signature element */
+.track { position: relative; height: 22px; border-radius: 4px; background-color: #13262b0d; background-image: repeating-linear-gradient(90deg, #13262b1c 0 1px, transparent 1px calc(100% / var(--hrs))); }
+.track i { position: absolute; top: 0; bottom: 0; }
+.seg { background: var(--clock); border-radius: 3px; }
+.now { width: 2px; margin-left: -1px; background: var(--amber); z-index: 1; }
+.scale { position: relative; height: 18px; font-size: 12px; color: var(--quiet); }
+.scale span { position: absolute; transform: translateX(-50%); }
+.scale span:first-child { transform: none; }
+.scale span:last-child { transform: translateX(-100%); }
+
+/* Team board */
+.board-row { display: grid; grid-template-columns: 230px minmax(0, 1fr) 82px 64px; gap: 18px; align-items: center; padding: 11px 20px; border-top: 1px solid var(--line); width: 100%; text-align: left; border-radius: 0; border-left: 0; border-right: 0; border-bottom: 0; background: none; font-weight: 400; }
+button.board-row:hover { background: #0d7a630d; border-color: var(--line); }
+.board-row.top { border-top: 0; padding-bottom: 4px; font-size: 12px; color: var(--quiet); }
+.board-row .now { top: -12px; bottom: -12px; }
+.who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.who > span:last-child { min-width: 0; }
+.who b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.who small { display: block; color: var(--quiet); font-size: 12px; }
+.board-row .num { font-size: 17px; font-weight: 600; text-align: right; }
+.board-row .pct { text-align: right; color: var(--quiet); font-size: 14px; }
+.off .who b, .off .num { color: var(--quiet); }
+.board-row.sub { border-top: 0; padding-top: 0; padding-bottom: 12px; }
+.board-row.sub .who { padding-left: 44px; }
+.board-row.sub .who b { font-size: 13px; }
+.board-row.sub .who small { white-space: normal; }
+.board-row.sub .track { height: 10px; }
+.board-row.sub .num { font-size: 14px; color: var(--quiet); }
+.board-row.sub .now { top: 0; bottom: 0; }
+.seg.dev { background: #6b7f8f; }
+.devline { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); display: grid; gap: 6px; }
+.day-ribbon .devline .track { height: 12px; }
+
+/* Day */
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+.stats div { padding: 16px 20px; border-left: 1px solid var(--line); }
+.stats div:first-child { border-left: 0; }
+.stats b { display: block; font: 600 26px/1.1 var(--display); font-variant-numeric: tabular-nums; }
+.stats span { font-size: 13px; color: var(--quiet); }
+.day-ribbon .track { height: 44px; }
+.tabs { display: flex; gap: 4px; margin: 22px 0 16px; border-bottom: 1px solid var(--line); }
+.tabs button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: none; padding: 9px 12px; color: var(--quiet); }
+.tabs button[aria-selected=true] { color: var(--ink); border-bottom-color: var(--clock); }
+.hour { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 14px; padding: 14px 0; border-top: 1px solid var(--line); }
+.hour:first-of-type { border-top: 0; }
+.hour > h3 { font: 600 16px var(--display); padding-top: 2px; }
+.shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 12px; }
+.tile { padding: 0; display: block; text-align: left; overflow: hidden; border-radius: 8px; font-weight: 400; }
+.thumb { display: block; aspect-ratio: 16 / 10; background:
+  linear-gradient(hsl(var(--h) 30% 26%), hsl(var(--h) 30% 26%)) 0 0 / 100% 11% no-repeat,
+  linear-gradient(hsl(var(--h) 22% 84%), hsl(var(--h) 22% 84%)) 0 0 / 23% 100% no-repeat,
+  repeating-linear-gradient(180deg, transparent 0 7px, hsl(var(--h) 18% 80%) 7px 10px) 32% 30% / 58% 58% no-repeat,
+  hsl(var(--h) 24% 95%); }
+.thumb.none { display: grid; place-items: center; padding: 10px; background: var(--mist); color: var(--quiet); font-size: 12px; text-align: center; white-space: normal; }
+.tile .cap { display: flex; justify-content: space-between; gap: 8px; padding: 7px 10px; font-size: 13px; }
+.meter { display: inline-block; width: 34px; height: 5px; border-radius: 3px; background: var(--mist); vertical-align: middle; margin-right: 5px; overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--clock); }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 11px 14px; text-align: left; border-top: 1px solid var(--line); font-weight: 400; vertical-align: middle; }
+thead th { border-top: 0; font-size: 13px; color: var(--quiet); font-weight: 500; }
+tbody th { font-weight: 600; }
+td select { min-height: 32px; padding: 3px 8px; width: auto; }
+.scroll { overflow-x: auto; }
+.r { text-align: right; }
+.bar { display: block; height: 4px; margin-top: 5px; border-radius: 2px; background: var(--mist); }
+.bar i { display: block; height: 100%; border-radius: 2px; background: var(--clock); }
+.week td, .week thead th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.week .sel { background: #0d7a630f; }
+.week .zero { color: #13262b66; }
+.week tfoot td, .week tfoot th { font-weight: 600; border-top: 2px solid var(--ink); }
+.apps li { display: grid; grid-template-columns: 150px minmax(0, 1fr) 70px; gap: 14px; align-items: center; padding: 9px 0; border-top: 1px solid var(--line); list-style: none; }
+.apps li:first-child { border-top: 0; }
+.apps .bar { height: 8px; margin: 0; }
+.split { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.stack { display: grid; gap: 14px; }
+.dl { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 0; border-top: 1px solid var(--line); }
+.dl:first-of-type { border-top: 0; padding-top: 0; }
+details summary { cursor: pointer; color: var(--clock); font-size: 14px; }
+details ol { padding-left: 20px; margin-top: 8px; font-size: 14px; }
+.two { columns: 2; column-gap: 26px; font-size: 14px; padding-left: 18px; }
+.empty { padding: 34px 20px; text-align: center; color: var(--quiet); }
+code { background: var(--mist); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+
+/* Dialog and drawer */
+dialog { border: 0; padding: 0; color: var(--ink); background: var(--card); box-shadow: 0 18px 60px #13262b40; }
+dialog::backdrop { background: #13262b73; }
+#dlg { width: min(720px, 94vw); border-radius: 12px; }
+#drawer { width: min(460px, 100vw); max-width: none; height: 100vh; max-height: none; margin: 0 0 0 auto; }
+.dhead { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+.dbody { padding: 18px 20px; display: grid; gap: 16px; }
+.dbody .thumb { border-radius: 8px; border: 1px solid var(--line); }
+.facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.facts b { display: block; font: 600 18px var(--display); }
+.facts span { font-size: 13px; color: var(--quiet); }
+fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 14px; display: grid; gap: 10px; margin: 0; }
+legend { font-weight: 600; padding: 0 6px; }
+
+/* Sign in */
+.auth { display: grid; grid-template-columns: 1.1fr 1fr; min-height: 100vh; background: var(--card); }
+.auth-story { display: flex; flex-direction: column; justify-content: space-between; gap: 40px; padding: 40px 48px; background: var(--ink); color: #fff; }
+.auth-story h1 { font-size: 46px; max-width: 12ch; }
+.auth-story p { color: #b9c9c6; max-width: 44ch; margin-top: 16px; }
+.auth-story .track { background-color: #ffffff14; height: 16px; margin-top: 10px; }
+.auth-story .seg { background: #58c9ae; }
+.auth form { align-self: center; justify-self: center; width: min(360px, 86vw); display: grid; gap: 16px; padding: 30px 0; }
+
+/* Mock controls: not part of the design */
+.mock { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 5; display: flex; align-items: center; gap: 6px; padding: 6px 8px 6px 14px; border-radius: 99px; background: #fff; border: 1px dashed var(--quiet); font-size: 13px; box-shadow: 0 6px 24px #13262b2e; white-space: nowrap; }
+.mock button { padding: 4px 11px; border-radius: 99px; font-size: 13px; }
+.mock button[aria-pressed=true] { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+@media (max-width: 900px) {
+  .shell { grid-template-columns: 1fr; }
+  .side { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 14px; }
+  .nav { display: flex; overflow-x: auto; order: 3; width: 100%; }
+  .nav p { display: none; }
+  .nav button { width: auto; }
+  .me { margin: 0 0 0 auto; padding: 0; border: 0; }
+  .me div { display: none; }
+  .side label { flex: 1; min-width: 130px; }
+  main { padding: 18px 14px 96px; }
+  .board-row { grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px 12px; padding: 12px 14px; }
+  .board-row .track, .board-row .scale { grid-column: 1 / -1; grid-row: 2; }
+  .board-row.top > :not(.scale) { display: none; }
+  .scale span:nth-child(even) { display: none; }
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .stats div:nth-child(3) { border-left: 0; }
+  .stats div:nth-child(n+3) { border-top: 1px solid var(--line); }
+  .split, .auth { grid-template-columns: 1fr; }
+  .auth-story { padding: 28px 22px; }
+  .auth-story h1 { font-size: 34px; }
+  .hour { grid-template-columns: 1fr; gap: 8px; }
+  .two { columns: 1; }
+  .datenav b { min-width: 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  button, .btn { transition: border-color .12s, background-color .12s; }
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<dialog id="dlg" aria-labelledby="dlg-h"></dialog>
+<dialog id="drawer" aria-labelledby="drawer-h"></dialog>
+<div class="mock" role="group" aria-label="Mock preview controls">
+  Preview as
+  <button data-role="owner">Owner</button><button data-role="manager">Manager</button><button data-role="worker">Worker</button><button data-role="signin">Sign in</button>
+</div>
+
+<script>
+// ---- Sample data. Names, hours and devices are invented for review. ----
+const NOW = 940 // 15:40
+const ORGS = ['NeuSkale', 'Skale Labs']
+const P = [
+  { id: 0, name: 'Sabari N', email: 'sabari@neuskale.com', role: 'owner', org: '', working: false, spans: [] },
+  { id: 1, name: 'Ananya Rao', email: 'ananya@neuskale.com', role: 'manager', org: 'NeuSkale', working: true, city: 'Kochi, Kerala', spans: [[545, 690, .78], [735, 940, .71]] },
+  { id: 2, name: 'Karthik Iyer', email: 'karthik@neuskale.com', role: 'worker', org: 'NeuSkale', working: true, city: 'Chennai, Tamil Nadu', spans: [[600, 765, .64], [810, 940, .82]] },
+  { id: 3, name: 'Priya Nair', email: 'priya@neuskale.com', role: 'worker', org: 'NeuSkale', working: true, city: 'Kochi, Kerala', spans: [[480, 655, .9], [700, 940, .74]] },
+  { id: 4, name: 'Rahul Menon', email: 'rahul@skalelabs.in', role: 'worker', org: 'Skale Labs', working: false, city: 'Bengaluru, Karnataka', spans: [[570, 720, .55], [780, 870, .4]] },
+  { id: 5, name: 'Divya Krishnan', email: 'divya@skalelabs.in', role: 'manager', org: 'Skale Labs', working: true, city: 'Bengaluru, Karnataka', spans: [[630, 790, .69], [840, 940, .77]] },
+  { id: 6, name: 'Arjun Pillai', email: 'arjun@skalelabs.in', role: 'worker', org: 'Skale Labs', working: false, spans: [] },
+  { id: 7, name: 'Meera Shah', email: 'meera@neuskale.com', role: 'worker', org: '', working: true, city: 'Pune, Maharashtra', spans: [[900, 940, .6]] },
+  { id: 8, name: 'Vikram Das', email: 'vikram@neuskale.com', role: 'worker', org: 'NeuSkale', working: false, disabled: true, spans: [] },
+]
+const APPS = ['Code.exe', 'chrome.exe', 'Teams.exe', 'EXCEL.EXE', 'Figma.exe', 'explorer.exe']
+const DEV = [
+  { host: 'NS-LT-0142', upn: 'karthik@neuskale.com', org: 'NeuSkale', health: 'Active', seen: '15:39', ver: '0.4.2', buf: 0, user: 2, spans: [[590, 770], [800, 940]] },
+  { host: 'NS-LT-0138', upn: 'priya@neuskale.com', org: 'NeuSkale', health: 'Active', seen: '15:40', ver: '0.4.2', buf: 0, user: 3, spans: [[470, 660], [695, 940]] },
+  { host: 'NS-LT-0117', upn: 'vikram@neuskale.com', org: 'NeuSkale', health: 'Stale, possible tamper', seen: 'Yesterday 18:12', ver: '0.4.1', buf: 212, user: 8, spans: [] },
+  { host: 'SL-LT-0021', upn: 'rahul@skalelabs.in', org: 'Skale Labs', health: 'Paused', seen: '15:38', ver: '0.4.2', buf: 0, user: 4, spans: [[560, 725], [775, 880]] },
+  { host: 'SL-LT-0024', upn: '', org: 'Skale Labs', health: 'Awaiting first check-in', seen: 'Never', ver: '', buf: 0, user: null, spans: [] },
+]
+const ME = { owner: 0, manager: 1, worker: 2 }
+const S = { role: 'owner', view: 'team', sel: 3, tab: 'Screenshots', zoom: true, org: '', wk: 0, dtab: 'Laptops' }
+
+// ---- Helpers ----
+const $ = id => document.getElementById(id)
+const dur = m => `${Math.floor(m / 60)}h ${String(Math.round(m % 60)).padStart(2, '0')}m`
+const hm = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+const ini = p => p.name.split(' ').map(w => w[0]).join('').slice(0, 2)
+const total = p => p.spans.reduce((n, [a, b]) => n + b - a, 0)
+const act = p => total(p) ? Math.round(p.spans.reduce((n, [a, b, c]) => n + (b - a) * c, 0) / total(p) * 100) : 0
+const status = p => p.disabled ? 'Account disabled' : p.working ? 'Working now' : total(p) ? 'Not tracking now' : 'No time today'
+const me = () => P[ME[S.role]]
+const team = () => P.filter(p => p.role !== 'owner' && (S.role === 'owner' ? !S.org || p.org === S.org : p.org === me().org))
+const avatar = p => `<span class="avatar ${p.working ? 'on' : ''}" aria-hidden="true">${ini(p)}</span>`
+
+// Laptops are assigned to a person. Their activity shows under that person.
+const inScope = x => S.role === 'owner' ? !S.org || x.org === S.org : x.org === me().org
+const devOf = p => DEV.filter(d => d.user === p.id)
+const devRibbon = (d, a, b) => ribbon({ name: d.host + ' laptop', spans: d.spans }, a, b, 'dev')
+const devRows = (p, a, b) => devOf(p).map(d => `<button class="board-row sub" data-open="device" data-id="${DEV.indexOf(d)}" aria-label="${d.host}, laptop assigned to ${p.name}, ${dur(total(d))} active. Open laptop.">
+  <span class="who"><span><b>${d.host}</b><small>Company laptop, ${d.health.toLowerCase()}</small></span></span>${devRibbon(d, a, b)}<span class="num">${dur(total(d))}</span><span class="pct">active</span></button>`).join('')
+const assignSel = d => `<select data-assign="${DEV.indexOf(d)}" aria-label="Person assigned to ${d.host}"><option value="">Unassigned</option>${P.filter(p => p.role !== 'owner' && inScope(p)).map(p => `<option value="${p.id}" ${d.user === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}</select>`
+
+function ribbon(p, a, b, cls = '') {
+  const pos = m => (Math.min(Math.max(m, a), b) - a) / (b - a) * 100
+  return `<div class="track" style="--hrs:${(b - a) / 60}" role="img" aria-label="${p.name}: ${dur(total(p))} recorded">` +
+    p.spans.map(([s, e, c]) => `<i class="seg ${cls}" style="left:${pos(s)}%;width:${pos(e) - pos(s)}%;opacity:${.45 + (c ?? 1) * .55}"></i>`).join('') +
+    (NOW >= a && NOW <= b ? `<i class="now" style="left:${pos(NOW)}%"></i>` : '') + '</div>'
+}
+function scale(a, b, step) {
+  let out = ''
+  for (let m = a; m <= b; m += step) out += `<span style="left:${(m - a) / (b - a) * 100}%">${hm(m)}</span>`
+  return `<div class="scale" aria-hidden="true">${out}</div>`
+}
+function blocks(p) {
+  const out = []
+  p.spans.forEach(([s, e, c]) => {
+    for (let t = s; t < e; t += 10) {
+      const i = out.length
+      const end = Math.min(t + 10, e)
+      out.push({ i, s: t, e: end, act: Math.min(.99, Math.max(.08, c + ((i * 37) % 21 - 10) / 100)), app: APPS[[0, 0, 1, 0, 1, 2, 0, 3, 1, 0, 4, 5][(i + p.id) % 12]],
+        note: end - t < 10 ? 'No screenshot yet. One is taken after 10 running minutes.' : i % 11 === 7 ? 'Screenshot deleted by the worker. Time is kept.' : '' })
+    }
+  })
+  return out
+}
+const thumb = (b, p) => b.note ? `<span class="thumb none">${b.note}</span>` : `<span class="thumb" style="--h:${(b.i * 47 + p.id * 60) % 360}" role="img" aria-label="Sample screenshot at ${hm(b.s)}"></span>`
+const range = () => S.zoom ? [360, 1320, 120] : [0, 1440, 180]
+const dateNav = label => `<div class="datenav"><button aria-label="Previous">‹</button><b>${label}</b><button aria-label="Next" disabled>›</button></div>`
+
+// ---- Views ----
+function viewTeam() {
+  const t = team(), [a, b, step] = range()
+  const working = t.filter(p => p.working).length
+  const sum = t.reduce((n, p) => n + total(p), 0)
+  const sorted = [...t].sort((x, y) => y.working - x.working || total(y) - total(x))
+  return `<div class="head"><div><h1>Team today</h1><p class="muted">${working} of ${t.length} people working now. ${dur(sum)} recorded so far.</p></div>
+    <div class="actions"><span class="sync" role="status"><span class="dot"></span>Updated 15:40</span><button>Refresh</button>${dateNav('Tuesday, 17 November')}</div></div>
+  <section class="panel" aria-label="Recorded time per person">
+    <div class="board-row top"><span>Person</span>${scale(a, b, step)}<span class="r">Recorded</span><span class="r">Input</span></div>
+    ${sorted.map(p => `<button class="board-row ${total(p) ? '' : 'off'}" data-person="${p.id}" aria-label="${p.name}, ${status(p)}, ${dur(total(p))} recorded. Open their day.">
+      <span class="who">${avatar(p)}<span><b>${p.name}</b><small>${status(p)}</small></span></span>
+      ${ribbon(p, a, b)}<span class="num">${dur(total(p))}</span><span class="pct">${total(p) ? act(p) + '%' : ''}</span></button>${devRows(p, a, b)}`).join('')}
+  </section>
+  ${DEV.some(x => x.user === null && inScope(x)) ? `<p class="muted" style="margin-top:12px">${DEV.filter(x => x.user === null && inScope(x)).length} laptop is not assigned to anyone, so its activity is not shown here. <button class="plain" data-go="devices">Assign it in Devices</button></p>` : ''}
+  <div class="row" style="margin-top:12px;justify-content:space-between">
+    <p class="muted">Green is time recorded by the desktop timer, darker where input activity was higher. Grey is active time on the person's assigned company laptop. The amber line is now. Times in Asia/Kolkata.</p>
+    <label class="check"><input type="checkbox" id="zoom" ${S.zoom ? 'checked' : ''}>Show 06:00 to 22:00 only</label>
+  </div>`
+}
+
+function viewDay() {
+  const own = S.role === 'worker'
+  const p = own ? me() : P[S.sel]
+  const bl = blocks(p), shots = bl.filter(b => !b.note), [a, b, step] = range()
+  const first = p.spans[0], last = p.spans[p.spans.length - 1]
+  const hours = {}
+  bl.forEach(x => (hours[Math.floor(x.s / 60)] ||= []).push(x))
+  const appTot = {}
+  bl.forEach(x => appTot[x.app] = (appTot[x.app] || 0) + x.e - x.s)
+  const apps = Object.entries(appTot).sort((x, y) => y[1] - x[1])
+  let panel
+  if (!bl.length) panel = `<div class="empty"><h2>No time recorded</h2><p>Choose another day, or wait for the desktop app to sync.</p></div>`
+  else if (S.tab === 'Screenshots') panel = `<p class="muted" style="margin-bottom:6px">${shots.length} screenshots. One is taken every 10 minutes while the timer runs.</p>` +
+    Object.entries(hours).map(([h, list]) => `<section class="hour"><h3>${hm(h * 60)}</h3><div class="shots">${list.map(x =>
+      `<button class="tile" data-block="${x.i}" aria-label="Open work block at ${hm(x.s)}">${thumb(x, p)}<span class="cap"><b>${hm(x.s)}</b><span class="muted"><span class="meter"><i style="width:${x.act * 100}%"></i></span>${Math.round(x.act * 100)}%</span></span></button>`).join('')}</div></section>`).join('')
+  else if (S.tab === 'Activity details') panel = `<p class="muted">Exact uploaded intervals. Input activity is not proof of productivity.</p><div class="scroll"><table>
+    <thead><tr><th>Time</th><th>Length</th><th>Input activity</th><th>Program</th><th></th></tr></thead><tbody>${bl.map(x =>
+      `<tr><td class="num">${hm(x.s)} to ${hm(x.e)}</td><td>${x.e - x.s} min</td><td><span class="meter"><i style="width:${x.act * 100}%"></i></span>${Math.round(x.act * 100)}%</td><td>${x.app}</td><td class="r"><button class="plain" data-block="${x.i}">View</button></td></tr>`).join('')}</tbody></table></div>`
+  else panel = `<p class="muted">Estimated foreground time by program name. Includes idle time. Window titles, files and sites are never recorded.</p><ul class="apps" style="padding:0;margin-top:8px">${apps.map(([n, m]) =>
+      `<li><b>${n}</b><span class="bar"><i style="width:${m / apps[0][1] * 100}%"></i></span><span class="num r">${dur(m)}</span></li>`).join('')}</ul>`
+  return `${own ? '' : `<p style="margin-bottom:10px"><button class="plain" data-go="team">‹ Team today</button></p>`}
+  ${own ? `<div class="banner" role="status"><div><b>You have an unfinished session from 09:12 yesterday.</b><p class="muted">Stop and sync the original computer if you can. Recover here only if that computer or its data was lost.</p></div><button>Recover my session</button></div>` : ''}
+  <div class="head"><div class="who">${avatar(p)}<div><h1>${own ? 'My day' : p.name}</h1><p class="muted">${status(p)}${p.city ? ', last seen near ' + p.city : ''}</p></div></div>
+    <div class="actions">${dateNav('Tuesday, 17 November')}</div></div>
+  <section class="panel">
+    <div class="stats">
+      <div><b>${dur(total(p))}</b><span>Recorded</span></div>
+      <div><b>${act(p)}%</b><span>Input activity</span></div>
+      <div><b>${shots.length}</b><span>Screenshots</span></div>
+      <div><b>${first ? hm(first[0]) + ' to ' + (p.working ? 'now' : hm(last[1])) : 'None'}</b><span>First start to last stop</span></div>
+    </div>
+    <div class="pad day-ribbon">${ribbon(p, a, b)}${scale(a, b, step)}${devOf(p).map(d => `<div class="devline"><p class="muted"><b>${d.host}</b>, assigned company laptop. ${dur(total(d))} active today. Health: ${d.health.toLowerCase()}. ${own ? '' : `<button class="plain" data-open="device" data-id="${DEV.indexOf(d)}">Open laptop</button>`}</p>${devRibbon(d, a, b)}</div>`).join('')}</div>
+  </section>
+  <div class="tabs" role="tablist" aria-label="Day review">${['Screenshots', 'Activity details', 'Applications'].map(t => `<button role="tab" aria-selected="${S.tab === t}" data-tab="${t}">${t}</button>`).join('')}</div>
+  <div role="tabpanel">${panel}</div>`
+}
+
+function weekMin(p, d) {
+  if (p.disabled) return 0
+  if (S.wk === 0) return d === 0 ? 400 + (p.id * 7 % 9) * 12 : d === 1 ? total(p) : null
+  return d > 4 ? 0 : 380 + ((p.id * 7 + d * 13 - S.wk * 5) % 9) * 14
+}
+function viewWeek() {
+  const rows = S.role === 'worker' ? [me()] : team()
+  const mon = 16 + S.wk * 7
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, i) => `${d} ${mon + i}`)
+  const cell = (m, sel) => m === null ? `<td class="zero ${sel}"></td>` : `<td class="${m ? '' : 'zero'} ${sel}">${dur(m)}<span class="bar"><i style="width:${Math.min(100, m / 480 * 100)}%"></i></span></td>`
+  const sums = days.map((_, d) => rows.reduce((n, p) => n + (weekMin(p, d) || 0), 0))
+  const all = sums.reduce((a, b) => a + b, 0)
+  return `<div class="head"><div><h1>${S.role === 'worker' ? 'My week' : 'Week'}</h1><p class="muted">${dur(all)} recorded. Bars fill at 8 hours. Recorded time only.</p></div>
+    <div class="actions"><button>Export CSV</button><div class="datenav"><button data-wk="-1" aria-label="Previous week">‹</button><b>${mon} to ${mon + 6} November</b><button data-wk="1" aria-label="Next week" ${S.wk ? '' : 'disabled'}>›</button></div></div></div>
+  <section class="panel scroll"><table class="week"><caption class="sr">Recorded hours per person per day</caption>
+    <thead><tr><th>Person</th>${days.map((d, i) => `<th class="${!S.wk && i === 1 ? 'sel' : ''}">${d}</th>`).join('')}<th>Total</th></tr></thead>
+    <tbody>${rows.map(p => `<tr><th scope="row">${p.name}${p.disabled ? ' <span class="pill">Disabled</span>' : ''}</th>${days.map((_, d) => cell(weekMin(p, d), !S.wk && d === 1 ? 'sel' : '')).join('')}<td class="num"><b>${dur(days.reduce((n, _, d) => n + (weekMin(p, d) || 0), 0))}</b></td></tr>`).join('')}</tbody>
+    ${rows.length > 1 ? `<tfoot><tr><th scope="row">Team</th>${sums.map(m => `<td>${m ? dur(m) : ''}</td>`).join('')}<td class="num">${dur(all)}</td></tr></tfoot>` : ''}
+  </table></section>`
+}
+
+function viewPeople() {
+  const owner = S.role === 'owner', t = team()
+  const n = o => P.filter(p => p.role !== 'owner' && p.org === o).length
+  const sel = (val, opts, label) => owner ? `<select aria-label="${label}">${opts.map(o => `<option ${o === val ? 'selected' : ''}>${o}</option>`).join('')}</select>` : val
+  return `<div class="head"><div><h1>People</h1><p class="muted">${owner ? 'Roles, organisations and access in one place. Managers see only their own organisation.' : 'Workers in ' + me().org + '.'}</p></div>
+    <div class="actions"><button class="primary" data-open="invite">${owner ? 'Invite a person' : 'Invite a worker'}</button></div></div>
+  ${owner ? `<div class="chips" style="margin-bottom:14px" role="group" aria-label="Filter by organisation">
+    <button data-org="" aria-pressed="${!S.org}">Everyone ${P.length - 1}</button>${ORGS.map(o => `<button data-org="${o}" aria-pressed="${S.org === o}">${o} ${n(o)}</button>`).join('')}
+    <span class="pill warn" style="align-self:center">${n('')} unassigned, visible to owners only</span></div>` : ''}
+  <section class="panel scroll"><table><caption class="sr">People, roles and organisations</caption>
+    <thead><tr><th>Person</th><th>Role</th><th>Organisation</th><th>Status</th><th></th></tr></thead>
+    <tbody>${t.map(p => `<tr><th scope="row"><span class="who">${avatar(p)}<span><b>${p.name}</b><small>${p.email}</small></span></span></th>
+      <td>${sel(p.role === 'manager' ? 'Manager' : 'Worker', ['Worker', 'Manager'], 'Role for ' + p.name)}</td>
+      <td>${sel(p.org || 'Unassigned', ['Unassigned', ...ORGS], 'Organisation for ' + p.name)}</td>
+      <td><span class="pill ${p.disabled ? 'bad' : p.working ? 'ok' : ''}">${p.disabled ? 'Disabled' : p.working ? 'Working now' : 'Not tracking'}</span></td>
+      <td class="r">${p.id === me().id ? '<span class="muted">You</span>' : owner || p.role === 'worker' ? `<button data-open="member" data-id="${p.id}">Manage</button>` : ''}</td></tr>`).join('')}</tbody></table></section>`
+}
+
+function viewDevices() {
+  const owner = S.role === 'owner'
+  const d = DEV.filter(x => owner ? !S.org || x.org === S.org : x.org === me().org)
+  const cls = h => h === 'Active' ? 'ok' : h.startsWith('Stale') ? 'bad' : 'warn'
+  const logs = `<section class="panel scroll"><table><caption class="sr">Recent desktop diagnostic events</caption>
+    <thead><tr><th>Worker</th><th>Time (UTC)</th><th>Version</th><th>Event</th><th>Details</th></tr></thead><tbody>
+    <tr><th scope="row">Rahul Menon</th><td>17 Nov, 09:02</td><td>0.9.3</td><td><span class="pill warn">warn</span> upload_retry</td><td>Screenshot upload retried. HTTP 503.</td></tr>
+    <tr><th scope="row">Meera Shah</th><td>17 Nov, 08:41</td><td>0.9.3</td><td><span class="pill bad">error</span> location_denied</td><td>Windows location permission is off.</td></tr>
+    <tr><th scope="row">Karthik Iyer</th><td>16 Nov, 12:15</td><td>0.9.2</td><td><span class="pill">info</span> update_applied</td><td>Updated to 0.9.3.</td></tr></tbody></table></section>
+    <p class="muted" style="margin-top:10px">Newest 100 events from the last seven days. Fixed error codes only, never raw error text or screenshots.</p>`
+  const laptops = `<div class="chips" style="margin-bottom:14px"><span class="pill ok">${d.filter(x => x.health === 'Active').length} active</span><span class="pill bad">${d.filter(x => x.health.startsWith('Stale')).length} stale</span><span class="pill warn">${d.filter(x => !['Active'].includes(x.health) && !x.health.startsWith('Stale')).length} need attention</span><span class="pill warn">${d.filter(x => x.user === null).length} unassigned</span></div>
+    <section class="panel scroll"><table><caption class="sr">Managed laptops</caption>
+    <thead><tr><th>Laptop</th><th>Assigned to</th><th>Signed-in user</th><th>Health</th><th>Last check-in</th><th>Agent</th><th class="r">Unsent events</th><th></th></tr></thead>
+    <tbody>${d.map((x, i) => `<tr><th scope="row">${x.host}<small class="muted" style="display:block;font-weight:400">${x.org}</small></th><td>${assignSel(x)}</td><td>${x.upn || '<span class="muted">None yet</span>'}</td><td><span class="pill ${cls(x.health)}">${x.health}</span></td><td>${x.seen}</td><td>${x.ver}</td><td class="r num">${x.buf || ''}</td><td class="r"><button data-open="device" data-id="${DEV.indexOf(x)}">Open</button></td></tr>`).join('')}</tbody></table></section>
+    <p class="muted" style="margin-top:10px">A laptop silent for more than 15 minutes is shown as stale. Silence is the only signal that the agent was stopped, and it is never hidden.</p>
+    ${owner ? `<section class="panel pad" style="margin-top:18px"><div class="dl"><div><h2>Managed agent for Windows</h2><p class="muted">Version 0.4.2, 64-bit, unsigned test build. For company-owned laptops, installed by IT.</p></div><button>Download (.zip)</button></div>
+      <details><summary>Install steps</summary><ol><li>Select Add laptop and copy the enrollment secret.</li><li>Extract the zip on the laptop and open PowerShell as administrator in that folder.</li><li>Run <code>install.ps1 -EnrollSecret "SECRET" -Upn "user@company.com"</code>.</li><li>The laptop appears here within a minute. Each signed-in user sees a one-time monitoring notice and a tray icon.</li></ol></details></section>` : ''}`
+  return `<div class="head"><div><h1>Devices</h1><p class="muted">Company laptops running the managed agent. Monitoring is always disclosed to the employee.</p></div>
+    <div class="actions">${owner ? '<button class="danger">Revoke enrollment secrets</button><button class="primary" data-open="enroll">Add laptop</button>' : ''}</div></div>
+  ${owner ? `<div class="tabs" role="tablist" style="margin-top:0">${['Laptops', 'Desktop app diagnostics'].map(t => `<button role="tab" aria-selected="${S.dtab === t}" data-dtab="${t}">${t}</button>`).join('')}</div>` : ''}
+  ${owner && S.dtab !== 'Laptops' ? logs : laptops}`
+}
+
+function viewSettings() {
+  return `<div class="head"><div><h1>Settings</h1><p class="muted">Desktop app and your account.</p></div></div>
+  <div class="split">
+    <div class="stack">
+      <section class="panel pad"><h2 style="margin-bottom:14px">Desktop app</h2>
+        <div class="dl"><div><b>WorkTrack for Windows</b><p class="muted">Version 0.9.3, 64-bit</p></div><button class="primary">Download</button></div>
+        <details><summary>Install steps</summary><ol><li>If upgrading, stop tracking and wait until queued records have synced. Do not uninstall or remove app data.</li><li>Download and install WorkTrack. Windows may show a publisher warning.</li><li>Sign in, allow Windows location, then select Start tracking.</li></ol></details>
+        <div class="dl" style="margin-top:14px"><div><b>WorkTrack for Mac</b> <span class="pill warn">Apple Silicon preview</span><p class="muted">Version 0.9.3. Ad-hoc signed, not notarized. Manual updates only.</p></div><button>Download Mac preview</button></div>
+        <details><summary>Mac install steps</summary><ol><li>Open the DMG and copy WorkTrack to Applications.</li><li>macOS may block it. Follow your organisation's security policy.</li><li>Grant Screen Recording and Location Services, then start tracking.</li></ol></details>
+      </section>
+      <section class="panel pad"><h2 style="margin-bottom:10px">What WorkTrack records</h2>
+        <p class="muted" style="margin-bottom:10px">Only while your desktop timer is running:</p>
+        <ul class="two"><li>Start and stop times</li><li>Input activity level</li><li>A screenshot every 10 minutes</li><li>Approximate location with each screenshot</li><li>Program names</li></ul>
+        <p class="muted" style="margin:12px 0 10px">Never recorded:</p>
+        <ul class="two"><li>Keystrokes</li><li>Window titles</li><li>Full file paths</li><li>Continuous location</li><li>Anything while the timer is stopped</li></ul>
+      </section>
+    </div>
+    <section class="panel pad stack"><h2>Change password</h2>
+      <label>Current password<input type="password" autocomplete="current-password"></label>
+      <label>New password<input type="password" autocomplete="new-password"><span class="muted" style="font-weight:400">At least 12 characters.</span></label>
+      <div><button class="primary">Change password</button></div>
+      <p class="muted">Changing it signs out your other browsers and desktop apps.</p>
+    </section>
+  </div>`
+}
+
+function viewSignin() {
+  const demo = [['Mon', [[540, 720, .8], [780, 1020, .7]]], ['Tue', [[510, 1000, .75]]], ['Wed', [[560, 700, .6], [760, 940, .85]]]]
+  return `<div class="auth"><section class="auth-story"><div class="brand"><i class="mark"></i>WorkTrack</div>
+    <div><h1>Time on the clock, and nothing off it.</h1><p>Press Start and WorkTrack records time, activity, a screenshot every ten minutes and its location. Press Stop and it records nothing.</p></div>
+    <div aria-hidden="true">${demo.map(([d, spans]) => `<small>${d}</small>${ribbon({ name: d, spans }, 360, 1320).replace(/<i class="now"[^>]*><\/i>/, '')}`).join('')}</div></section>
+    <form onsubmit="return false"><h1>Sign in</h1><p class="muted">Use the email your invitation was sent to.</p>
+      <label>Email address<input type="email" autocomplete="username"></label>
+      <label>Password<input type="password" autocomplete="current-password"></label>
+      <button class="primary" style="justify-content:center;padding:10px">Sign in</button>
+      <p class="muted">Forgot your password? Ask your manager for a reset link.</p></form></div>`
+}
+
+// ---- Dialogs ----
+const close = id => `<button data-close="${id}">Close</button>`
+function openBlock(i) {
+  const own = S.role === 'worker', p = own ? me() : P[S.sel], b = blocks(p)[i]
+  $('dlg').innerHTML = `<div class="dhead"><h2 id="dlg-h">Work block ${hm(b.s)}</h2>${close('dlg')}</div><div class="dbody">${thumb(b, p)}
+    <div class="facts"><div><b>${hm(b.s)} to ${hm(b.e)}</b><span>${b.e - b.s} minutes recorded</span></div><div><b>${Math.round(b.act * 100)}%</b><span>Input activity</span></div><div><b>${p.city}</b><span>Approximate location</span></div></div>
+    ${own ? `<div class="row"><button class="danger">Delete screenshot, keep time</button><button class="danger">Delete time block</button></div><p class="muted">Deleting a time block permanently deducts it from your recorded hours.</p>` : `<p class="muted">Only ${p.name} can delete this screenshot or time block.</p>`}</div>`
+  $('dlg').showModal()
+}
+function openDialog(kind, id) {
+  const owner = S.role === 'owner'
+  if (kind === 'invite') {
+    $('dlg').innerHTML = `<div class="dhead"><h2 id="dlg-h">${owner ? 'Invite a person' : 'Invite a worker'}</h2>${close('dlg')}</div><div class="dbody">
+      <label>Email<input type="email" placeholder="name@company.com"></label>
+      ${owner ? `<label>Role<select><option>Worker</option><option>Manager</option></select></label><label>Organisation<select><option>Unassigned (assign later)</option>${ORGS.map(o => `<option>${o}</option>`).join('')}</select></label>` : `<p class="muted">Joins ${me().org}.</p>`}
+      <div><button class="primary">Create invite link</button></div>
+      <p class="muted">You get a private link to send directly to the person. It expires after a set time.</p></div>`
+    return $('dlg').showModal()
+  }
+  if (kind === 'enroll') {
+    $('dlg').innerHTML = `<div class="dhead"><h2 id="dlg-h">Add laptop</h2>${close('dlg')}</div><div class="dbody">
+      <label>Enrollment secret, shown once<input readonly value="wt-enroll-SAMPLE-0000-0000"></label><div><button>Copy secret</button></div>
+      <p class="muted">Use it with install.ps1 on the laptop. Revoking secrets does not affect laptops already enrolled.</p></div>`
+    return $('dlg').showModal()
+  }
+  if (kind === 'member') {
+    const p = P[id]
+    $('drawer').innerHTML = `<div class="dhead"><h2 id="drawer-h">${p.name}</h2>${close('drawer')}</div><div class="dbody">
+      <div class="who">${avatar(p)}<span><b>${p.email}</b><small>${p.role === 'manager' ? 'Manager' : 'Worker'}, ${p.org || 'Unassigned'}</small></span></div>
+      <fieldset><legend>Access</legend>
+        <div class="dl"><div><b>Reset link</b><p class="muted">One-time link, valid 24 hours. Signs them out everywhere.</p></div><button ${p.disabled ? 'disabled' : ''}>Create reset link</button></div>
+        <div class="dl"><div><b>Desktop sign-ins</b><p class="muted">They can sign in again afterwards.</p></div><button ${p.disabled ? 'disabled' : ''}>Sign out desktops</button></div>
+        <div class="dl"><div><b>${p.disabled ? 'Account is disabled' : 'Disable account'}</b><p class="muted">${p.disabled ? 'Records are kept. Enabling allows sign-in again.' : 'Signs them out, closes any open session at its last uploaded block. Records are kept.'}</p></div>${p.disabled ? '<button>Enable account</button>' : '<button class="danger">Disable account</button>'}</div>
+      </fieldset></div>`
+    return $('drawer').showModal()
+  }
+  const d = DEV[id]
+  $('drawer').innerHTML = `<div class="dhead"><h2 id="drawer-h">${d.host}</h2>${close('drawer')}</div><div class="dbody">
+    <p class="muted">${d.upn || 'No one signed in yet'}. Last check-in ${d.seen.toLowerCase()}.</p>
+    <label>Assigned to${assignSel(d)}<span class="muted" style="font-weight:400">This laptop's activity shows under this person in Team today and on their day.</span></label>
+    <div class="facts"><div><b>5h 12m</b><span>Active</span></div><div><b>0h 48m</b><span>Idle</span></div><div><b>0h 31m</b><span>Locked</span></div></div>
+    <ul class="apps" style="padding:0">${[['Code.exe', 142], ['chrome.exe', 96], ['Teams.exe', 51]].map(([n, m]) => `<li style="grid-template-columns:100px 1fr 60px"><b>${n}</b><span class="bar"><i style="width:${m / 1.42}%"></i></span><span class="num r">${dur(m)}</span></li>`).join('')}</ul>
+    <fieldset><legend>Capture settings</legend>
+      <label class="check"><input type="checkbox" checked>Active and idle time</label>
+      <label class="check"><input type="checkbox" checked>Program names (never titles, files or sites)</label>
+      <label class="check"><input type="checkbox" checked>Logon, logoff, lock and unlock</label>
+      <label class="check"><input type="checkbox">Screenshots of the main display</label>
+      <label class="check"><input type="checkbox" disabled>Approximate location with each screenshot</label>
+      <label>Never record these programs by name<textarea rows="2" placeholder="keepass.exe"></textarea></label>
+      <div><button class="primary">Save settings</button></div>
+      <p class="muted">The employee's tray icon and notice already disclose what is captured. Applied at the next check-in.</p>
+    </fieldset>
+    <div class="row"><button>Pause</button><button>Disable</button><button class="danger">Uninstall agent</button></div></div>`
+  $('drawer').showModal()
+}
+
+// ---- Shell ----
+const NAV = {
+  owner: [['Time', ['team', 'Team today'], ['week', 'Week']], ['Organisation', ['people', 'People'], ['devices', 'Devices']], ['Account', ['settings', 'Settings']]],
+  worker: [['Time', ['day', 'My day'], ['week', 'My week']], ['Account', ['settings', 'Settings']]],
+}
+NAV.manager = NAV.owner
+const VIEWS = { team: viewTeam, day: viewDay, week: viewWeek, people: viewPeople, devices: viewDevices, settings: viewSettings }
+function render() {
+  document.querySelectorAll('.mock button').forEach(b => b.setAttribute('aria-pressed', b.dataset.role === S.role))
+  history.replaceState(null, '', `#${S.role}/${S.view}`)
+  if (S.role === 'signin') return $('app').innerHTML = viewSignin()
+  if (S.role === 'worker' && !['day', 'week', 'settings'].includes(S.view)) S.view = 'day'
+  if (S.role !== 'worker' && S.view === 'day' && !team().some(p => p.id === S.sel)) S.view = 'team'
+  const u = me(), cur = S.view === 'day' && S.role !== 'worker' ? 'team' : S.view
+  $('app').innerHTML = `<div class="shell"><aside class="side"><div class="brand"><i class="mark"></i>WorkTrack</div>
+    ${S.role === 'owner' ? `<label><span class="sr">Organisation</span><select id="org"><option value="">All organisations</option>${ORGS.map(o => `<option ${S.org === o ? 'selected' : ''}>${o}</option>`).join('')}</select></label>` : ''}
+    <nav class="nav" aria-label="Main navigation">${NAV[S.role].map(([g, ...items]) => `<p>${g}</p>` + items.map(([v, l]) => `<button data-go="${v}" ${cur === v ? 'aria-current="page"' : ''}>${l}</button>`).join('')).join('')}</nav>
+    <div class="me"><span class="avatar" aria-hidden="true">${ini(u)}</span><div><b>${u.name}</b><small>${u.role[0].toUpperCase() + u.role.slice(1)}${u.org ? ', ' + u.org : ''}</small></div><button>Sign out</button></div></aside>
+    <main>${VIEWS[S.view]()}<footer>Screenshots, activity and location are recorded only while the desktop timer is running.</footer></main></div>`
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('button, dialog')
+  if (!t) return
+  if (t.tagName === 'DIALOG') { if (e.target === t) t.close(); return }
+  const d = t.dataset
+  if (d.close) return $(d.close).close()
+  if (d.block) return openBlock(+d.block)
+  if (d.open) return openDialog(d.open, +d.id)
+  if (d.role) { S.role = d.role; S.view = d.role === 'worker' ? 'day' : 'team' }
+  else if (d.go) S.view = d.go
+  else if (d.person) { S.sel = +d.person; S.view = 'day'; S.tab = 'Screenshots' }
+  else if (d.tab) S.tab = d.tab
+  else if (d.dtab) S.dtab = d.dtab
+  else if (d.org !== undefined) S.org = d.org
+  else if (d.wk) S.wk = Math.min(0, S.wk + +d.wk)
+  else return
+  render()
+  if (d.go || d.person || d.role) scrollTo(0, 0)
+})
+document.addEventListener('change', e => {
+  if (e.target.id === 'org') S.org = e.target.value
+  else if (e.target.id === 'zoom') S.zoom = e.target.checked
+  else if (e.target.dataset.assign) DEV[+e.target.dataset.assign].user = e.target.value === '' ? null : +e.target.value
+  else return
+  render()
+})
+const [r, v, tab] = location.hash.slice(1).split('/')
+if (r in ME || r === 'signin') S.role = r
+if (v in VIEWS) S.view = v
+if (tab) S.tab = decodeURIComponent(tab)
+render()
+</script>
+</body>
+</html>

@@ -34,7 +34,8 @@ Agent requests use Authorization: Bearer <device_token>.
 | GET | /api/timeline?user=UUID&date=YYYY-MM-DD&tz=IANA | | array of {id,user_id,session_id,start_at,end_at,duration_seconds,active_seconds,screenshot_url,screenshot_status} |
 | GET | /api/reports/hours?from=YYYY-MM-DD&to=YYYY-MM-DD&tz=IANA | | array of {user_id,name,date,seconds,hours} |
 | GET | /api/reports/hours.csv?from=YYYY-MM-DD&to=YYYY-MM-DD&tz=IANA | | CSV |
-| GET | /api/reports/day?date=YYYY-MM-DD&tz=IANA | | array of {user_id,start_at,end_at,screenshot} for every visible person; no screenshot URLs. Workers see only their own blocks. |
+| GET | /api/reports/day?date=YYYY-MM-DD&tz=IANA | | array of {user_id,start_at,end_at,screenshot,active_seconds} for every visible person; no screenshot URLs. Workers see only their own blocks. |
+| GET | /api/reports/device-day?date=YYYY-MM-DD&tz=IANA | | array of {device_id,start_at,end_at,active_seconds}: runs of active time per assigned laptop. Owners and managers only, 403 for workers. Activity from before a laptop was reassigned is left out. |
 | GET | /api/health | | {ok:true} |
 
 User: {id,email,name,role}.
@@ -101,8 +102,8 @@ No logging failure changes tracking records, screenshot retention, or wages.
 
 These endpoints serve the Windows service agent for company-owned devices. They
 are separate from the per-user Tauri `device` credential above: a managed device
-is a machine, mapped to a user by UPN (email) at enrollment, carrying its own
-bearer token. Capture on each device is disclosed and admin-gated by config.
+is a machine, enrolled unassigned and assigned to a person by an owner or
+manager, carrying its own bearer token. Capture on each device is disclosed and admin-gated by config.
 
 Enrollment and lifecycle:
 - `POST /api/devices/enrollments` (owner): mint an enrollment secret, valid 7 days.
@@ -111,8 +112,8 @@ Enrollment and lifecycle:
 - `POST /api/devices/enrollments/revoke` (owner): body `{}`. Invalidates every
   outstanding secret, returns `{ok,revoked}`. Enrolled devices are unaffected.
 - `POST /api/devices/enroll` (no auth, secret only): body `{secret,upn,hostname?}`.
-  Maps `upn` to an existing user
-  (unknown UPN enrolls with no user link), returns `{device_id,token}`. 401 on
+  The laptop enrolls unassigned. `upn` is stored as a label only and never
+  links the laptop to a user. Returns `{device_id,token}`. 401 on
   invalid/expired/revoked secret. Rate limited per client IP.
 - `POST /api/devices/checkin` (device token): body `{agent_version?,buffer_depth?,
   dropped_events?,config_version?}`. Updates observed health and returns desired
@@ -139,18 +140,25 @@ Event kinds sent by the agent: `activity` (one per minute: `user`,
 monitoring notice was shown). `user` is set by the service from the Windows
 session, never by the helper.
 
-Admin (owner only):
-- `GET /api/devices`: fleet health (version, last check-in, last sync, buffer
-  depth, dropped events, desired state).
+Admin (owners, and managers for laptops assigned to people in their org):
+- `GET /api/devices`: fleet health (assigned `user_id`, version, last check-in,
+  last sync, buffer depth, dropped events, desired state).
+- `PUT /api/devices/{id}/user`: `{user_id}` assigns the laptop to a person, or
+  `null` unassigns it (owner only). Managers may assign only to people in
+  their own org. Enrollment never assigns a laptop. Reassigning sets `assigned_at`: the laptop's earlier
+  activity is not shown under the new person, and managers cannot read it
+  through the activity endpoint. An unassigned laptop is visible to owners
+  only.
 - `GET /api/devices/{id}/activity?date=YYYY-MM-DD&tz=Area/City`: that day's
   events, newest first, max 2000. Screenshot events carry a 5-minute signed
   `screenshot_url`. Only keys minted for that device and event are signed.
+  Managers get only events recorded since the last reassignment.
 - `PUT /api/devices/{id}/config`: replace capture config JSON; bumps
   `config_version` so the next check-in delivers it.
 - `POST /api/devices/{id}/command`: `{command}` one of enable, disable, pause,
   resume, uninstall. Uninstall is one-way and revokes the device token.
 
-Every config change and command appends a row to `admin_audit`, a tamper-evident
+Every config change, command and assignment appends a row to `admin_audit`, a tamper-evident
 hash chain (`hash = sha256(prev_hash + actor + action + timestamp)`).
 
 ## Environment

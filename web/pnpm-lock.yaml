@@ -166,10 +166,10 @@ importers:
 
   .:
     dependencies:
-      '@fontsource/barlow':
+      '@fontsource-variable/bricolage-grotesque':
         specifier: 5.3.0
         version: 5.3.0
-      '@fontsource/barlow-semi-condensed':
+      '@fontsource-variable/instrument-sans':
         specifier: 5.3.0
         version: 5.3.0
       react:
@@ -350,11 +350,11 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@fontsource/barlow-semi-condensed@5.3.0':
-    resolution: {integrity: sha512-EdpQ1GlLMofGqDsQhEw+g6DonNKmzt21p8y/oNbTl4BFzEkqYkFyE2fj25YGxmZBL/LZZGAxe74FlvEWcgc31w==}
+  '@fontsource-variable/bricolage-grotesque@5.3.0':
+    resolution: {integrity: sha512-TLi9Q4hJjS2UvoTMRSS2nHu6c4R56lAw60NR9QYtVRCHn0XtsFpiEhNffZ8Glsoxu6wEEwLKBP8lb94J52PNBA==}
 
-  '@fontsource/barlow@5.3.0':
-    resolution: {integrity: sha512-tGR0y6QObRtKv71MOth44222+mdNFM/ZWFWDV1VLzNbG4oK9PNRlyJzmkck4vHAi9ibHBXgt4SlY51amFP55CA==}
+  '@fontsource-variable/instrument-sans@5.3.0':
+    resolution: {integrity: sha512-u4gKbDBTNFGkg997tfQn3eHOhHuquWUFTRT/rwzuKtrxX5P2ekfs2x+LgBPP4P32+cC+vUwF1Cr+IdRoPQbrGw==}
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     resolution: {integrity: sha512-oTXEIha4SsuXdTA4Iyskj0kpdx2yVXdhd75c2v3xGrHFfVMsbhTPZU/nMPL4sWKo4pBHm3aucLaqGlF696dTyQ==}
@@ -700,9 +700,9 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
-  '@fontsource/barlow-semi-condensed@5.3.0': {}
+  '@fontsource-variable/bricolage-grotesque@5.3.0': {}
 
-  '@fontsource/barlow@5.3.0': {}
+  '@fontsource-variable/instrument-sans@5.3.0': {}
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true

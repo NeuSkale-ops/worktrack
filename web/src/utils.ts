@@ -42,9 +42,23 @@ export function utcDate(date = new Date()): string {
 }
 /** Browser IANA zone, sent as `tz` so report days match the viewer's calendar. */
 export const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+// The team board formats thousands of block times per refresh, and building
+// an Intl formatter each time is the slow part, so keep one per zone.
+const formatters = new Map<string, Intl.DateTimeFormat>()
+function formatter(kind: 'date' | 'time', tz: string): Intl.DateTimeFormat {
+  const key = `${kind} ${tz}`
+  let found = formatters.get(key)
+  if (!found) {
+    found = kind === 'date'
+      ? new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' })
+      : new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
+    formatters.set(key, found)
+  }
+  return found
+}
 /** YYYY-MM-DD for `date` in time zone `tz`. */
 export function localDate(date = new Date(), tz = zone): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
+  return formatter('date', tz).format(date)
 }
 export function weekRange(date: string): { from: string; to: string } {
   const day = new Date(`${date}T00:00:00Z`)
@@ -64,26 +78,68 @@ export function activity(active: number, seconds: number): number {
 }
 /** Minutes since local midnight in `tz` for an instant. */
 export function minuteOfDay(instant: string | Date, tz = zone): number {
-  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(instant))
+  const parts = formatter('time', tz).formatToParts(new Date(instant))
   const get = (type: string) => Number(parts.find((part) => part.type === type)?.value || 0)
   return get('hour') * 60 + get('minute') + get('second') / 60
 }
-export interface Span { start_at: string; end_at: string }
+export interface Span { start_at: string; end_at: string; active_seconds?: number }
+/** A run of time as percentages of the day. `activity` is 0 to 1, or 1 when the spans carry no activity. */
+export interface Segment { left: number; width: number; activity: number }
 /**
  * Merge consecutive blocks into ribbon segments as day percentages for `date` in `tz`.
  * Blocks separated by under two minutes join, so 30-second uploads read as one run.
  */
-export function ribbon(spans: Span[], date: string, tz = zone): { left: number; width: number }[] {
-  const out: { left: number; width: number }[] = []
+export function ribbon(spans: Span[], date: string, tz = zone): Segment[] {
+  const out: { left: number; width: number; active: number; seconds: number }[] = []
   for (const span of [...spans].sort((a, b) => a.start_at.localeCompare(b.start_at))) {
     const startDay = localDate(new Date(span.start_at), tz)
     const endDay = localDate(new Date(new Date(span.end_at).getTime() - 1), tz)
     if (endDay < date || startDay > date) continue
     const start = startDay < date ? 0 : minuteOfDay(span.start_at, tz)
     const end = endDay > date ? 1440 : minuteOfDay(new Date(new Date(span.end_at).getTime() - 1), tz) + 1 / 60
+    const seconds = (new Date(span.end_at).getTime() - new Date(span.start_at).getTime()) / 1000
+    const active = span.active_seconds ?? seconds
     const last = out[out.length - 1]
-    if (last && start - (last.left + last.width) <= 2) last.width = Math.max(last.width, end - last.left)
-    else out.push({ left: start, width: end - start })
+    if (last && start - (last.left + last.width) <= 2) {
+      last.width = Math.max(last.width, end - last.left)
+      last.active += active
+      last.seconds += seconds
+    } else out.push({ left: start, width: end - start, active, seconds })
   }
-  return out.map((segment) => ({ left: (segment.left / 1440) * 100, width: Math.max(0.2, (segment.width / 1440) * 100) }))
+  return out.map((segment) => ({
+    left: (segment.left / 1440) * 100,
+    width: Math.max(0.2, (segment.width / 1440) * 100),
+    activity: segment.seconds > 0 ? Math.min(1, Math.max(0, segment.active / segment.seconds)) : 1,
+  }))
+}
+/** Ribbon segments per key, for one row per person or per laptop. */
+export function ribbonBy<T extends Span>(spans: T[], key: (span: T) => string, date: string, tz = zone): Map<string, Segment[]> {
+  const groups = new Map<string, T[]>()
+  for (const span of spans) {
+    const group = groups.get(key(span))
+    if (group) group.push(span)
+    else groups.set(key(span), [span])
+  }
+  return new Map([...groups].map(([id, group]) => [id, ribbon(group, date, tz)]))
+}
+/** True when any segment has time outside the window in minutes, so zooming to it would hide recorded time. */
+export function outside(segments: Segment[], from: number, to: number): boolean {
+  const a = (from / 1440) * 100
+  const b = (to / 1440) * 100
+  return segments.some((segment) => segment.left < a - 0.01 || segment.left + segment.width > b + 0.01)
+}
+export const initials = (person: { name: string; email: string }) =>
+  (person.name || person.email).split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()
+/**
+ * Re-map day-percentage segments onto a window of the day given in minutes.
+ * Segments outside the window are dropped and partial ones are clipped.
+ */
+export function zoomTo(segments: Segment[], from: number, to: number): Segment[] {
+  const a = (from / 1440) * 100
+  const b = (to / 1440) * 100
+  return segments.flatMap((segment) => {
+    const left = Math.max(segment.left, a)
+    const right = Math.min(segment.left + segment.width, b)
+    return right > left ? [{ ...segment, left: ((left - a) / (b - a)) * 100, width: ((right - left) / (b - a)) * 100 }] : []
+  })
 }

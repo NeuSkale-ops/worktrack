@@ -68,8 +68,10 @@ func (a *app) deviceScreenshot(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"screenshot_key": key})
 }
 
-// deviceActivity returns one device's events for a UTC day, newest first, with
-// short-lived signed screenshot URLs. Owner only, like the rest of the fleet.
+// deviceActivity returns one device's events for a local day, newest first,
+// with short-lived signed screenshot URLs. Managers see only events recorded
+// since the laptop was last reassigned, so moving a laptop into their org does
+// not hand them its earlier history. Owners see everything.
 func (a *app) deviceActivity(w http.ResponseWriter, r *http.Request) {
 	id, okay := a.deviceVisible(w, r)
 	if !okay {
@@ -87,7 +89,8 @@ func (a *app) deviceActivity(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := a.db.Query(r.Context(), `SELECT event_id::text,kind,occurred_at,payload
 	 FROM device_events WHERE device_id=$1 AND occurred_at>=$2 AND occurred_at<$3
-	 ORDER BY occurred_at DESC LIMIT 2000`, id, day, day.AddDate(0, 0, 1))
+	  AND ($4 OR occurred_at>=COALESCE((SELECT assigned_at FROM devices WHERE id=$1),'-infinity'))
+	 ORDER BY occurred_at DESC LIMIT 2000`, id, day, day.AddDate(0, 0, 1), current(r).Role == "owner")
 	if err != nil {
 		fail(w, 503, "activity unavailable")
 		return

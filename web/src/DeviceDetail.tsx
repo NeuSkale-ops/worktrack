@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from './api'
 import { configError, hm, savedConfig, parseExcluded, summarize } from './deviceActivity'
 import type { DeviceConfig, DeviceEvent } from './deviceActivity'
@@ -31,8 +31,8 @@ export function DeviceConfigForm({ deviceId, saved, onSaved }: { deviceId: strin
   }
 
   const box = (key: keyof DeviceConfig, label: string, disabled = false) => (
-    <label><input type="checkbox" checked={Boolean(cfg[key])} disabled={disabled}
-      onChange={e => set({ [key]: e.target.checked } as Partial<DeviceConfig>)} /> {label}</label>
+    <label className="check"><input type="checkbox" checked={Boolean(cfg[key])} disabled={disabled}
+      onChange={e => set({ [key]: e.target.checked } as Partial<DeviceConfig>)} />{label}</label>
   )
 
   return (
@@ -44,25 +44,27 @@ export function DeviceConfigForm({ deviceId, saved, onSaved }: { deviceId: strin
       {box('session_events', 'Logon, logoff, lock and unlock')}
       {box('screenshots', 'Screenshots of the main display')}
       {box('location', 'Approximate location with each screenshot', !cfg.screenshots)}
-      <label>Screenshot every{' '}
+      <label>Minutes between screenshots
         <input type="number" min={1} max={60} value={cfg.screenshot_interval_secs / 60} disabled={!cfg.screenshots}
-          onChange={e => set({ screenshot_interval_secs: Math.round(Number(e.target.value) * 60) })} /> minutes
+          onChange={e => set({ screenshot_interval_secs: Math.round(Number(e.target.value) * 60) })} />
       </label>
       <label>Never record these programs by name (one per line, like keepass.exe)
         <textarea rows={3} value={excluded} onChange={e => setExcluded(e.target.value)} />
       </label>
       {invalid && <p className="error" role="alert">{invalid}</p>}
-      <button onClick={() => void save()} disabled={busy || Boolean(invalid)}>Save settings</button>
-      {status && <p role="status">{status}</p>}
+      <div><button className="primary" onClick={() => void save()} disabled={busy || Boolean(invalid)}>Save settings</button></div>
+      {status && <p role="status" className="muted">{status}</p>}
     </fieldset>
   )
 }
 
-export function DeviceActivity({ deviceId, hostname }: { deviceId: string; hostname: string }) {
+/** One laptop's recorded day. `sinceAssigned` tells managers why earlier days can be empty. */
+export function DeviceActivity({ deviceId, hostname, sinceAssigned }: { deviceId: string; hostname: string; sinceAssigned: boolean }) {
   const [date, setDate] = useState(localDay())
   const [events, setEvents] = useState<DeviceEvent[] | null>(null)
   const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
+  // Loads on open, so it starts busy and never shows an empty frame first.
+  const [busy, setBusy] = useState(true)
 
   async function load(day = date) {
     setBusy(true)
@@ -77,30 +79,38 @@ export function DeviceActivity({ deviceId, hostname }: { deviceId: string; hostn
       setBusy(false)
     }
   }
+  useEffect(() => { void load() }, [])
 
   const summary = events ? summarize(events) : null
   const shots = events?.filter(e => e.kind === 'screenshot') ?? []
   const sessions = events?.filter(e => e.kind === 'session' || e.kind === 'acknowledged') ?? []
+  const appMax = summary?.apps[0]?.[1] || 1
 
   return (
     <section className="device-activity" aria-label={`Activity on ${hostname}`} aria-busy={busy}>
-      <div className="block-actions">
-        <label>Day <input type="date" value={date} max={localDay()} onChange={e => { setDate(e.target.value); void load(e.target.value) }} /></label>
-        <button onClick={() => void load()} disabled={busy}>{busy ? 'Loading…' : 'Load activity'}</button>
+      <div className="option">
+        <label>Day <input type="date" value={date} max={localDay()} required onChange={e => { if (e.target.value) { setDate(e.target.value); void load(e.target.value) } }} /></label>
+        <button onClick={() => void load()} disabled={busy}>{busy ? 'Loading…' : 'Refresh activity'}</button>
       </div>
+      {sinceAssigned && <p className="muted">Shows activity recorded since this laptop was last assigned.</p>}
       {error && <p className="error" role="alert">{error}</p>}
-      {events && !events.length && <p role="status">No activity recorded on this day.</p>}
+      {events && !events.length && <p role="status" className="muted">No activity recorded on this day.</p>}
       {summary && events && events.length > 0 && (
         <>
-          <p>Active {hm(summary.activeSecs)} · Idle {hm(summary.idleSecs)} · Locked {hm(summary.lockedSecs)}</p>
+          <div className="facts">
+            <div><b>{hm(summary.activeSecs)}</b><span>Active</span></div>
+            <div><b>{hm(summary.idleSecs)}</b><span>Idle</span></div>
+            <div><b>{hm(summary.lockedSecs)}</b><span>Locked</span></div>
+          </div>
           {summary.apps.length > 0 && (
-            <table>
-              <caption className="sr-only">Time per program</caption>
-              <thead><tr><th scope="col">Program</th><th scope="col">Time</th></tr></thead>
-              <tbody>{summary.apps.slice(0, 15).map(([app, secs]) => (
-                <tr key={app}><th scope="row">{app}</th><td>{hm(secs)}</td></tr>
-              ))}</tbody>
-            </table>
+            <ul className="apps" aria-label="Time per program">
+              {summary.apps.slice(0, 15).map(([app, secs]) => (
+                <li className="app-row" key={app}>
+                  <span>{app}</span><span>{hm(secs)}</span>
+                  <span className="fill" aria-hidden="true"><i style={{ width: `${(secs / appMax) * 100}%` }} /></span>
+                </li>
+              ))}
+            </ul>
           )}
           {sessions.length > 0 && (
             <details>
@@ -123,7 +133,7 @@ export function DeviceActivity({ deviceId, hostname }: { deviceId: string; hostn
                   <figcaption>
                     {new Date(e.occurred_at).toLocaleTimeString()} {e.payload.app ?? ''}
                     {e.payload.location?.status === 'available' && e.payload.location.latitude !== undefined &&
-                      ` · ${e.payload.location.latitude.toFixed(3)}, ${e.payload.location.longitude?.toFixed(3)} (±${Math.round(e.payload.location.accuracy_m ?? 0)} m)`}
+                      `, ${e.payload.location.latitude.toFixed(3)}, ${e.payload.location.longitude?.toFixed(3)} (±${Math.round(e.payload.location.accuracy_m ?? 0)} m)`}
                   </figcaption>
                 </figure>
               ))}

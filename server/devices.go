@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -15,8 +14,8 @@ import (
 
 // Managed-device control plane. Distinct from the per-user Tauri 'device'
 // credential: these are company laptops running the disclosed Windows service.
-// A device authenticates with its own bearer token (devices.token_hash) and is
-// mapped to a WorkTrack user by UPN (email) at enrollment.
+// A device authenticates with its own bearer token (devices.token_hash). It
+// enrolls unassigned. An owner or manager assigns it to a WorkTrack user.
 
 type managedDevice struct {
 	id        string
@@ -84,20 +83,12 @@ func (a *app) enroll(w http.ResponseWriter, r *http.Request) {
 		fail(w, 401, "invalid, expired or revoked enrollment secret")
 		return
 	}
-	// Map UPN to an existing user. Unknown UPNs still enroll (user_id NULL) so IT
-	// can link the account later rather than losing the device.
-	var userID *string
-	var id string
-	if e := tx.QueryRow(r.Context(), "SELECT id::text FROM users WHERE email=$1", in.UPN).Scan(&id); e == nil {
-		userID = &id
-	} else if !errors.Is(e, pgx.ErrNoRows) {
-		fail(w, 503, "enrollment unavailable")
-		return
-	}
+	// A laptop enrolls unassigned. The UPN is kept only as a label: an owner
+	// assigns the laptop to a person (assignDevice), it is never linked by email.
 	deviceID, plain := uuid.NewString(), token()
 	if _, err = tx.Exec(r.Context(),
-		"INSERT INTO devices(id,token_hash,user_id,upn,hostname) VALUES($1,$2,$3,$4,$5)",
-		deviceID, digest(plain), userID, in.UPN, in.Hostname); err != nil {
+		"INSERT INTO devices(id,token_hash,upn,hostname) VALUES($1,$2,$3,$4)",
+		deviceID, digest(plain), in.UPN, in.Hostname); err != nil {
 		fail(w, 503, "enrollment unavailable")
 		return
 	}

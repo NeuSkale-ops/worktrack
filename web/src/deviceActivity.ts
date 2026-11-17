@@ -8,6 +8,37 @@ export interface DeviceConfig {
   excluded_apps: string[]
 }
 
+export interface Device {
+  id: string
+  /** The person this laptop is assigned to, or null. */
+  user_id: string | null
+  upn: string
+  hostname: string
+  name: string | null
+  enabled: boolean
+  paused: boolean
+  uninstall: boolean
+  agent_version: string
+  config_version: number
+  config?: Partial<DeviceConfig>
+  last_checkin_at: string | null
+  last_sync_at: string | null
+  buffer_depth: number
+  dropped_events: number
+  acked_seq: number
+}
+
+// A device is healthy if it checked in within the last 15 minutes. A longer
+// silence is the only signal that the agent was stopped. It is never hidden.
+export function health(d: Pick<Device, 'last_checkin_at' | 'uninstall' | 'paused' | 'enabled'>, now = Date.now()): { label: string; tone: 'ok' | 'warn' | 'bad' } {
+  if (!d.last_checkin_at) return { label: 'awaiting first check-in', tone: 'warn' }
+  if (now - new Date(d.last_checkin_at).getTime() > 15 * 60 * 1000) return { label: 'stale (possible tamper)', tone: 'bad' }
+  if (d.uninstall) return { label: 'uninstalling', tone: 'warn' }
+  if (d.paused) return { label: 'paused', tone: 'warn' }
+  if (!d.enabled) return { label: 'disabled', tone: 'warn' }
+  return { label: 'active', tone: 'ok' }
+}
+
 export interface DeviceEvent {
   event_id: string
   kind: 'activity' | 'screenshot' | 'session' | 'acknowledged' | string

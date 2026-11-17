@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { activity, applicationTotals, blockDuration, duration, isTimeOnly, localDate, locationText, ribbon, screenshotPlaceholder, utcDate, weekRange } from './utils.ts'
+import { activity, applicationTotals, blockDuration, duration, isTimeOnly, localDate, locationText, outside, ribbon, ribbonBy, screenshotPlaceholder, utcDate, weekRange, zoomTo } from './utils.ts'
 
 test('time-only policy preserves screenshot evidence including legacy location', () => {
   assert.equal(isTimeOnly({ screenshot_url: null, screenshot_status: 'not_captured' }), true)
@@ -101,4 +101,32 @@ test('ribbon merges short gaps and clips blocks to the local day', () => {
   const ist = ribbon([{ start_at: '2026-10-21T18:25:00Z', end_at: '2026-10-21T18:35:00Z' }], '2026-10-21', 'Asia/Kolkata')
   assert.ok(Math.abs(ist[0].left - (1435 / 1440) * 100) < 0.01)
   assert.ok(Math.abs(ist[0].left + ist[0].width - 100) < 0.01)
+})
+test('ribbon segments carry input activity, grouped per person and zoomed to a window', () => {
+  const spans = [
+    { user_id: 'a', start_at: '2026-10-21T09:00:00Z', end_at: '2026-10-21T09:10:00Z', active_seconds: 300 },
+    { user_id: 'a', start_at: '2026-10-21T09:10:00Z', end_at: '2026-10-21T09:20:00Z', active_seconds: 600 },
+    { user_id: 'b', start_at: '2026-10-21T03:00:00Z', end_at: '2026-10-21T07:00:00Z' },
+  ]
+  const by = ribbonBy(spans, span => span.user_id, '2026-10-21', 'UTC')
+  assert.equal(by.get('a')!.length, 1)
+  assert.equal(by.get('a')![0].activity, 0.75)
+  // Spans without activity data draw at full strength.
+  assert.equal(by.get('b')![0].activity, 1)
+  // 06:00 to 22:00 window: 09:00 sits 3 of 16 hours in, and 03:00 to 07:00 is clipped to its last hour.
+  const a = zoomTo(by.get('a')!, 360, 1320)
+  assert.ok(Math.abs(a[0].left - (3 / 16) * 100) < 0.01)
+  assert.equal(a[0].activity, 0.75)
+  const b = zoomTo(by.get('b')!, 360, 1320)
+  assert.equal(b[0].left, 0)
+  assert.ok(Math.abs(b[0].width - (1 / 16) * 100) < 0.01)
+  assert.deepEqual(zoomTo(by.get('b')!, 600, 1320), [])
+  // Time before 06:00 must stop the board from zooming to the working day and hiding it.
+  assert.equal(outside(by.get('b')!, 360, 1320), true)
+  assert.equal(outside(by.get('a')!, 360, 1320), false)
+  assert.equal(outside([], 360, 1320), false)
+  // The whole day is the identity window, up to float rounding.
+  const whole = zoomTo(by.get('a')!, 0, 1440)
+  assert.equal(whole.length, 1)
+  assert.ok(Math.abs(whole[0].left - by.get('a')![0].left) < 1e-9 && Math.abs(whole[0].width - by.get('a')![0].width) < 1e-9)
 })

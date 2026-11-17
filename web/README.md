@@ -36,15 +36,15 @@ pnpm test
 pnpm build
 ```
 
-Tests cover UTC dates, Monday-based weeks, time formatting, activity calculations, cookie credentials, JSON requests, and API errors.
+Tests cover UTC dates, Monday-based weeks, time formatting, activity calculations, ribbon grouping and zoom, cookie credentials, JSON requests, and API errors.
 Network responses are stubbed only in isolated client tests, never in the application.
 
 For dependency-free browser checks, run `pnpm dev --port 1428` and open `/tests/diagnostics.html?role=owner`, then repeat with `role=manager` and `role=worker`.
 For visual review with sample data, open `/tests/preview.html?role=owner`, `?role=worker`, or `?auth=1` for sign-in.
-Managers and owners choose a person from the People rail, or the Person selector on mobile. The selected person's day timeline uses `GET /api/reports/day`; workers see their own recorded intervals.
-**Screenshots** opens by default. **Activity details** lists every uploaded interval with exact seconds, and **Applications** shows foreground-time estimates. **Weekly report** contains the timesheet and CSV export. **Settings** contains desktop downloads, permitted member controls, password changes and owner-only diagnostics.
+Managers and owners land on **Team today**, a board with one ribbon of recorded time per person and, under each person, a grey ribbon of active time for every company laptop assigned to them. Clicking a person opens their day, which uses `GET /api/timeline`; the board uses `GET /api/reports/day` and `GET /api/reports/device-day`. Workers land on **My day** and see their own recorded intervals only. They never see or request laptop activity.
+**Screenshots** opens by default on a day. **Activity details** lists every uploaded interval with exact seconds, and **Applications** shows foreground-time estimates. **Week** contains the timesheet and CSV export. **People** holds roles, organisations, invitations and access controls. **Devices** lists company laptops with an **Assigned to** selector, and holds the owner-only **Desktop app diagnostics** tab. **Settings** contains desktop downloads, record retention notes and password changes.
 The harness renders the real dashboard with mocked API responses and exposes `document.documentElement.dataset.testResult` as `passed` or `failed`.
-It checks screenshot-first navigation, keyboard tabs, role visibility, escaped names, empty days, stale-data errors and recovery, failed-image refresh, exact interval durations, application-minute aggregation, zero coordinates/accuracy and the screenshot dialog's linked location. These fixtures are not included in the production build and do not test native Windows behavior.
+It checks the team board, screenshot-first navigation, that one person's screenshots never show under another name, keyboard tabs, role visibility, escaped names, empty days, stale-data errors and recovery, failed-image refresh, exact interval durations, application-minute aggregation, zero coordinates/accuracy and the screenshot dialog's linked location. These fixtures are not included in the production build and do not test native Windows behavior.
 
 ## Screenshot location and application minutes
 
@@ -55,7 +55,9 @@ Workers see their own data; managers/owners can see team timelines. Deleting a s
 ## Behavior
 
 - Owners and managers can see the team, live tracking status, timelines, and weekly timesheets, and create private worker invitation links.
-- Only owners see **Desktop diagnostic logs (owner only)** in Settings. Expand it and click **Load recent logs** for the newest 100 desktop events from the last seven days. It does not fetch automatically. Managers/workers have no diagnostic panel, and the API independently enforces owner access.
+- Owners and managers can assign a company laptop to a person on the Devices page. Managers can only pick people in their own organisation and cannot unassign. Laptop activity from before a reassignment is not shown under the new person.
+- The day ribbon shows 06:00 to 22:00 by default and switches to the full day by itself when time was recorded outside that window.
+- Only owners see the **Desktop app diagnostics** tab on Devices. Click **Load recent logs** for the newest 100 desktop events from the last seven days. It does not fetch automatically. Managers/workers have no diagnostic panel, and the API independently enforces owner access.
 - Workers see only their own timeline and hours.
 - Status, timeline URLs, and hours refresh every 30 seconds while the tab is visible.
 - Uploaded intervals without scheduled screenshots appear only in **Activity details**, not as blank image cards. The gallery distinguishes deleted screenshots from unavailable storage and gives an explicit loading/error state for image requests. Records upload about every 30 seconds; screenshots are scheduled every ten running minutes.
