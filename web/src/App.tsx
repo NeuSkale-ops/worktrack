@@ -722,7 +722,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
         {view === 'devices' && manager && (
           <>
             {laptopError && <p className="error" role="alert">Laptops could not be loaded. Select Refresh to try again.</p>}
-            <Devices key={org} owner={user.role === 'owner'} devices={devices} people={team} loading={busy} open={openDevice} onOpen={setOpenDevice} onChange={load} />
+            <Devices key={org} owner={user.role === 'owner'} devices={devices} people={team} orgs={orgs} loading={busy} open={openDevice} onOpen={setOpenDevice} onChange={load} />
           </>
         )}
         {view === 'settings' && (

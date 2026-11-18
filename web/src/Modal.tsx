@@ -8,6 +8,13 @@ export default function Modal({ title, drawer = false, onClose, children }: { ti
   useEffect(() => {
     if (!ref.current?.open) ref.current?.showModal()
   }, [])
+  // The dialog's own close event arrives a moment later. If the parent is
+  // rebuilt in that gap the event is lost and the dialog reopens, so the
+  // button and backdrop report closing straight away. Escape still uses the event.
+  const close = () => {
+    ref.current?.close()
+    onClose()
+  }
   return (
     <dialog
       ref={ref}
@@ -15,12 +22,12 @@ export default function Modal({ title, drawer = false, onClose, children }: { ti
       aria-labelledby={heading}
       onClose={onClose}
       onClick={(event) => {
-        if (event.target === ref.current) ref.current?.close()
+        if (event.target === ref.current) close()
       }}
     >
       <div className="dialog-heading">
         <h2 id={heading}>{title}</h2>
-        <button onClick={() => ref.current?.close()} autoFocus>Close</button>
+        <button onClick={close} autoFocus>Close</button>
       </div>
       <div className="dialog-body">{children}</div>
     </dialog>

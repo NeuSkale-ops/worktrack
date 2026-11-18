@@ -83,12 +83,19 @@ func (a *app) setUserOrg(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	tag, e := a.db.Exec(r.Context(), "UPDATE users SET org_id=$2 WHERE id=$1 AND role<>'owner' AND ($2::text IS NULL OR EXISTS(SELECT 1 FROM orgs WHERE id=$2))", id, in.OrgID)
+	// A laptop stays in its own organisation, so a person who moves out of it is
+	// unassigned from that laptop in the same statement.
+	var moved int
+	e := a.db.QueryRow(r.Context(), `WITH moved AS (
+	  UPDATE users SET org_id=$2 WHERE id=$1 AND role<>'owner' AND ($2::text IS NULL OR EXISTS(SELECT 1 FROM orgs WHERE id=$2)) RETURNING id
+	), freed AS (
+	  UPDATE devices SET user_id=NULL, assigned_at=now() WHERE user_id IN (SELECT id FROM moved) AND org_id IS NOT NULL AND org_id IS DISTINCT FROM $2::text RETURNING 1
+	) SELECT (SELECT count(*) FROM moved) + 0*(SELECT count(*) FROM freed)`, id, in.OrgID).Scan(&moved)
 	if e != nil {
 		fail(w, 503, "assignment unavailable")
 		return
 	}
-	if tag.RowsAffected() != 1 {
+	if moved != 1 {
 		fail(w, 404, "user or organisation not found")
 		return
 	}

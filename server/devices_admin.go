@@ -9,7 +9,8 @@ import (
 )
 
 // Admin surface for the managed-device fleet. Enrollment secrets are owner
-// only. Owners manage every device, managers the devices of users in their org.
+// only. Owners manage every device, managers the devices of their org. A
+// device's org is its own field (devices.org_id), set by an owner.
 // Mutations are recorded in admin_audit. These power the dashboard Devices page.
 
 func (a *app) requireOwner(w http.ResponseWriter, r *http.Request) bool {
@@ -40,9 +41,9 @@ func (a *app) deviceVisible(w http.ResponseWriter, r *http.Request) (string, boo
 		fail(w, 400, "invalid device id")
 		return "", false
 	}
-	cond, args := sees(r, "u.id", "u.org_id", 2)
+	cond, args := sees(r, "d.user_id", "d.org_id", 2)
 	var found bool
-	if e := a.db.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM devices d LEFT JOIN users u ON u.id=d.user_id WHERE d.id=$1 AND "+cond+")", append([]any{id}, args...)...).Scan(&found); e != nil {
+	if e := a.db.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM devices d WHERE d.id=$1 AND "+cond+")", append([]any{id}, args...)...).Scan(&found); e != nil {
 		fail(w, 503, "device unavailable")
 		return "", false
 	}
@@ -99,8 +100,8 @@ func (a *app) listDevices(w http.ResponseWriter, r *http.Request) {
 	if !a.requireAdmin(w, r) {
 		return
 	}
-	cond, args := sees(r, "u.id", "u.org_id", 1)
-	rows, err := a.db.Query(r.Context(), `SELECT d.id::text,d.user_id::text,d.upn,d.hostname,u.name,
+	cond, args := sees(r, "d.user_id", "d.org_id", 1)
+	rows, err := a.db.Query(r.Context(), `SELECT d.id::text,d.user_id::text,d.org_id,d.upn,d.hostname,u.name,
 	  d.enabled,d.paused,d.uninstall,d.agent_version,d.config_version,d.config,
 	  d.last_checkin_at,d.last_sync_at,d.buffer_depth,d.dropped_events,d.acked_seq
 	 FROM devices d LEFT JOIN users u ON u.id=d.user_id
@@ -114,6 +115,7 @@ func (a *app) listDevices(w http.ResponseWriter, r *http.Request) {
 	type dev struct {
 		ID            string         `json:"id"`
 		UserID        *string        `json:"user_id"`
+		OrgID         *string        `json:"org_id"`
 		UPN           string         `json:"upn"`
 		Hostname      string         `json:"hostname"`
 		Name          *string        `json:"name"`
@@ -132,7 +134,7 @@ func (a *app) listDevices(w http.ResponseWriter, r *http.Request) {
 	out := []dev{}
 	for rows.Next() {
 		var d dev
-		if err = rows.Scan(&d.ID, &d.UserID, &d.UPN, &d.Hostname, &d.Name, &d.Enabled, &d.Paused,
+		if err = rows.Scan(&d.ID, &d.UserID, &d.OrgID, &d.UPN, &d.Hostname, &d.Name, &d.Enabled, &d.Paused,
 			&d.Uninstall, &d.AgentVersion, &d.ConfigVersion, &d.Config, &d.LastCheckinAt, &d.LastSyncAt,
 			&d.BufferDepth, &d.DroppedEvents, &d.AckedSeq); err != nil {
 			fail(w, 503, "devices unavailable")
@@ -239,8 +241,8 @@ func (a *app) deviceCommand(w http.ResponseWriter, r *http.Request) {
 // assignDevice links a laptop to the person who uses it, or unlinks it with
 // null. Its activity from then on is shown under that person. Owners assign
 // anyone. Managers reassign laptops they can already see to people in their
-// own org, and cannot unassign: an unassigned laptop belongs to no org, so
-// only owners see it.
+// own org, and cannot unassign. The person must be in the laptop's org. A
+// laptop with no org takes the org of the person it is assigned to.
 func (a *app) assignDevice(w http.ResponseWriter, r *http.Request) {
 	id, okay := a.deviceVisible(w, r)
 	if !okay {
@@ -267,9 +269,10 @@ func (a *app) assignDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(r.Context())
+	var org *string
+	var role string
 	if in.UserID != nil {
-		var org *string
-		err = tx.QueryRow(r.Context(), "SELECT org_id FROM users WHERE id=$1", *in.UserID).Scan(&org)
+		err = tx.QueryRow(r.Context(), "SELECT org_id,role FROM users WHERE id=$1", *in.UserID).Scan(&org, &role)
 		if errors.Is(err, pgx.ErrNoRows) || (err == nil && !sameOrg(actor, org)) {
 			fail(w, 404, "user not found")
 			return
@@ -279,14 +282,72 @@ func (a *app) assignDevice(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	var deviceOrg *string
+	if err = tx.QueryRow(r.Context(), "SELECT org_id FROM devices WHERE id=$1 FOR UPDATE", id).Scan(&deviceOrg); err != nil {
+		fail(w, 503, "assignment unavailable")
+		return
+	}
+	// A laptop in an organisation goes only to that organisation's people, or to an owner.
+	if in.UserID != nil && deviceOrg != nil && role != "owner" && (org == nil || *org != *deviceOrg) {
+		fail(w, 409, "that person is in another organisation. Change the laptop's organisation first")
+		return
+	}
 	// Saving the same person again must not move assigned_at, which would hide
 	// the laptop's earlier activity.
-	tag, err := tx.Exec(r.Context(), "UPDATE devices SET user_id=$2, assigned_at=now() WHERE id=$1 AND user_id IS DISTINCT FROM $2", id, in.UserID)
+	tag, err := tx.Exec(r.Context(), "UPDATE devices SET user_id=$2, assigned_at=now(), org_id=COALESCE(org_id,$3) WHERE id=$1 AND user_id IS DISTINCT FROM $2", id, in.UserID, org)
 	if err == nil && tag.RowsAffected() == 1 {
 		err = a.audit(r.Context(), tx, actor.ID, "assign", &id, map[string]any{"user_id": in.UserID})
 	}
 	if err != nil || tx.Commit(r.Context()) != nil {
 		fail(w, 503, "assignment unavailable")
+		return
+	}
+	ok(w)
+}
+
+// setDeviceOrg puts a laptop in an organisation, or in none with null. Owner
+// only. Managers of that organisation see the laptop from then on, but not its
+// earlier activity. A person who is not in the new organisation is unassigned.
+func (a *app) setDeviceOrg(w http.ResponseWriter, r *http.Request) {
+	if !a.requireOwner(w, r) {
+		return
+	}
+	id := r.PathValue("id")
+	if !validID(id) {
+		fail(w, 400, "invalid device id")
+		return
+	}
+	var in struct {
+		OrgID *string `json:"org_id"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	tx, err := a.db.Begin(r.Context())
+	if err != nil {
+		fail(w, 503, "organisation change unavailable")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	var found, known bool
+	if err = tx.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM devices WHERE id=$1), $2::text IS NULL OR EXISTS(SELECT 1 FROM orgs WHERE id=$2)", id, in.OrgID).Scan(&found, &known); err != nil {
+		fail(w, 503, "organisation change unavailable")
+		return
+	}
+	if !found || !known {
+		fail(w, 404, "laptop or organisation not found")
+		return
+	}
+	// assigned_at moves so the new organisation's managers do not inherit the
+	// laptop's earlier activity. Saving the same organisation changes nothing.
+	tag, err := tx.Exec(r.Context(), `UPDATE devices d SET org_id=$2, assigned_at=now(),
+	  user_id=CASE WHEN $2::text IS NOT NULL AND EXISTS(SELECT 1 FROM users u WHERE u.id=d.user_id AND u.role<>'owner' AND u.org_id IS DISTINCT FROM $2::text) THEN NULL ELSE d.user_id END
+	 WHERE d.id=$1 AND d.org_id IS DISTINCT FROM $2`, id, in.OrgID)
+	if err == nil && tag.RowsAffected() == 1 {
+		err = a.audit(r.Context(), tx, current(r).ID, "set-org", &id, map[string]any{"org_id": in.OrgID})
+	}
+	if err != nil || tx.Commit(r.Context()) != nil {
+		fail(w, 503, "organisation change unavailable")
 		return
 	}
 	ok(w)

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, post } from './api'
-import type { Worker } from './api'
+import type { Org, Worker } from './api'
 import AgentLogs from './AgentLogs'
 import { DeviceActivity, DeviceConfigForm } from './DeviceDetail'
 import { health } from './deviceActivity'
@@ -15,14 +15,16 @@ const host = (d: Device) => d.hostname || '(unknown)'
 const pageTabs = ['Laptops', 'Desktop app diagnostics'] as const
 
 /**
- * Company laptops running the managed agent. Owners and managers assign each
- * laptop to the person who uses it. Its activity then shows under that person.
+ * Company laptops running the managed agent. An owner puts each laptop in an
+ * organisation. Owners and managers assign it to the person who uses it, and
+ * its activity then shows under that person.
  */
-export default function Devices({ owner, devices, people, loading, open, onOpen, onChange }: {
+export default function Devices({ owner, devices, people, orgs, loading, open, onOpen, onChange }: {
   owner: boolean
   devices: Device[]
   /** People a laptop can be assigned to. */
   people: Worker[]
+  orgs: Org[]
   loading: boolean
   /** Id of the laptop shown in the drawer, or ''. */
   open: string
@@ -84,23 +86,50 @@ export default function Devices({ owner, devices, people, loading, open, onOpen,
     const person = people.find(p => p.id === userId)
     if (!confirm(person
       ? `Assign ${host(d)} to ${person.name || person.email}? Its activity from now on shows under them. Earlier activity is not moved.`
-      : `Unassign ${host(d)}? Its activity will not show under anyone, and only owners will see this laptop.`)) return
+      : `Unassign ${host(d)}? Its activity will not show under anyone.`)) return
     void run(async () => {
       await api(`/devices/${encodeURIComponent(d.id)}/user`, { method: 'PUT', body: JSON.stringify({ user_id: userId || null }) })
       await onChange()
     }, 'Unable to assign this laptop.')
   }
 
-  // Managers cannot unassign: an unassigned laptop is visible to owners only.
+  const orgName = (d: Device) => orgs.find(o => o.id === d.org_id)?.name ?? 'No organisation'
+
+  function setOrg(d: Device, orgId: string) {
+    const target = orgs.find(o => o.id === orgId)
+    const person = people.find(p => p.id === d.user_id)
+    const leaves = Boolean(target && person && person.role !== 'owner' && person.org_id !== orgId)
+    if (!confirm(target
+      ? `Move ${host(d)} to ${target.name}? Its managers will see this laptop, but not its earlier activity.${leaves ? ` ${person!.name || person!.email} is not in ${target.name} and will be unassigned.` : ''}`
+      : `Remove ${host(d)} from its organisation? Only owners will see this laptop.`)) return
+    void run(async () => {
+      await api(`/devices/${encodeURIComponent(d.id)}/org`, { method: 'PUT', body: JSON.stringify({ org_id: orgId || null }) })
+      await onChange()
+    }, 'Unable to change this laptop\'s organisation.')
+  }
+
+  const orgSelect = (d: Device) => (
+    <select aria-label={`Organisation for ${host(d)}`} value={d.org_id ?? ''} disabled={busy} onChange={e => setOrg(d, e.target.value)}>
+      <option value="">No organisation</option>
+      {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+    </select>
+  )
+
+  // A laptop in an organisation goes to that organisation's people, or to an
+  // owner. The current person stays listed so the selector shows the truth.
+  const assignable = (d: Device) => people.filter(p => !d.org_id || p.role === 'owner' || p.org_id === d.org_id || p.id === d.user_id)
+
+  // Managers cannot unassign.
   const assignSelect = (d: Device) => (
     <select aria-label={`Person assigned to ${host(d)}`} value={d.user_id ?? ''} disabled={busy} onChange={e => assign(d, e.target.value)}>
       {(owner || !d.user_id) && <option value="">Unassigned</option>}
-      {people.map(p => <option key={p.id} value={p.id}>{p.name || p.email}</option>)}
+      {assignable(d).map(p => <option key={p.id} value={p.id}>{p.name || p.email}</option>)}
     </select>
   )
 
   const count = (tone: string) => devices.filter(d => health(d).tone === tone).length
   const unassigned = devices.filter(d => !d.user_id).length
+  const noOrg = devices.filter(d => !d.org_id).length
 
   return (
     <section className="settings-view" aria-labelledby="devices-page-heading">
@@ -127,7 +156,8 @@ export default function Devices({ owner, devices, people, loading, open, onOpen,
               <span className="pill ok">{count('ok')} active</span>
               <span className="pill bad">{count('bad')} stale</span>
               <span className="pill warn">{count('warn')} need attention</span>
-              {owner && <span className="pill warn">{unassigned} unassigned</span>}
+              <span className="pill warn">{unassigned} unassigned</span>
+              {owner && <span className="pill warn">{noOrg} without organisation</span>}
             </p>
           )}
           {!loading && !devices.length && <p className="empty" role="status">No laptops enrolled yet.</p>}
@@ -136,13 +166,14 @@ export default function Devices({ owner, devices, people, loading, open, onOpen,
               <table>
                 <caption className="sr-only">Enrolled company laptops</caption>
                 <thead><tr>
-                  <th scope="col">Laptop</th><th scope="col">Assigned to</th><th scope="col">Enrolled as</th>
+                  <th scope="col">Laptop</th>{owner && <th scope="col">Organisation</th>}<th scope="col">Assigned to</th><th scope="col">Enrolled as</th>
                   <th scope="col">Health</th><th scope="col">Last check-in</th><th scope="col">Agent</th>
                   <th scope="col" className="r">Unsent events</th><th scope="col"><span className="sr-only">Details</span></th>
                 </tr></thead>
                 <tbody>{devices.map(d => (
                   <tr key={d.id}>
                     <th scope="row">{host(d)}</th>
+                    {owner && <td>{orgSelect(d)}</td>}
                     <td>{assignSelect(d)}</td>
                     <td>{d.upn}</td>
                     <td><span className={`pill ${health(d).tone}`}>{health(d).label}</span></td>
@@ -158,6 +189,7 @@ export default function Devices({ owner, devices, people, loading, open, onOpen,
           <p className="muted">
             A laptop silent for more than 15 minutes is shown as stale. Silence is the only signal that the agent was stopped, and the agent is never hidden.
             Assigning a laptop shows its activity under that person in Team today, from the assignment onwards.
+            {owner && ' A laptop\'s organisation decides which managers see it and who it can be assigned to. A laptop without an organisation is visible to owners only.'}
           </p>
           {owner && (
             <section className="card download" aria-labelledby="managed-agent-heading" aria-busy={checking}>
@@ -173,7 +205,7 @@ export default function Devices({ owner, devices, people, loading, open, onOpen,
                   <li>Select Add laptop and copy the enrollment secret.</li>
                   <li>Extract the zip on the laptop and open PowerShell as administrator in that folder.</li>
                   <li>Run <code>powershell.exe -ExecutionPolicy Bypass -File install.ps1 -EnrollSecret "SECRET" -Upn "user@company.com"</code>. Windows may show a publisher warning.</li>
-                  <li>The laptop appears here within a minute, assigned to the person with that email if there is one.</li>
+                  <li>The laptop appears here within a minute, with no organisation and no person. Choose its organisation, then assign it.</li>
                 </ol>
                 <p className="muted">After install the service checks in within a minute. Each signed-in user sees a one-time monitoring notice and a tray icon. Capture defaults to time, program names and session events. Turn on screenshots per laptop under its capture settings. Remove it with Uninstall agent or <code>uninstall.ps1</code>.</p>
                 {release && <p className="muted">SHA-256 of the zip: <code>{release.sha256}</code></p>}
@@ -196,6 +228,10 @@ export default function Devices({ owner, devices, people, loading, open, onOpen,
       {openDevice && (
         <Modal drawer title={host(openDevice)} onClose={() => onOpen('')}>
           <p><span className={`pill ${health(openDevice).tone}`}>{health(openDevice).label}</span> <span className="muted">Enrolled as {openDevice.upn}</span></p>
+          <label>Organisation
+            {owner ? orgSelect(openDevice) : <span>{orgName(openDevice)}</span>}
+            {owner && <span className="muted">Managers of this organisation see this laptop.</span>}
+          </label>
           <label>Assigned to
             {assignSelect(openDevice)}
             <span className="muted">This laptop's activity shows under this person in Team today and on their day.</span>

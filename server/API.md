@@ -140,15 +140,22 @@ Event kinds sent by the agent: `activity` (one per minute: `user`,
 monitoring notice was shown). `user` is set by the service from the Windows
 session, never by the helper.
 
-Admin (owners, and managers for laptops assigned to people in their org):
-- `GET /api/devices`: fleet health (assigned `user_id`, version, last check-in,
+Admin (owners, and managers for laptops in their org):
+- `GET /api/devices`: fleet health (`org_id`, assigned `user_id`, version, last check-in,
   last sync, buffer depth, dropped events, desired state).
+- `PUT /api/devices/{id}/org`: `{org_id}` puts the laptop in an organisation,
+  or `null` in none. Owner only. Managers of that organisation then see the
+  laptop, but not its earlier activity. A person who is not in the new
+  organisation is unassigned. A laptop in no organisation is visible to
+  owners only. New laptops enroll in no organisation.
 - `PUT /api/devices/{id}/user`: `{user_id}` assigns the laptop to a person, or
   `null` unassigns it (owner only). Managers may assign only to people in
-  their own org. Enrollment never assigns a laptop. Reassigning sets `assigned_at`: the laptop's earlier
+  their own org. The person must be in the laptop's organisation, or be an
+  owner, otherwise 409. A laptop in no organisation takes the organisation
+  of the person it is assigned to. Enrollment never assigns a laptop. Reassigning sets `assigned_at`: the laptop's earlier
   activity is not shown under the new person, and managers cannot read it
-  through the activity endpoint. An unassigned laptop is visible to owners
-  only.
+  through the activity endpoint. Moving a person to another organisation
+  unassigns their laptop, which stays in its own organisation.
 - `GET /api/devices/{id}/activity?date=YYYY-MM-DD&tz=Area/City`: that day's
   events, newest first, max 2000. Screenshot events carry a 5-minute signed
   `screenshot_url`. Only keys minted for that device and event are signed.
