@@ -29,12 +29,12 @@ Agent requests use Authorization: Bearer <device_token>.
 | POST | /api/heartbeat | {} | {ok:true} |
 | POST | /api/uploads/screenshot-url | {block_id:UUID,content_type:"image/jpeg",size_bytes:integer} | {upload_url,object_key,expires_in:300} |
 | POST | /api/blocks | {blocks:[{id:UUID,session_id:UUID,start_at,end_at,active_seconds:integer,screenshot_key?:string}]} | {ok:true} |
-| DELETE | /api/blocks/{id}/screenshot | | {ok:true}, preserves tracked time |
-| DELETE | /api/blocks/{id} | | {ok:true} |
-| GET | /api/timeline?user=UUID&date=YYYY-MM-DD&tz=IANA | | array of {id,user_id,session_id,start_at,end_at,duration_seconds,active_seconds,screenshot_url,screenshot_status} |
+| DELETE | /api/blocks/{id}/screenshot | | {ok:true}, preserves tracked time. Managers and owners only, own blocks; workers get 403 |
+| DELETE | /api/blocks/{id} | | {ok:true}. Managers and owners only, own blocks; workers get 403 |
+| GET | /api/timeline?user=UUID&date=YYYY-MM-DD&tz=IANA | | Managers and owners only; workers get 403 and see hours through the reports. array of {id,user_id,session_id,start_at,end_at,duration_seconds,active_seconds,screenshot_url,screenshot_status} |
 | GET | /api/reports/hours?from=YYYY-MM-DD&to=YYYY-MM-DD&tz=IANA | | array of {user_id,name,date,seconds,hours} |
 | GET | /api/reports/hours.csv?from=YYYY-MM-DD&to=YYYY-MM-DD&tz=IANA | | CSV |
-| GET | /api/reports/day?date=YYYY-MM-DD&tz=IANA | | array of {user_id,start_at,end_at,screenshot,active_seconds} for every visible person; no screenshot URLs. Workers see only their own blocks. |
+| GET | /api/reports/day?date=YYYY-MM-DD&tz=IANA | | array of {user_id,start_at,end_at,screenshot,active_seconds} for every visible person; no screenshot URLs. Managers and owners only; workers get 403. |
 | GET | /api/reports/device-day?date=YYYY-MM-DD&tz=IANA | | array of {device_id,start_at,end_at,active_seconds}: runs of active time per assigned laptop. Owners and managers only, 403 for workers. Activity from before a laptop was reassigned is left out. |
 | GET | /api/health | | {ok:true} |
 
@@ -73,7 +73,7 @@ Statuses are `available`, `disabled`, or `unavailable`; local pending states are
 Capture timestamps must be within five seconds of the screenshot block end. Available locations require finite latitude [-90,90], longitude [-180,180], positive accuracy up to 20,000,000 metres, and a fix timestamp between two seconds before and ten seconds after capture. Disabled/unavailable records cannot carry coordinates or fix metadata.
 Current desktop apps require Windows location permission before tracking starts. The API still accepts `disabled` from older clients, and absence of a location never prevents screenshot/time ingestion. These fields are client-reported and can be approximate or spoofed, not verified attendance evidence.
 
-Existing own-timeline and manager/owner team permissions apply. Duplicate blocks must retain matching metadata. Screenshot deletion physically clears location; time-block deletion clears location and application usage. Retrying an old deleted block cannot restore erased metadata. Work records remain until deletion; database backups have separate retention.
+Manager/owner team permissions apply to the timeline. Workers cannot read it. Duplicate blocks must retain matching metadata. Screenshot deletion physically clears location; time-block deletion clears location and application usage. Retrying an old deleted block cannot restore erased metadata. Work records remain until deletion; database backups have separate retention.
 Deploy this API before a client that sends these fields. Older API versions reject unknown block fields and cannot ingest new-client queues until the compatible API is restored.
 
 ## Desktop diagnostic logs

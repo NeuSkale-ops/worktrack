@@ -55,7 +55,7 @@ assert.equal(diagnostics.find(row => row.id === diagnostic.id).status, 503);
 await request('/api/agent/logs', { method: 'POST', token, body: { ...diagnosticBody, events: [{ ...diagnostic, message: 'Bearer must-not-store' }] }, status: 400 });
 console.log('PASS: real diagnostic ingestion, retry deduplication, owner-only reads and free-form text rejection');
 await request('/api/invites', { method: 'POST', token, body: { email: 'forbidden@example.test', role: 'manager' }, status: 403 });
-await request(`/api/timeline?user=${owner.user.id}&date=${new Date().toISOString().slice(0, 10)}`, { token, status: 404 });
+await request(`/api/timeline?user=${owner.user.id}&date=${new Date().toISOString().slice(0, 10)}`, { token, status: 403 });
 const sessionID = randomUUID();
 const start = new Date(Math.floor((Date.now() - 120_000) / 60_000) * 60_000);
 const end = new Date(start.getTime() + 60_000);
@@ -103,18 +103,19 @@ const ownerDay = await request(`/api/reports/day?date=${istDate}&tz=Asia/Kolkata
 const span = ownerDay.find(row => row.user_id === worker.user.id);
 assert(span && Date.parse(span.end_at) - Date.parse(span.start_at) === 60_000, 'owner day report must include the worker block');
 assert(!JSON.stringify(ownerDay).includes('X-Amz'), 'day report must not sign screenshot URLs');
-const workerDay = await request(`/api/reports/day?date=${istDate}&tz=Asia/Kolkata`, { token });
-assert(workerDay.length >= 1 && workerDay.every(row => row.user_id === worker.user.id), 'workers see only their own spans');
+// Workers see hours only, so the per-block day report refuses them.
+await request(`/api/reports/day?date=${istDate}&tz=Asia/Kolkata`, { token, status: 403 });
 await request(`/api/reports/day?date=${istDate}&tz=Not/AZone`, { browser: true, status: 400 });
 console.log('PASS: /api/reports/day returns visible spans per role through production image');
 const csv = await request(`/api/reports/hours.csv?from=${date}&to=${date}`, { browser: true });
 assert(csv.includes('Integration worker'));
-await request(`/api/blocks/${block.id}/screenshot`, { method: 'DELETE', token });
-const afterScreenshotDelete = await request(`/api/reports/hours?from=${date}&to=${date}`, { token });
-assert.equal(afterScreenshotDelete.find(row => row.user_id === worker.user.id).seconds, 60, 'Deleting a screenshot must preserve tracked hours');
-await request(`/api/blocks/${block.id}`, { method: 'DELETE', token });
-const afterTimeDelete = await request(`/api/timeline?user=${worker.user.id}&date=${date}`, { token });
-assert.equal(afterTimeDelete.length, 0, 'Explicit time deletion must remove the block');
+// Workers see hours only: no timeline, and no deleting of screenshots or time.
+await request(`/api/timeline?user=${worker.user.id}&date=${date}`, { token, status: 403 });
+await request(`/api/blocks/${block.id}/screenshot`, { method: 'DELETE', token, status: 403 });
+await request(`/api/blocks/${block.id}`, { method: 'DELETE', token, status: 403 });
+const afterRefusedDelete = await request(`/api/reports/hours?from=${date}&to=${date}`, { token });
+assert.equal(afterRefusedDelete.find(row => row.user_id === worker.user.id).seconds, 60, 'A refused worker delete must keep tracked hours');
+console.log('PASS: worker is refused the timeline and both deletes, and keeps reading their own hours');
 await request('/api/auth/logout', { method: 'POST', token, body: {} });
 await request('/api/auth/me', { token, status: 401 });
 // Account lifecycle through the public API.

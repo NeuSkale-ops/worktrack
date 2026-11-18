@@ -182,10 +182,12 @@ function Auth({ onLogin }: { onLogin: (user: User) => void }) {
 }
 
 type View = 'team' | 'day' | 'week' | 'people' | 'devices' | 'settings'
-// Navigation by role. Workers see their own day, week and account only.
+// Navigation by role. Workers see only their recorded hours and their account.
+// Screenshots, applications and deleting are for managers and owners, and the
+// API refuses them to workers.
 const navigation = (user: User): { label: string; items: [View, string][] }[] =>
   user.role === 'worker'
-    ? [{ label: 'Time', items: [['day', 'My day'], ['week', 'My week']] }, { label: 'Account', items: [['settings', 'Settings']] }]
+    ? [{ label: 'Time', items: [['week', 'My hours']] }, { label: 'Account', items: [['settings', 'Settings']] }]
     : [
         { label: 'Time', items: [['team', 'Team today'], ['week', 'Week']] },
         { label: 'Organisation', items: [['people', 'People'], ['devices', 'Devices']] },
@@ -205,7 +207,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
   const [laptopError, setLaptopError] = useState(false)
   const [openDevice, setOpenDevice] = useState('')
   const [zoom, setZoom] = useState(true)
-  const [view, setView] = useState<View>(manager ? 'team' : 'day')
+  const [view, setView] = useState<View>(manager ? 'team' : 'week')
   const [orgs, setOrgs] = useState<Org[]>([])
   // Owner-only narrowing to one org. Empty means every org. Kept in the URL.
   const [org, setOrgState] = useState(() => new URLSearchParams(location.search).get('org') ?? '')
@@ -232,9 +234,9 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
       const day = new URLSearchParams({ date, tz: zone })
       const [members, timeline, report, session, daySpans, fleet, laptopSpans] = await Promise.all([
         manager ? api<Worker[]>(withOrg('/team', org)) : Promise.resolve([]),
-        api<Block[]>(
+        manager ? api<Block[]>(
           `/timeline?${new URLSearchParams({ user: selected, date, tz: zone })}`,
-        ),
+        ) : Promise.resolve([]),
         api<Hours[]>(withOrg(`/reports/hours?${new URLSearchParams({ ...weekRange(date), tz: zone })}`, org)),
         api<OpenSession | null>('/sessions/current'),
         manager ? api<DaySpan[]>(withOrg(`/reports/day?${day}`, org)) : Promise.resolve([]),
@@ -554,15 +556,15 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
             {zoomControl}
           </section>
         )}
-        {view === 'day' && (
+        {view === 'day' && manager && (
           <section className="day-workspace" aria-busy={busy} aria-labelledby="day-heading">
-            {manager && <p><button className="link" onClick={() => go('team')}>‹ {isToday ? 'Team today' : 'Team'}</button></p>}
+            <p><button className="link" onClick={() => go('team')}>‹ {isToday ? 'Team today' : 'Team'}</button></p>
             <div className="page-heading">
               <div className="who">
-                {manager && <span className={`avatar ${selectedPerson?.working ? 'on' : ''}`} aria-hidden="true">{initials(selectedPerson ?? user)}</span>}
+                <span className={`avatar ${selectedPerson?.working ? 'on' : ''}`} aria-hidden="true">{initials(selectedPerson ?? user)}</span>
                 <div>
-                  <h1 id="day-heading">{manager ? selectedLabel : 'My day'}</h1>
-                  <p className="muted">{manager && selectedPerson ? `${statusLine(selectedPerson)}. ` : ''}{dayLabel}</p>
+                  <h1 id="day-heading">{selectedLabel}</h1>
+                  <p className="muted">{selectedPerson ? `${statusLine(selectedPerson)}. ` : ''}{dayLabel}</p>
                 </div>
               </div>
               {dateControls(1)}
@@ -659,7 +661,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
         <section className="report-view" aria-busy={busy} aria-labelledby="week-heading">
           <div className="page-heading">
             <div>
-              <h1 id="week-heading">{manager ? 'Week' : 'My week'}</h1>
+              <h1 id="week-heading">{manager ? 'Week' : 'My hours'}</h1>
               <p className="muted">{range.from} to {range.to}. {busy ? 'Loading…' : `${duration(weekSeconds)} ${manager ? 'team' : 'total'} recorded.`}</p>
             </div>
             <div className="actions">
@@ -788,6 +790,8 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
               </div>
               <p className="muted">Deleting a screenshot keeps the time. Deleting a time block permanently deducts it from your recorded hours.</p>
             </>
+          ) : selectedPerson?.role === 'worker' ? (
+            <p className="muted">A worker's recorded time and screenshots cannot be deleted.</p>
           ) : (
             <p className="muted">Only {selectedLabel} can delete this screenshot or time block.</p>
           )}

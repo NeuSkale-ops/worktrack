@@ -372,6 +372,10 @@ func (a *app) upload(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"upload_url": signed.URL, "object_key": key, "expires_in": 300})
 }
 func (a *app) deleteBlock(w http.ResponseWriter, r *http.Request) {
+	// Workers cannot remove recorded time.
+	if !a.requireAdmin(w, r) {
+		return
+	}
 	id := r.PathValue("id")
 	if !validID(id) {
 		fail(w, 400, "invalid block ID")

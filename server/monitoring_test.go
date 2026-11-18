@@ -181,7 +181,7 @@ func TestMonitoringHTTP(t *testing.T) {
 	bad.Applications = []applicationUsage{{App: "changed.exe", Milliseconds: 1000}}
 	request("POST", "/api/blocks", "worker", map[string]any{"blocks": []block{bad}}, 409)
 	path := "/api/timeline?user=" + ids["worker"] + "&date=" + b.Start.Format("2006-01-02")
-	for _, role := range []string{"worker", "owner", "manager"} {
+	for _, role := range []string{"owner", "manager"} {
 		var rows []struct {
 			Location         *screenshotLocation `json:"location"`
 			Applications     []applicationUsage  `json:"application_usage"`
@@ -195,17 +195,30 @@ func TestMonitoringHTTP(t *testing.T) {
 			t.Fatalf("%s timeline lost exact provenance including explicit false: %+v", role, location)
 		}
 	}
-	request("GET", path, "other", nil, 404)
+	// Workers see hours only, so neither the block's own worker nor another
+	// worker can read the timeline.
+	request("GET", path, "worker", nil, 403)
+	request("GET", path, "other", nil, 403)
 	a.signer = s3.NewPresignClient(s3.New(s3.Options{Region: "auto", BaseEndpoint: aws.String("https://storage.invalid"), UsePathStyle: true, Credentials: credentials.NewStaticCredentialsProvider("fixture", "fixture", "")}))
 	a.bucket = "fixture"
 	var screenshots []struct {
 		Status string `json:"screenshot_status"`
 		URL    string `json:"screenshot_url"`
 	}
-	if err = json.Unmarshal(request("GET", path, "worker", nil, 200).Body.Bytes(), &screenshots); err != nil || len(screenshots) != 1 || screenshots[0].Status != "available" || screenshots[0].URL == "" {
+	if err = json.Unmarshal(request("GET", path, "owner", nil, 200).Body.Bytes(), &screenshots); err != nil || len(screenshots) != 1 || screenshots[0].Status != "available" || screenshots[0].URL == "" {
 		t.Fatalf("available screenshot state lost: %v %v", screenshots, err)
 	}
-	request("DELETE", "/api/blocks/"+b.ID+"/screenshot", "other", nil, 404)
+	// A worker cannot delete their own screenshot or time block.
+	request("DELETE", "/api/blocks/"+b.ID+"/screenshot", "worker", nil, 403)
+	request("DELETE", "/api/blocks/"+b.ID, "worker", nil, 403)
+	request("DELETE", "/api/blocks/"+b.ID+"/screenshot", "other", nil, 403)
+	if err = json.Unmarshal(request("GET", path, "owner", nil, 200).Body.Bytes(), &screenshots); err != nil || len(screenshots) != 1 || screenshots[0].Status != "available" {
+		t.Fatalf("a refused worker delete changed the block: %v %v", screenshots, err)
+	}
+	// The deletion mechanics below belong to managers and owners, on their own blocks.
+	if _, err = db.Exec(ctx, "UPDATE users SET role='manager' WHERE id=$1", ids["worker"]); err != nil {
+		t.Fatal(err)
+	}
 	request("DELETE", "/api/blocks/"+b.ID+"/screenshot", "worker", nil, 200)
 	request("POST", "/api/blocks", "worker", payload, 200)
 	if err = json.Unmarshal(request("GET", path, "worker", nil, 200).Body.Bytes(), &screenshots); err != nil || len(screenshots) != 1 || screenshots[0].Status != "deleted" || screenshots[0].URL != "" {

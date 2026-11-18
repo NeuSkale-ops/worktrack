@@ -180,8 +180,20 @@ func TestPostgresHTTP(t *testing.T) {
 	request("POST", "/api/blocks", map[string]any{"blocks": []block{b}}, 409)
 	request("POST", "/api/sessions/stop", map[string]any{"id": sid, "stopped_at": now.Add(29 * time.Second)}, 409)
 	request("POST", "/api/sessions/stop", map[string]any{"id": sid, "stopped_at": now.Add(30 * time.Second)}, 200)
-	request("GET", "/api/timeline?user="+uuid.NewString(), nil, 404)
+	// Workers see hours only: no timeline, and no deleting of time or screenshots.
+	request("GET", "/api/timeline", nil, 403)
+	request("DELETE", "/api/blocks/"+b.ID+"/screenshot", nil, 403)
+	request("DELETE", "/api/blocks/"+b.ID, nil, 403)
+	var kept int
+	if e = db.QueryRow(ctx, "SELECT count(*) FROM blocks WHERE id=$1 AND deleted_at IS NULL AND screenshot_deleted_at IS NULL", b.ID).Scan(&kept); e != nil || kept != 1 {
+		t.Fatalf("a refused worker delete changed the block: %d %v", kept, e)
+	}
 	request("POST", "/api/invites", map[string]string{"email": "new@example.test", "role": "worker"}, 403)
+	// The deletion mechanics below belong to managers and owners, on their own blocks.
+	if _, e = db.Exec(ctx, "UPDATE users SET role='manager' WHERE id=$1", uid); e != nil {
+		t.Fatal(e)
+	}
+	request("GET", "/api/timeline?user="+uuid.NewString(), nil, 404)
 	// Real AWS presigner with a local S3-compatible delete endpoint, no live secrets.
 	failDelete := true
 	deleted := 0
