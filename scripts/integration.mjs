@@ -103,8 +103,8 @@ const ownerDay = await request(`/api/reports/day?date=${istDate}&tz=Asia/Kolkata
 const span = ownerDay.find(row => row.user_id === worker.user.id);
 assert(span && Date.parse(span.end_at) - Date.parse(span.start_at) === 60_000, 'owner day report must include the worker block');
 assert(!JSON.stringify(ownerDay).includes('X-Amz'), 'day report must not sign screenshot URLs');
-const workerDay = await request(`/api/reports/day?date=${istDate}&tz=Asia/Kolkata`, { token });
-assert(workerDay.length >= 1 && workerDay.every(row => row.user_id === worker.user.id), 'workers see only their own spans');
+// Workers see hours only, so the per-block day report refuses them.
+await request(`/api/reports/day?date=${istDate}&tz=Asia/Kolkata`, { token, status: 403 });
 await request(`/api/reports/day?date=${istDate}&tz=Not/AZone`, { browser: true, status: 400 });
 console.log('PASS: /api/reports/day returns visible spans per role through production image');
 const csv = await request(`/api/reports/hours.csv?from=${date}&to=${date}`, { browser: true });

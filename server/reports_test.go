@@ -176,6 +176,18 @@ func TestDaySpansScopeAndScreenshotFlags(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// Workers see hours only, so the day report refuses them.
+	refused := httptest.NewRequest("GET", "/api/reports/day?date=2026-02-01", nil)
+	refused.Header.Set("Authorization", "Bearer "+raw)
+	denied := httptest.NewRecorder()
+	a.routes().ServeHTTP(denied, refused)
+	if denied.Code != 403 {
+		t.Fatalf("worker day report: want 403 got %d %s", denied.Code, denied.Body.String())
+	}
+	// The same person as a manager with no organisation sees only their own blocks.
+	if _, err = db.Exec(ctx, "UPDATE users SET role='manager' WHERE id=$1", worker); err != nil {
+		t.Fatal(err)
+	}
 	r := httptest.NewRequest("GET", "/api/reports/day?date=2026-02-01", nil)
 	r.Header.Set("Authorization", "Bearer "+raw)
 	w := httptest.NewRecorder()
@@ -187,7 +199,7 @@ func TestDaySpansScopeAndScreenshotFlags(t *testing.T) {
 	if err = json.Unmarshal(w.Body.Bytes(), &spans); err != nil {
 		t.Fatal(err)
 	}
-	// Worker sees only their own two live blocks; the deleted block and the other worker are hidden.
+	// They see only their own two live blocks; the deleted block and the other person are hidden.
 	if len(spans) != 2 || spans[0].UserID != worker || !spans[0].Screenshot || spans[1].Screenshot {
 		t.Fatalf("unexpected spans: %+v", spans)
 	}

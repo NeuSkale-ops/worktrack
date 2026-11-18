@@ -18,6 +18,10 @@ type daySpan struct {
 // day returns block spans for every person the caller may see on one local
 // date. It powers the team ribbon, so it never signs screenshot URLs.
 func (a *app) day(w http.ResponseWriter, r *http.Request) {
+	// Workers see hours only. Per-block spans and activity are for managers and owners.
+	if !a.requireAdmin(w, r) {
+		return
+	}
 	loc, okay := zone(r)
 	if !okay {
 		fail(w, 400, "invalid time zone")

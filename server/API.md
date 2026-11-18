@@ -34,7 +34,7 @@ Agent requests use Authorization: Bearer <device_token>.
 | GET | /api/timeline?user=UUID&date=YYYY-MM-DD&tz=IANA | | Managers and owners only; workers get 403 and see hours through the reports. array of {id,user_id,session_id,start_at,end_at,duration_seconds,active_seconds,screenshot_url,screenshot_status} |
 | GET | /api/reports/hours?from=YYYY-MM-DD&to=YYYY-MM-DD&tz=IANA | | array of {user_id,name,date,seconds,hours} |
 | GET | /api/reports/hours.csv?from=YYYY-MM-DD&to=YYYY-MM-DD&tz=IANA | | CSV |
-| GET | /api/reports/day?date=YYYY-MM-DD&tz=IANA | | array of {user_id,start_at,end_at,screenshot,active_seconds} for every visible person; no screenshot URLs. Workers see only their own blocks. |
+| GET | /api/reports/day?date=YYYY-MM-DD&tz=IANA | | array of {user_id,start_at,end_at,screenshot,active_seconds} for every visible person; no screenshot URLs. Managers and owners only; workers get 403. |
 | GET | /api/reports/device-day?date=YYYY-MM-DD&tz=IANA | | array of {device_id,start_at,end_at,active_seconds}: runs of active time per assigned laptop. Owners and managers only, 403 for workers. Activity from before a laptop was reassigned is left out. |
 | GET | /api/health | | {ok:true} |
 
