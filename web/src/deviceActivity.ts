@@ -12,6 +12,8 @@ export interface Device {
   id: string
   /** The person this laptop is assigned to, or null. */
   user_id: string | null
+  /** The organisation this laptop belongs to, or null. Set by an owner. */
+  org_id: string | null
   upn: string
   hostname: string
   name: string | null

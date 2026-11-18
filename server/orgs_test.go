@@ -51,7 +51,7 @@ func TestOrgIsolationHTTP(t *testing.T) {
 			t.Fatal(e)
 		}
 		devices[name] = uuid.NewString()
-		if _, e = db.Exec(ctx, "INSERT INTO devices(id,token_hash,user_id,upn) VALUES($1,$2,$3,$4)", devices[name], token(), ids[name], ids[name]+"@example.test"); e != nil {
+		if _, e = db.Exec(ctx, "INSERT INTO devices(id,token_hash,user_id,upn,org_id) VALUES($1,$2,$3,$4,$5)", devices[name], token(), ids[name], ids[name]+"@example.test", org); e != nil {
 			t.Fatal(e)
 		}
 		sid := uuid.NewString()
@@ -220,12 +220,49 @@ func TestOrgIsolationHTTP(t *testing.T) {
 	if events("owner") != 4 || events("nsMgr") != 0 {
 		t.Fatalf("owner saw %d events, manager %d, want 4 and 0", events("owner"), events("nsMgr"))
 	}
-	// An unassigned laptop belongs to no org, so only owners see it.
+	// An unassigned laptop stays in its organisation, so its manager still sees it.
 	call("owner", "PUT", assign, map[string]any{"user_id": nil}, 200)
+	expect(seen("nsMgr", "/api/devices", "id"), "nsMgr", "nsWorker")
+	// Only owners set a laptop's organisation. With none, only owners see it.
+	laptopOrg := "/api/devices/" + devices["nsWorker"] + "/org"
+	call("nsMgr", "PUT", laptopOrg, map[string]any{"org_id": "quantipeak"}, 403)
+	call("owner", "PUT", laptopOrg, map[string]any{"org_id": "nope"}, 404)
+	call("owner", "PUT", "/api/devices/"+uuid.NewString()+"/org", map[string]any{"org_id": "neuskale"}, 404)
+	call("owner", "PUT", laptopOrg, map[string]any{"org_id": nil}, 200)
 	expect(seen("nsMgr", "/api/devices", "id"), "nsMgr")
 	call("nsMgr", "PUT", assign, map[string]any{"user_id": ids["nsWorker"]}, 404)
+	// Assigning a person gives a laptop with no organisation that person's organisation.
 	call("owner", "PUT", assign, map[string]any{"user_id": ids["nsWorker"]}, 200)
 	expect(seen("nsMgr", "/api/devices", "id"), "nsMgr", "nsWorker")
+	// A person from another organisation is refused until the laptop moves.
+	call("owner", "PUT", assign, map[string]any{"user_id": ids["qpWorker"]}, 409)
+	// A person with no organisation is refused too.
+	call("owner", "PUT", assign, map[string]any{"user_id": ids["loose"]}, 409)
+	// A person who moves to another organisation leaves the laptop behind, unassigned.
+	call("owner", "PUT", "/api/users/"+ids["nsWorker"]+"/org", map[string]any{"org_id": "quantipeak"}, 200)
+	var left bool
+	if e = db.QueryRow(ctx, "SELECT user_id IS NULL AND org_id='neuskale' FROM devices WHERE id=$1", devices["nsWorker"]).Scan(&left); e != nil || !left {
+		t.Fatalf("laptop followed a person out of its organisation: %v %v", left, e)
+	}
+	call("owner", "PUT", "/api/users/"+ids["nsWorker"]+"/org", map[string]any{"org_id": "neuskale"}, 200)
+	call("owner", "PUT", assign, map[string]any{"user_id": ids["nsWorker"]}, 200)
+	// Moving the laptop unassigns a person who is not in the new organisation.
+	// The new manager sees the laptop but not its earlier activity.
+	call("owner", "PUT", laptopOrg, map[string]any{"org_id": "quantipeak"}, 200)
+	expect(seen("nsMgr", "/api/devices", "id"), "nsMgr")
+	expect(seen("qpMgr", "/api/devices", "id"), "qpMgr", "qpWorker", "nsWorker")
+	var unassigned bool
+	if e = db.QueryRow(ctx, "SELECT user_id IS NULL FROM devices WHERE id=$1", devices["nsWorker"]).Scan(&unassigned); e != nil || !unassigned {
+		t.Fatalf("moving organisation kept a person from the old one: %v %v", unassigned, e)
+	}
+	if events("owner") != 4 || events("qpMgr") != 0 {
+		t.Fatalf("owner saw %d events, new manager %d, want 4 and 0", events("owner"), events("qpMgr"))
+	}
+	call("qpMgr", "PUT", assign, map[string]any{"user_id": ids["qpWorker"]}, 200)
+	call("owner", "PUT", laptopOrg, map[string]any{"org_id": "neuskale"}, 200)
+	call("owner", "PUT", assign, map[string]any{"user_id": ids["nsWorker"]}, 200)
+	expect(seen("nsMgr", "/api/devices", "id"), "nsMgr", "nsWorker")
+	expect(seen("qpMgr", "/api/devices", "id"), "qpMgr", "qpWorker")
 
 	// Assignment is owner only and moves visibility with the user.
 	call("nsMgr", "PUT", "/api/users/"+ids["loose"]+"/org", map[string]any{"org_id": "neuskale"}, 403)

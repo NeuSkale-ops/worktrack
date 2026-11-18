@@ -84,10 +84,10 @@ func (a *app) deviceDay(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid date")
 		return
 	}
-	cond, args := sees(r, "u.id", "u.org_id", 3)
+	cond, args := sees(r, "d.user_id", "d.org_id", 3)
 	rows, e := a.db.Query(r.Context(), `SELECT d.id::text,e.occurred_at,COALESCE(e.payload->>'active_secs','')
- FROM device_events e JOIN devices d ON d.id=e.device_id JOIN users u ON u.id=d.user_id
- WHERE e.kind='activity' AND e.occurred_at>=$1 AND e.occurred_at<$2 AND (d.assigned_at IS NULL OR e.occurred_at>=d.assigned_at) AND `+cond+`
+ FROM device_events e JOIN devices d ON d.id=e.device_id
+ WHERE d.user_id IS NOT NULL AND e.kind='activity' AND e.occurred_at>=$1 AND e.occurred_at<$2 AND (d.assigned_at IS NULL OR e.occurred_at>=d.assigned_at) AND `+cond+`
  ORDER BY d.id,e.occurred_at LIMIT 50000`, append([]any{date, date.AddDate(0, 0, 1)}, args...)...)
 	if e != nil {
 		fail(w, 500, "laptop report unavailable")

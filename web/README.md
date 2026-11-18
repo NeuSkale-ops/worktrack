@@ -55,7 +55,8 @@ Workers see only their recorded hours; managers/owners can see team timelines. D
 ## Behavior
 
 - Owners and managers can see the team, live tracking status, timelines, and weekly timesheets, and create private worker invitation links.
-- Owners and managers can assign a company laptop to a person on the Devices page. Managers can only pick people in their own organisation and cannot unassign. Laptop activity from before a reassignment is not shown under the new person.
+- Each company laptop belongs to an organisation, chosen by an owner on the Devices page. That organisation's managers see the laptop, with or without a person assigned. A laptop in no organisation is visible to owners only, and new laptops start that way.
+- Owners and managers can assign a company laptop to a person on the Devices page. The person must be in the laptop's organisation, or be an owner. Managers cannot unassign. Laptop activity from before a reassignment or a change of organisation is not shown to the new person or the new managers.
 - The day ribbon shows 06:00 to 22:00 by default and switches to the full day by itself when time was recorded outside that window.
 - Only owners see the **Desktop app diagnostics** tab on Devices. Click **Load recent logs** for the newest 100 desktop events from the last seven days. It does not fetch automatically. Managers/workers have no diagnostic panel, and the API independently enforces owner access.
 - Workers see only their own recorded hours. The API refuses them the timeline (screenshots, locations, applications) and both delete actions.
