@@ -11,6 +11,7 @@ if (!['owner', 'manager', 'worker'].includes(role)) throw new Error('Unknown tes
 const user = { id: '00000000-0000-4000-8000-000000000001', email: 'fixture@example.test', name: 'Fixture', role };
 let logCalls = 0;
 let dayCalls = 0;
+let timelineCalls = 0;
 let mode = 'events';
 let timelineError = false;
 const screenshotCanvas = document.createElement('canvas');
@@ -24,6 +25,7 @@ window.fetch = async input => {
   if (path === '/api/team') return Response.json([user, { id: '00000000-0000-4000-8000-000000000009', email: 'w@example.test', name: 'Second Worker', role: 'worker', working: true, last_seen_at: null }]);
   if (path.startsWith('/api/reports/day?')) { dayCalls++; if (role === 'worker') throw new Error('Workers must not fetch the team day report'); return Response.json([{ user_id: user.id, start_at: `${today}T12:00:00Z`, end_at: `${today}T12:10:00Z`, screenshot: true }, { user_id: '00000000-0000-4000-8000-000000000009', start_at: `${today}T09:00:00Z`, end_at: `${today}T09:30:00Z`, screenshot: false }]); }
   if (path.startsWith('/api/reports/hours?')) return Response.json([]);
+  if (path.startsWith('/api/timeline?')) timelineCalls++;
   if (path.startsWith('/api/timeline?') && timelineError) return Response.json({error:'Day could not be loaded'}, {status:503});
   if (path.startsWith('/api/timeline?') && new URLSearchParams(path.split('?')[1]).get('user') !== user.id) return Response.json([]);
   if (path.startsWith('/api/timeline?')) return Response.json([
@@ -75,6 +77,10 @@ try {
     await check('owners and managers land on the team board with one row per person', () => document.querySelector('#team-heading') && boardRows().length === 2);
     await openPerson('Fixture');
   }
+  if (role === 'worker') {
+    await check('worker lands on their hours and nothing else', () => document.querySelector('#week-heading')?.textContent.trim() === 'My hours' && [...document.querySelectorAll('.global-nav button')].map(b => b.textContent.trim()).join() === 'My hours,Settings');
+    await check('worker sees no screenshots, applications or delete controls and never requests the timeline', () => document.querySelector('[aria-labelledby=week-heading]')?.getAttribute('aria-busy') === 'false' && !document.querySelector('.tile, .screenshot, .app-row, .time-row, .delete, [role=tab], #day-heading') && timelineCalls === 0);
+  } else {
   await check('real dashboard loaded in screenshot-first day view with named timeline graphic', () => Boolean(document.querySelector('.page-heading')) && Boolean(document.querySelector('.day-timeline[role=img][aria-label]')) && document.querySelector('[role=tab][aria-selected=true]')?.textContent.trim() === 'Screenshots');
   await check('screenshot evidence stays separate from ordinary activity', () => document.querySelectorAll('.tile').length === 4 && document.querySelectorAll('.time-row').length === 0);
   await check('coordinates and technical records are not exposed in main gallery', () => !document.body.innerText.includes('0.00000, 0.00000') && !document.body.innerText.includes('time-only blocks'));
@@ -100,6 +106,7 @@ try {
   document.querySelector('dialog button').click();
   await wait(100);
   click('Screenshots');
+  }
   if (role === 'worker') {
     await check('worker has no team board and makes no team day request', () => !document.querySelector('.board-row') && ![...document.querySelectorAll('.global-nav button')].some(b => b.textContent.includes('Team')) && dayCalls === 0);
   } else {
@@ -114,7 +121,7 @@ try {
     await check('returning to own person restores their screenshots', () => document.querySelector('[aria-labelledby=day-heading]')?.getAttribute('aria-busy') === 'false' && document.querySelectorAll('.tile').length === 4);
     await check('day timeline represents only the selected person', () => document.querySelectorAll('.day-timeline .seg').length === 1);
   }
-  click(role === 'worker' ? 'My week' : 'Week');
+  click(role === 'worker' ? 'My hours' : 'Week');
   await check('weekly report and CSV export remain available', () => Boolean(document.querySelector('[aria-labelledby=week-heading] table')) && Boolean(document.querySelector('a[download][href*="/api/reports/hours.csv"]')));
   click('Settings');
   await check('desktop download is moved to settings and uses published version', () => document.body.innerText.includes('Version 0.1.7') && Boolean(document.querySelector('a[download][href*="/updates/windows/x86_64/releases/0.1.7/"]')));
@@ -141,7 +148,8 @@ try {
     if (role === 'manager') click('Devices');
     await check('non-owner has neither diagnostic panel nor diagnostic requests', () => !document.querySelector('.diagnostic-logs') && ![...document.querySelectorAll('[role=tab]')].some(t => t.textContent.includes('diagnostics')) && logCalls === 0);
   }
-  if (role === 'worker') click('My day'); else await openPerson('Fixture');
+  if (role !== 'worker') {
+  await openPerson('Fixture');
   await check('navigation returns to the same person and task', () => document.querySelector('#day-heading')?.textContent.includes(role === 'worker' ? 'My day' : 'Fixture') && document.querySelectorAll('.tile').length === 4);
   timelineError = true;
   click('Refresh');
@@ -155,6 +163,9 @@ try {
   screenshotImage = screenshotCanvas.toDataURL('image/jpeg');
   click('Refresh');
   await check('refresh can recover an expired image preview', () => document.querySelectorAll('.image-preview.loaded').length === 2 && !document.querySelector('.image-preview.failed'));
+  } else {
+    await check('worker still made no timeline request after visiting every page', () => timelineCalls === 0);
+  }
   document.documentElement.dataset.testResult = 'passed';
   results.textContent += `\nPASS: ${checks.length} ${role} UI checks. API responses were mocked.`;
 } catch (error) {

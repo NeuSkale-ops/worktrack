@@ -32,6 +32,11 @@ func zone(r *http.Request) (*time.Location, bool) {
 	return loc, e == nil && name != "Local"
 }
 func (a *app) timeline(w http.ResponseWriter, r *http.Request) {
+	// Workers see only their hours (the reports). Screenshots, locations and
+	// application use are for managers and owners.
+	if !a.requireAdmin(w, r) {
+		return
+	}
 	u := current(r)
 	uid := r.URL.Query().Get("user")
 	if uid == "" {

@@ -104,11 +104,11 @@ function App() {
   const syncText = status?.stopping ? 'Saving the final interval. Keep WorkTrack open while records retry.' : status?.queued ? `${status.queued} records waiting to sync` : 'All records synced';
   const notice = <section className="facts" aria-label="Monitoring notice">
     <p>While tracking, WorkTrack records elapsed time, input activity, app names and time in each, plus a screenshot of your primary display and its location every 10 running minutes.</p>
-    <p>WorkTrack does not log keystrokes, window titles or browsing history. Stop ends monitoring. You, your managers and the owner can view your work records.</p>
+    <p>WorkTrack does not log keystrokes, window titles or browsing history. Stop ends monitoring. Your managers and the owner can view your work records. You can view your recorded hours.</p>
     <details><summary>Privacy details</summary>
       <p>Location permission is required to start. System location estimates can be wrong. An unavailable fix does not stop tracking. Locking or suspending pauses monitoring, and tracking never starts automatically.</p>
       <p>Diagnostic logs are required while signed in, including while stopped. They contain fixed error codes, HTTP status, app version and timestamps, are readable only by the owner, and expire after seven days. Queued work records may also upload while stopped.</p>
-      <p>Screenshots can contain private information, so close private content before starting. Deleting a screenshot removes its location from the live database. Backups follow separate retention.</p>
+      <p>Screenshots can contain private information, so close private content before starting. Recorded screenshots and time cannot be deleted by workers. Backups follow separate retention.</p>
     </details>
   </section>;
   const updateBanner = available && !deferred && <section className="banner" aria-labelledby="update-title">

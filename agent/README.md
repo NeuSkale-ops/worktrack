@@ -79,7 +79,7 @@ cargo clippy --locked -- -D warnings
 
 For Windows location, check **Settings > Privacy & security > Location**, including location services and desktop-app access. Keep WorkTrack visible when allowing location, then use **Try again** if permission was denied. Permission is required to start tracking; a later unavailable fix does not stop tracking. A PC without a reliable GPS/Wi-Fi fix may provide no coordinates or an inaccurate estimate. Windows itself may use IP address or a configured default location even though WorkTrack has no separate IP-geolocation fallback.
 
-Workers, managers, and the owner can view location and app-use records through the existing timeline permissions. Deleting a screenshot clears its location from the live database but keeps app usage and tracked time. Deleting a time block clears both metadata types. Database backups retain their separate snapshots. These are client-reported estimates, not proof of attendance or productivity.
+Managers and the owner can view location and app-use records through the timeline. Workers see only their recorded hours and cannot delete screenshots or time. For managers and owners, deleting a screenshot clears its location from the live database but keeps app usage and tracked time. Deleting a time block clears both metadata types. Database backups retain their separate snapshots. These are client-reported estimates, not proof of attendance or productivity.
 
 ## Durable offline delivery
 

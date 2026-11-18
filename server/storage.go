@@ -83,6 +83,10 @@ func (a *app) cleanUpload(ctx context.Context, id, uid string) error {
 	return tx.Commit(ctx)
 }
 func (a *app) deleteScreenshot(w http.ResponseWriter, r *http.Request) {
+	// Workers cannot remove recorded evidence.
+	if !a.requireAdmin(w, r) {
+		return
+	}
 	id := r.PathValue("id")
 	if !validID(id) {
 		fail(w, 400, "invalid block ID")
