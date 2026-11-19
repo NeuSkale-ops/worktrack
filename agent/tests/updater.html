@@ -95,7 +95,7 @@ try {
   });
   await check('notice names time, activity, app use, screenshots and location', () => text().includes('elapsed time, input activity, app names and time in each') && text().includes('screenshot of your primary display and its location every 10 running minutes') && text().includes('Stop ends monitoring'));
   document.querySelector('.facts summary').click();
-  await check('privacy details disclose signed-in diagnostics, access and retention', () => text().includes('Diagnostic logs are required while signed in, including while stopped') && text().includes('readable only by the owner') && text().includes('expire after seven days') && text().includes('You, your managers and the owner'));
+  await check('privacy details disclose signed-in diagnostics, access and retention', () => text().includes('Diagnostic logs are required while signed in, including while stopped') && text().includes('readable only by the owner') && text().includes('expire after seven days') && text().includes('Your managers and the owner can view your work records'));
   document.querySelector('.facts summary').click();
   document.querySelector('.consent input').click();
   await check('consent alone cannot start without location', () => button('Start tracking')?.disabled);
