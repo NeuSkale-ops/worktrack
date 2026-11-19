@@ -103,8 +103,11 @@ func (a *app) listDevices(w http.ResponseWriter, r *http.Request) {
 	cond, args := sees(r, "d.user_id", "d.org_id", 1)
 	rows, err := a.db.Query(r.Context(), `SELECT d.id::text,d.user_id::text,d.org_id,d.upn,d.hostname,u.name,
 	  d.enabled,d.paused,d.uninstall,d.agent_version,d.config_version,d.config,
-	  d.last_checkin_at,d.last_sync_at,d.buffer_depth,d.dropped_events,d.acked_seq
+	  d.last_checkin_at,d.last_sync_at,d.buffer_depth,d.dropped_events,d.acked_seq,
+	  s.event,s.occurred_at
 	 FROM devices d LEFT JOIN users u ON u.id=d.user_id
+	 LEFT JOIN LATERAL (SELECT payload->>'event' AS event, occurred_at FROM device_events
+	   WHERE device_id=d.id AND kind='session' ORDER BY occurred_at DESC LIMIT 1) s ON true
 	 WHERE `+cond+`
 	 ORDER BY d.last_checkin_at DESC NULLS LAST`, args...)
 	if err != nil {
@@ -130,13 +133,17 @@ func (a *app) listDevices(w http.ResponseWriter, r *http.Request) {
 		BufferDepth   int            `json:"buffer_depth"`
 		DroppedEvents int64          `json:"dropped_events"`
 		AckedSeq      int64          `json:"acked_seq"`
+		// The newest logon/logoff/lock/unlock, so the dashboard can tell a
+		// laptop that was signed out and switched off from unexplained silence.
+		LastSessionEvent *string    `json:"last_session_event"`
+		LastSessionAt    *time.Time `json:"last_session_at"`
 	}
 	out := []dev{}
 	for rows.Next() {
 		var d dev
 		if err = rows.Scan(&d.ID, &d.UserID, &d.OrgID, &d.UPN, &d.Hostname, &d.Name, &d.Enabled, &d.Paused,
 			&d.Uninstall, &d.AgentVersion, &d.ConfigVersion, &d.Config, &d.LastCheckinAt, &d.LastSyncAt,
-			&d.BufferDepth, &d.DroppedEvents, &d.AckedSeq); err != nil {
+			&d.BufferDepth, &d.DroppedEvents, &d.AckedSeq, &d.LastSessionEvent, &d.LastSessionAt); err != nil {
 			fail(w, 503, "devices unavailable")
 			return
 		}

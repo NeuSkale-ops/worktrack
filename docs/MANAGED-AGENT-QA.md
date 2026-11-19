@@ -54,6 +54,7 @@ the live OS behavior below.
 - [ ] Dashboard shows version, last check-in, last sync, buffer depth, dropped.
 - [ ] Stop the service as admin and confirm the device goes "stale" within 15 min
       (this is the only tamper signal; there is no hidden watchdog).
+- [ ] Sign out and shut down; the device shows "offline since sign-out", not stale.
 
 ## Reimage
 - [ ] Reimage the laptop and re-enroll. New device_id issued; old events retained

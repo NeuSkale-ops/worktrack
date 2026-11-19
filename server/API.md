@@ -142,7 +142,8 @@ session, never by the helper.
 
 Admin (owners, and managers for laptops in their org):
 - `GET /api/devices`: fleet health (`org_id`, assigned `user_id`, version, last check-in,
-  last sync, buffer depth, dropped events, desired state).
+  last sync, buffer depth, dropped events, desired state, and the newest session
+  event as `last_session_event` and `last_session_at`).
 - `PUT /api/devices/{id}/org`: `{org_id}` puts the laptop in an organisation,
   or `null` in none. Owner only. Managers of that organisation then see the
   laptop, but not its earlier activity. A person who is not in the new
