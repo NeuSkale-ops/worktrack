@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, post } from './api'
 import type { Org, Worker } from './api'
 import AgentLogs from './AgentLogs'
-import { DeviceActivity, DeviceConfigForm } from './DeviceDetail'
+import DevicePage from './DevicePage'
 import { health } from './deviceActivity'
 import type { Device } from './deviceActivity'
 import { fetchManagedAgentRelease } from './managedAgentRelease'
@@ -26,7 +26,7 @@ export default function Devices({ owner, devices, people, orgs, loading, open, o
   people: Worker[]
   orgs: Org[]
   loading: boolean
-  /** Id of the laptop shown in the drawer, or ''. */
+  /** Id of the laptop whose page is open, or '' for the list. */
   open: string
   onOpen: (id: string) => void
   onChange: () => Promise<void>
@@ -127,6 +127,27 @@ export default function Devices({ owner, devices, people, orgs, loading, open, o
     </select>
   )
 
+  if (openDevice) {
+    const off = busy || openDevice.uninstall
+    return (
+      <DevicePage key={openDevice.id} device={openDevice} owner={owner} error={error} onBack={() => onOpen('')} onSaved={() => void onChange()}
+        organisation={owner ? orgSelect(openDevice) : <span>{orgName(openDevice)}</span>}
+        assignee={assignSelect(openDevice)}
+        actions={<>
+          {openDevice.paused
+            ? <button disabled={off} onClick={() => command(openDevice, 'resume', `Resume capture on ${host(openDevice)}?`)}>Resume</button>
+            : <button disabled={off} onClick={() => command(openDevice, 'pause', `Pause capture on ${host(openDevice)}?`)}>Pause</button>}
+          {openDevice.enabled
+            ? <button disabled={off} onClick={() => command(openDevice, 'disable', `Disable monitoring on ${host(openDevice)}?`)}>Disable</button>
+            : <button disabled={off} onClick={() => command(openDevice, 'enable', `Enable monitoring on ${host(openDevice)}?`)}>Enable</button>}
+          <button className="delete" disabled={off}
+            onClick={() => command(openDevice, 'uninstall', `Uninstall the agent from ${host(openDevice)}? This is irreversible from here and applied on next check-in.`)}>
+            Uninstall agent
+          </button>
+        </>} />
+    )
+  }
+
   const count = (tone: string) => devices.filter(d => health(d).tone === tone).length
   const unassigned = devices.filter(d => !d.user_id).length
   const noOrg = devices.filter(d => !d.org_id).length
@@ -224,41 +245,6 @@ export default function Devices({ owner, devices, people, orgs, loading, open, o
             Valid 7 days. It enrolls every laptop in the Intune assignment, so revoke it when the rollout is done.
             Pass it to <code>install.ps1 -EnrollSecret</code>. It is not shown again after you close this.
           </p>
-        </Modal>
-      )}
-      {openDevice && (
-        <Modal drawer title={host(openDevice)} onClose={() => onOpen('')}>
-          <p><span className={`pill ${health(openDevice).tone}`}>{health(openDevice).label}</span> <span className="muted">Enrolled as {openDevice.upn}</span></p>
-          <label>Organisation
-            {owner ? orgSelect(openDevice) : <span>{orgName(openDevice)}</span>}
-            {owner && <span className="muted">Managers of this organisation see this laptop.</span>}
-          </label>
-          <label>Assigned to
-            {assignSelect(openDevice)}
-            <span className="muted">This laptop's activity shows under this person in Team today and on their day.</span>
-          </label>
-          <dl className="facts small">
-            <div><dt>Last check-in</dt><dd>{since(openDevice.last_checkin_at)}</dd></div>
-            <div><dt>Last sync</dt><dd>{since(openDevice.last_sync_at)}</dd></div>
-            <div><dt>Agent</dt><dd>{openDevice.agent_version || 'Not reported'} (settings v{openDevice.config_version})</dd></div>
-            <div><dt>Unsent events</dt><dd>{openDevice.buffer_depth}</dd></div>
-            <div><dt>Dropped events</dt><dd>{String(openDevice.dropped_events)}</dd></div>
-          </dl>
-          <div className="block-actions">
-            {openDevice.paused
-              ? <button disabled={busy || openDevice.uninstall} onClick={() => command(openDevice, 'resume', `Resume capture on ${host(openDevice)}?`)}>Resume</button>
-              : <button disabled={busy || openDevice.uninstall} onClick={() => command(openDevice, 'pause', `Pause capture on ${host(openDevice)}?`)}>Pause</button>}
-            {openDevice.enabled
-              ? <button disabled={busy || openDevice.uninstall} onClick={() => command(openDevice, 'disable', `Disable monitoring on ${host(openDevice)}?`)}>Disable</button>
-              : <button disabled={busy || openDevice.uninstall} onClick={() => command(openDevice, 'enable', `Enable monitoring on ${host(openDevice)}?`)}>Enable</button>}
-            <button className="delete" disabled={busy || openDevice.uninstall}
-              onClick={() => command(openDevice, 'uninstall', `Uninstall the agent from ${host(openDevice)}? This is irreversible from here and applied on next check-in.`)}>
-              Uninstall agent
-            </button>
-          </div>
-          {error && <p className="error" role="alert">{error}</p>}
-          <DeviceActivity key={`a-${openDevice.id}`} deviceId={openDevice.id} hostname={host(openDevice)} sinceAssigned={!owner} />
-          <DeviceConfigForm key={`c-${openDevice.id}`} deviceId={openDevice.id} saved={openDevice.config} onSaved={() => void onChange()} />
         </Modal>
       )}
     </section>

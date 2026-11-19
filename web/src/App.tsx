@@ -11,6 +11,7 @@ import Devices from './Devices'
 import DownloadCard from './DownloadCard'
 import Modal from './Modal'
 import People from './People'
+import { Meter, Screenshot } from './Screenshot'
 import { fullDay, Scale, Track, workday } from './Ribbon'
 import Tabs from './Tabs'
 import TeamBoard from './TeamBoard'
@@ -42,25 +43,6 @@ const sampleSegments = (runs: [number, number, number][]): Segment[] =>
 
 function Logo() {
   return <i className="logo" aria-hidden="true" />
-}
-
-function Meter({ percent }: { percent: number }) {
-  return <span className="meter" aria-hidden="true"><i style={{ width: `${percent}%` }} /></span>
-}
-
-function Screenshot({ url, alt }: { url: string; alt: string }) {
-  const [state, setState] = useState<'loading' | 'loaded' | 'failed'>('loading')
-  useEffect(() => {
-    const timeout = window.setTimeout(() => setState(current => current === 'loading' ? 'failed' : current), 15000)
-    return () => window.clearTimeout(timeout)
-  }, [url])
-  return (
-    <span className={`image-preview ${state}`}>
-      {state === 'loading' && <span role="status">Loading screenshot…</span>}
-      {state === 'failed' && <span role="status">Screenshot expired or unavailable. Refresh to retry.</span>}
-      <img src={url} alt={alt} onLoad={() => setState('loaded')} onError={() => setState('failed')} />
-    </span>
-  )
 }
 
 function Auth({ onLogin }: { onLogin: (user: User) => void }) {
@@ -471,7 +453,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
             <div key={group.label} role="group" aria-label={group.label}>
               <p aria-hidden="true">{group.label}</p>
               {group.items.map(([id, label]) => (
-                <button key={id} aria-current={currentNav === id ? 'page' : undefined} onClick={() => go(id)}>{label}</button>
+                <button key={id} aria-current={currentNav === id ? 'page' : undefined} onClick={() => { setOpenDevice(''); go(id) }}>{label}</button>
               ))}
             </div>
           ))}
