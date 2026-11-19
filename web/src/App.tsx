@@ -707,50 +707,6 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
             <Devices key={org} owner={user.role === 'owner'} devices={devices} people={team} orgs={orgs} loading={busy} open={openDevice} onOpen={setOpenDevice} onChange={load} />
           </>
         )}
-        {view === 'settings' && (
-          <section className="settings-view" aria-labelledby="settings-heading">
-            <div className="page-heading"><div><h1 id="settings-heading">Settings</h1><p className="muted">Desktop app and your account.</p></div></div>
-            <div className="split">
-              <div className="stack">
-                <DownloadCard />
-                <section className="panel pad" aria-labelledby="records-heading">
-                  <h2 id="records-heading">What the desktop app records</h2>
-                  <p className="muted">Only while your desktop timer is running:</p>
-                  <ul className="two">
-                    <li>Start and stop times</li>
-                    <li>Whether the keyboard or mouse was used recently, as an activity level</li>
-                    <li>A screenshot of the main display every 10 minutes</li>
-                    <li>One location fix with each screenshot</li>
-                    <li>Program names and estimated time in each</li>
-                  </ul>
-                  <p className="muted">Never recorded:</p>
-                  <ul className="two">
-                    <li>What you type</li>
-                    <li>Window titles, sites or documents</li>
-                    <li>Full file paths</li>
-                    <li>Continuous location</li>
-                    <li>Screenshots, activity or location while the timer is stopped</li>
-                  </ul>
-                  <p className="muted">
-                    While you are signed in, the desktop app also sends diagnostic error codes, its version and timestamps, even when the timer is stopped.
-                    Only owners can read them, and they are kept for seven days.
-                  </p>
-                  <p className="muted">
-                    Company laptops with the managed agent are separate. They show a monitoring notice and a tray icon, and record what your administrator has turned on.
-                  </p>
-                </section>
-              </div>
-              <section className="panel pad" aria-labelledby="password-heading">
-                <h2 id="password-heading">Change password</h2>
-                <PasswordForm />
-              </section>
-            </div>
-          </section>
-        )}
-        <footer>
-          Screenshots, activity and location are recorded only while the
-          desktop timer is running.
-        </footer>
       </main>
       {expanded && (
         <Modal title={`Work block ${time(expanded.start_at)}`} onClose={() => setExpanded(null)}>
