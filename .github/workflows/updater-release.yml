@@ -190,7 +190,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $baseline = Join-Path $env:RUNNER_TEMP 'worktrack-baseline-0.1.5.exe'
-          Invoke-WebRequest 'https://worktrack.178.156.213.40.sslip.io/downloads/0.1.5/WorkTrack_0.1.5_x64-setup.exe' -OutFile $baseline
+          Invoke-WebRequest 'https://worktrack.neuskale.com/downloads/0.1.5/WorkTrack_0.1.5_x64-setup.exe' -OutFile $baseline
           if ((Get-FileHash $baseline -Algorithm SHA256).Hash.ToLowerInvariant() -ne '0ed92d211340e34d9228b5d3d434e6463ac8507102f3a2ac85ad633479935638') { throw 'Baseline differs from the previously verified signed installer' }
       - name: Exercise actual installed Windows in-app upgrade and recovery
         env:
