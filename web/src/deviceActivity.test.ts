@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { configError, defaultConfig, health, parseExcluded, savedConfig, summarize } from './deviceActivity.ts'
+import { activitySpans, configError, defaultConfig, health, parseExcluded, savedConfig, summarize } from './deviceActivity.ts'
+
+test('activity minutes become one-minute spans, skipping minutes without input', () => {
+  const at = '2026-11-17T08:55:00.000Z'
+  const ev = (kind: string, active_secs: number) => ({ event_id: kind + active_secs, kind, occurred_at: at, payload: { active_secs } })
+  assert.deepEqual(activitySpans([ev('activity', 90), ev('activity', 0), ev('screenshot', 30)]),
+    [{ start_at: '2026-11-17T08:54:00.000Z', end_at: at, active_seconds: 60 }])
+})
 
 test('config validation mirrors the agent', () => {
   assert.equal(configError(defaultConfig), '')

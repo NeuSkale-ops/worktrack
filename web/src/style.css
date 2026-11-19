@@ -253,12 +253,11 @@ th.r, td.r { text-align: right; }
 .facts.small dd { font-size: 14px; }
 fieldset { display: grid; gap: 10px; min-width: 0; margin: 0; padding: 14px; border: 1px solid var(--rule); border-radius: 8px; }
 legend { padding: 0 6px; font-weight: 600; }
-.device-activity { display: grid; gap: 14px; }
-.device-activity ul { padding-left: 18px; font-size: 14px; }
-.device-activity ul.apps { padding-left: 0; }
-.device-shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
-.device-shots img { display: block; width: 100%; aspect-ratio: 16 / 10; border-radius: 6px; object-fit: cover; }
-.device-shots figure { margin: 0; font-size: 13px; }
+.device-card { display: grid; gap: 16px; padding: 16px 20px; }
+.device-card .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 12px 20px; }
+.session-row { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 10px 0; border-top: 1px solid var(--rule); font-size: 14px; }
+.session-row time { min-width: 84px; font-family: var(--num); font-variant-numeric: tabular-nums; }
+.meta .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Dialog and drawer */
 dialog { width: min(760px, 94vw); max-height: 92vh; padding: 0; border: 0; border-radius: 12px; color: var(--ink); background: var(--white); box-shadow: 0 18px 60px #13262b40; }

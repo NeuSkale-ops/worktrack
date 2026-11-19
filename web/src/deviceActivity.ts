@@ -121,6 +121,18 @@ export function summarize(events: DeviceEvent[]): ActivitySummary {
   return { activeSecs, idleSecs, lockedSecs, apps: [...apps].sort((a, b) => b[1] - a[1]) }
 }
 
+/**
+ * Each activity event covers the minute that ends at its timestamp. Minutes
+ * with no input are left out, matching the laptop line on the team board.
+ */
+export function activitySpans(events: DeviceEvent[]): { start_at: string; end_at: string; active_seconds: number }[] {
+  return events.flatMap(e => {
+    const active = Math.min(60, e.payload.active_secs ?? 0)
+    if (e.kind !== 'activity' || !(active > 0)) return []
+    return [{ start_at: new Date(Date.parse(e.occurred_at) - 60000).toISOString(), end_at: e.occurred_at, active_seconds: active }]
+  })
+}
+
 export const hm = (secs: number) => {
   const m = Math.round(secs / 60)
   return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`
