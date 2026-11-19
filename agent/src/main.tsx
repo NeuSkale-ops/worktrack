@@ -103,13 +103,7 @@ function App() {
   const stateText = statusError ? 'Status unavailable' : status?.stopping ? 'Saving tracked time' : !status?.tracking ? 'Not tracking' : status.paused ? 'Paused, screen locked' : 'Tracking';
   const syncText = status?.stopping ? 'Saving the final interval. Keep WorkTrack open while records retry.' : status?.queued ? `${status.queued} records waiting to sync` : 'All records synced';
   const notice = <section className="facts" aria-label="Monitoring notice">
-    <p>While tracking, WorkTrack records elapsed time, input activity, app names and time in each, plus a screenshot of your primary display and its location every 10 running minutes.</p>
-    <p>WorkTrack does not log keystrokes, window titles or browsing history. Stop ends monitoring. Your managers and the owner can view your work records. You can view your recorded hours.</p>
-    <details><summary>Privacy details</summary>
-      <p>Location permission is required to start. System location estimates can be wrong. An unavailable fix does not stop tracking. Locking or suspending pauses monitoring, and tracking never starts automatically.</p>
-      <p>Diagnostic logs are required while signed in, including while stopped. They contain fixed error codes, HTTP status, app version and timestamps, are readable only by the owner, and expire after seven days. Queued work records may also upload while stopped.</p>
-      <p>Screenshots can contain private information, so close private content before starting. Recorded screenshots and time cannot be deleted by workers. Backups follow separate retention.</p>
-    </details>
+    <p>Welcome to worktrack</p>
   </section>;
   const updateBanner = available && !deferred && <section className="banner" aria-labelledby="update-title">
     <h2 id="update-title">Version {available.version} is ready</h2>
@@ -161,7 +155,7 @@ function App() {
           <div className="acts"><button disabled={busy || installReserved} onClick={() => void run('request_screen_capture')}>Allow screen recording</button><button disabled={busy || installReserved} onClick={() => void run('open_screen_settings')}>Open screen recording settings</button></div>
         </div>}
         {!status?.tracking && notice}
-        {!status?.tracking && <label className="consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /><span>I understand and agree to this monitoring, including screenshots, location and diagnostic logs.</span></label>}
+        {!status?.tracking && <label className="consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /><span>I understand and agree to this monitoring</span></label>}
         <button className={status?.tracking ? 'big stop' : 'primary big'} disabled={busy || installReserved || (!status?.tracking && (Boolean(statusError) || !consent || !locationReady || !screenReady || status?.stopping))} onClick={() => void run(status?.tracking ? 'stop' : 'start', { consent })}>{status?.tracking ? 'Stop tracking' : 'Start tracking'}</button>
         <p className="sync-line"><span>{statusError ? 'Sync status unavailable until the app reconnects.' : syncText}</span></p>
         {Boolean(status?.rejected) && <p role="status" className="note">{status?.rejected} records refused by the server were set aside on this PC. Contact your manager.</p>}
