@@ -28,13 +28,23 @@ export interface Device {
   buffer_depth: number
   dropped_events: number
   acked_seq: number
+  /** Newest session event: logon, logoff, lock or unlock. */
+  last_session_event?: string | null
+  last_session_at?: string | null
 }
 
 // A device is healthy if it checked in within the last 15 minutes. A longer
 // silence is the only signal that the agent was stopped. It is never hidden.
-export function health(d: Pick<Device, 'last_checkin_at' | 'uninstall' | 'paused' | 'enabled'>, now = Date.now()): { label: string; tone: 'ok' | 'warn' | 'bad' } {
+// The agent checks in every minute even with nobody signed in, so silence that
+// starts within two minutes of a sign-out means the laptop was switched off.
+export function health(d: Pick<Device, 'last_checkin_at' | 'uninstall' | 'paused' | 'enabled' | 'last_session_event' | 'last_session_at'>, now = Date.now()): { label: string; tone: 'ok' | 'warn' | 'bad' | 'off' } {
   if (!d.last_checkin_at) return { label: 'awaiting first check-in', tone: 'warn' }
-  if (now - new Date(d.last_checkin_at).getTime() > 15 * 60 * 1000) return { label: 'stale (possible tamper)', tone: 'bad' }
+  const seen = new Date(d.last_checkin_at).getTime()
+  if (now - seen > 15 * 60 * 1000) {
+    const signedOut = d.last_session_event === 'logoff' && d.last_session_at ? new Date(d.last_session_at).getTime() : NaN
+    if (seen - signedOut < 2 * 60 * 1000) return { label: 'offline since sign-out', tone: 'off' }
+    return { label: 'stale (possible tamper)', tone: 'bad' }
+  }
   if (d.uninstall) return { label: 'uninstalling', tone: 'warn' }
   if (d.paused) return { label: 'paused', tone: 'warn' }
   if (!d.enabled) return { label: 'disabled', tone: 'warn' }

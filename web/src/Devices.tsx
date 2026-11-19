@@ -154,6 +154,7 @@ export default function Devices({ owner, devices, people, orgs, loading, open, o
           {devices.length > 0 && (
             <p className="chips">
               <span className="pill ok">{count('ok')} active</span>
+              <span className="pill off">{count('off')} offline</span>
               <span className="pill bad">{count('bad')} stale</span>
               <span className="pill warn">{count('warn')} need attention</span>
               <span className="pill warn">{unassigned} unassigned</span>
@@ -187,7 +188,7 @@ export default function Devices({ owner, devices, people, orgs, loading, open, o
             </div>
           )}
           <p className="muted">
-            A laptop silent for more than 15 minutes is shown as stale. Silence is the only signal that the agent was stopped, and the agent is never hidden.
+            A laptop silent for more than 15 minutes is shown as stale, unless the silence began at a sign-out, which is shown as offline. Unexplained silence is the only signal that the agent was stopped, and the agent is never hidden.
             Assigning a laptop shows its activity under that person in Team today, from the assignment onwards.
             {owner && ' A laptop\'s organisation decides which managers see it and who it can be assigned to. A laptop without an organisation is visible to owners only.'}
           </p>

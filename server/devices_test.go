@@ -200,6 +200,27 @@ func TestDevicesHTTP(t *testing.T) {
 		_ = json.Unmarshal(w.Body.Bytes(), &out)
 		return out
 	}
+	// The fleet list carries the newest session event for the offline label.
+	signOut := ev(4, "session")
+	signOut["payload"] = map[string]any{"event": "logoff"}
+	call(deviceToken, "POST", "/api/devices/events", map[string]any{"events": []map[string]any{signOut}}, 200)
+	{
+		r := httptest.NewRequest("GET", "/api/devices", nil)
+		r.Header.Set("Authorization", "Bearer "+ownerToken)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		var fleet []map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &fleet)
+		found := false
+		for _, d := range fleet {
+			if d["id"] == deviceID {
+				found = d["last_session_event"] == "logoff" && d["last_session_at"] != nil
+			}
+		}
+		if !found {
+			t.Fatalf("fleet list misses the last session event: %d %s", w.Code, w.Body.String())
+		}
+	}
 	signed, unsigned := 0, 0
 	for _, e := range activity(ownerToken, 200) {
 		if e["kind"] != "screenshot" {

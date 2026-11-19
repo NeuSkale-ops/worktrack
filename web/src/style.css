@@ -78,6 +78,7 @@ summary { color: var(--clock); font-size: 14px; font-weight: 500; }
 .pill.ok { background: var(--clock-soft); color: var(--clock); }
 .pill.warn { background: var(--amber-soft); color: var(--amber); }
 .pill.bad { background: var(--red-soft); color: var(--red); }
+.pill.off { background: var(--mist); color: var(--quiet); }
 .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .chips button { padding: 5px 12px; border-radius: 99px; font-size: 13px; }
 .chips button[aria-pressed='true'] { background: var(--ink); border-color: var(--ink); color: var(--white); }
