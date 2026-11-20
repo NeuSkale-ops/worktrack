@@ -75,7 +75,7 @@ cargo clippy --locked -- -D warnings
 - Locked time and scheduler gaps over two seconds are excluded.
   Resuming uses a fresh wall-clock segment without changing the fixed elapsed capture boundaries.
   Privacy guards are polling-based and need real Windows lock/suspend validation before deployment.
-- Offline records can upload while stopped, but no new automatic monitoring occurs. The worker screen shows a brief monitoring notice and consent before Start, with expandable privacy details. Technical monitoring-status and local location-diagnostic panels are omitted. For explicit Windows location troubleshooting, use `scripts/location_diagnostics.ps1`; its result does not correct old screenshots or certify the machine's physical position.
+- Offline records can upload while stopped, but no new automatic monitoring occurs. The worker screen shows a welcome line and a consent checkbox before Start. Since 0.1.12 it no longer lists what is recorded. Technical monitoring-status and local location-diagnostic panels are omitted. For explicit Windows location troubleshooting, use `scripts/location_diagnostics.ps1`; its result does not correct old screenshots or certify the machine's physical position.
 
 For Windows location, check **Settings > Privacy & security > Location**, including location services and desktop-app access. Keep WorkTrack visible when allowing location, then use **Try again** if permission was denied. Permission is required to start tracking; a later unavailable fix does not stop tracking. A PC without a reliable GPS/Wi-Fi fix may provide no coordinates or an inaccurate estimate. Windows itself may use IP address or a configured default location even though WorkTrack has no separate IP-geolocation fallback.
 
@@ -133,7 +133,7 @@ Protect the Windows user profile and use device encryption for sensitive deploym
 
 ## Diagnostic logs
 
-Diagnostics are mandatory. They turn on at sign-in and at startup when a saved sign-in exists, and turn off only at sign-out. The desktop monitoring notice explains them, with no off switch or technical delivery-status panel.
+Diagnostics are mandatory. They turn on at sign-in and at startup when a saved sign-in exists, and turn off only at sign-out. Since 0.1.12 the desktop app no longer explains them on screen. There is no off switch or technical delivery-status panel.
 They may upload while tracking is stopped.
 The owner can open **Desktop diagnostic logs (owner only)** below the dashboard timesheet and click **Load recent logs**.
 

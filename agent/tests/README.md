@@ -2,7 +2,7 @@
 
 ## Simplified worker screen
 
-The worker screen omits technical monitoring-status and local location-diagnostic panels. A brief monitoring notice stays visible before consent and Start, with expandable privacy details. The current harness checks panel removal, absence of diagnostic IPC calls, the notice's content and position, consent, location permission, and the existing updater/status behavior.
+The worker screen omits technical monitoring-status and local location-diagnostic panels. Since 0.1.12 the screen shows a welcome line and the consent checkbox, without the list of what is recorded. The current harness checks panel removal, absence of diagnostic IPC calls, the notice's content and position, consent, location permission, and the existing updater/status behavior.
 
 The native location diagnostic and its privacy guards remain covered by Rust tests. The worker UI no longer invokes or displays that diagnostic.
 
@@ -16,7 +16,7 @@ This packaged smoke test verifies the native/frontend startup boundary, not the 
 
 ## macOS permission checks
 
-Open `http://127.0.0.1:1427/tests/macos.html` with the same Vite server for seven synthetic permission checks. These mock every native IPC call and verify Mac disclosure, explicit-only screen recording consent, settings actions, and Start gating. They do not request real consent or collect a device location.
+Open `http://127.0.0.1:1427/tests/macos.html` with the same Vite server for six synthetic permission checks. These mock every native IPC call and verify Mac disclosure, explicit-only screen recording consent, settings actions, and Start gating. They do not request real consent or collect a device location.
 
 Run the native delegate fixtures from the repository root:
 
@@ -60,7 +60,7 @@ The checks cover startup and manual discovery, StrictMode duplicate-check protec
 
 The checks also cover unsaved final-stop gating with sign-in renewal still available, and actionable missing-feed errors without blaming the worker's connection. Five status-clarity checks verify the saving state, status-loss Start/update gating, automatic recovery, remaining-time accessibility text, and an available Stop action without a stale countdown or green tracking indicator. These use mocked IPC failure, not a native process crash.
 
-The screen checks verify that technical panels and the local diagnostic action are absent, that no diagnostic IPC request occurs, and that internal diagnostic-delivery failures do not block tracking. The visible notice names time, input activity, app use, screenshots and location before consent. Expandable privacy details explain signed-in diagnostics, access and retention. Permission alone cannot bypass consent, and Start passes explicit consent to the native command.
+The screen checks verify that technical panels and the local diagnostic action are absent, that no diagnostic IPC request occurs, and that internal diagnostic-delivery failures do not block tracking. Since 0.1.12 the checks only require the welcome line before consent. Permission alone cannot bypass consent, and Start passes explicit consent to the native command.
 
 The harness also checks that no location or diagnostic off switch exists, that the app requests Windows location after sign-in, that Start stays disabled until location is granted, the settings shortcut IPC, retry, and that the disclosure names both requirements. It does not access a real Windows location provider.
 `tests/preview.html?state=signedout|stopped|blocked|tracking|paused` renders single states for visual review.
