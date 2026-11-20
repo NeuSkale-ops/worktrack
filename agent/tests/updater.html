@@ -93,10 +93,7 @@ try {
     const notice = document.querySelector('[aria-label="Monitoring notice"]');
     return notice && notice.getBoundingClientRect().height > 0 && Boolean(notice.compareDocumentPosition(document.querySelector('.consent')) & Node.DOCUMENT_POSITION_FOLLOWING);
   });
-  await check('notice names time, activity, app use, screenshots and location', () => text().includes('elapsed time, input activity, app names and time in each') && text().includes('screenshot of your primary display and its location every 10 running minutes') && text().includes('Stop ends monitoring'));
-  document.querySelector('.facts summary').click();
-  await check('privacy details disclose signed-in diagnostics, access and retention', () => text().includes('Diagnostic logs are required while signed in, including while stopped') && text().includes('readable only by the owner') && text().includes('expire after seven days') && text().includes('You, your managers and the owner'));
-  document.querySelector('.facts summary').click();
+  await check('notice shows the welcome line before consent', () => text().includes('Welcome to worktrack'));
   document.querySelector('.consent input').click();
   await check('consent alone cannot start without location', () => button('Start tracking')?.disabled);
   click('Open location settings');
@@ -187,7 +184,7 @@ try {
   state.update_reserved = true;
   await refresh();
   await check('backend reservation disables sign-in fields and button', () => button('Sign in')?.disabled && document.querySelector('input[name=email]')?.disabled);
-  await check('signed-out view shows the same brief monitoring notice', () => text().includes('While tracking, WorkTrack records') && text().includes('WorkTrack does not log keystrokes, window titles or browsing history'));
+  await check('signed-out view shows the same welcome line', () => text().includes('Welcome to worktrack'));
   state.update_reserved = false;
   state.update = { phase: 'unavailable', downloaded: 0, total: null, error: 'UPDATER_UNAVAILABLE: Signed Windows builds only.' };
   checkError = state.update.error;

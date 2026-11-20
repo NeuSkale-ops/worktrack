@@ -585,8 +585,8 @@ print(json.dumps({"action": action, "integrity": "ok", "settings_preserved": Tru
     Add-Result 'candidate-restart-sign-in' @{ persisted = $true; stopped = $true }
 
     # Check the installed worker screen without requesting location or starting monitoring.
-    $null = Wait-UiText '(?s)While\s+tracking,\s+WorkTrack\s+records.*elapsed\s+time,.*input\s+activity,.*app\s+names' 30
-    $null = Wait-UiText 'screenshot\s+of\s+your\s+primary\s+display\s+and\s+its\s+location' 30
+    # Since 0.1.12 the screen no longer lists what is recorded (owner's decision).
+    $null = Wait-UiText 'Welcome\s+to\s+worktrack' 30
     $null = Wait-UiText 'I\s+understand\s+and\s+agree\s+to\s+this\s+monitoring' 30
     if ($null -ne (Get-Button 'Run local location diagnostic') -or $null -ne (Get-Button 'Clear location diagnostic')) {
         throw 'Technical location diagnostic controls must not appear on the worker screen.'
