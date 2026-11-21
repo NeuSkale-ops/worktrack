@@ -1,0 +1,21 @@
+# Managed agent (Intune service): test, clippy, release build, keylogging import
+# gate and service hardening check. Runs on m1-windows (local backend, SYSTEM).
+when:
+  - event: pull_request
+    path:
+      include: [agent/managed/**, deploy/managed-agent/**, .woodpecker/managed-agent.yaml, scripts/ci/managed-agent.ps1]
+  - event: push
+    branch: main
+    path:
+      include: [agent/managed/**, deploy/managed-agent/**, .woodpecker/managed-agent.yaml, scripts/ci/managed-agent.ps1]
+  - event: manual
+
+labels:
+  host: m1
+  platform: windows/amd64
+
+steps:
+  build-and-security:
+    image: powershell
+    commands:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ci/managed-agent.ps1
