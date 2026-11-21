@@ -1,0 +1,39 @@
+# Server deploy: build api + web images, push to GHCR, record the tag in
+# NeuSkale-ops/infra. Flux on the app-nbg k3s cluster rolls it out.
+#
+# Release branch model: push to `deploy` to ship.
+#     git switch deploy && git merge --ff-only main && git push
+# The API applies its own schema migrations at startup.
+# Roll back by reverting the tag commit in the infra repo.
+#
+# Secrets (Woodpecker): ghcr_user, ghcr_token, gh_token (repo), infra_deploy_key (global).
+when:
+  - event: push
+    branch: deploy
+    path:
+      include: [server/**, web/**, deploy/Dockerfile, deploy/Dockerfile.dockerignore, deploy/Caddyfile, .woodpecker/deploy.yaml, scripts/ci/**]
+  - event: manual
+    branch: deploy
+
+labels:
+  host: m1
+  docker-host: "true"
+  platform: linux/amd64
+
+steps:
+  build:
+    image: bash
+    environment:
+      GHCR_USER: {from_secret: ghcr_user}
+      GHCR_TOKEN: {from_secret: ghcr_token}
+      GH_TOKEN: {from_secret: gh_token}
+    commands:
+      - bash scripts/ci/build-push.sh
+
+  deploy:
+    image: bash
+    depends_on: [build]
+    environment:
+      INFRA_DEPLOY_KEY: {from_secret: infra_deploy_key}
+    commands:
+      - bash scripts/ci/bump-infra.sh

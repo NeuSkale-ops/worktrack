@@ -1,0 +1,29 @@
+# CI for the Go API, the web dashboard and the deploy config.
+# Runs on the m1-wsl agent (local backend in WSL2 Ubuntu on M1, host Docker).
+# Logic lives in scripts/ci/ so Woodpecker variable substitution never touches it.
+when:
+  - event: pull_request
+  - event: push
+    branch: main
+  - event: manual
+
+labels:
+  host: m1
+  docker-host: "true"
+  platform: linux/amd64
+
+steps:
+  web:
+    image: bash
+    commands:
+      - cd web && corepack pnpm install --frozen-lockfile && corepack pnpm test && corepack pnpm build
+
+  go:
+    image: bash
+    commands:
+      - bash scripts/ci/go.sh
+
+  deployment-config:
+    image: bash
+    commands:
+      - bash scripts/ci/deployment-config.sh
