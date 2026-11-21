@@ -1,0 +1,30 @@
+# Windows desktop agent: test and build the unsigned NSIS installer, then
+# install it per-user and check the process stays up (old windows.yml +
+# windows-install.yml). Runs on the m1-windows agent (local backend, SYSTEM).
+when:
+  - event: pull_request
+    path:
+      include: [agent/**, .woodpecker/windows.yaml, deploy/windows-ci.json, scripts/ci/windows-*.ps1]
+      exclude: [agent/managed/**]
+  - event: push
+    branch: main
+    path:
+      include: [agent/**, .woodpecker/windows.yaml, deploy/windows-ci.json, scripts/ci/windows-*.ps1]
+      exclude: [agent/managed/**]
+  - event: manual
+
+labels:
+  host: m1
+  platform: windows/amd64
+
+steps:
+  nsis:
+    image: powershell
+    commands:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ci/windows-nsis.ps1
+
+  install-smoke:
+    image: powershell
+    depends_on: [nsis]
+    commands:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ci/windows-install-smoke.ps1
