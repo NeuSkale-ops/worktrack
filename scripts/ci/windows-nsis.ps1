@@ -2,6 +2,8 @@
 # Used by .woodpecker/windows.yaml on the m1-windows agent.
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..\..\agent')
+# Woodpecker sets CI=woodpecker. The Tauri CLI only accepts true/false.
+$env:CI = 'true'
 function Run($exe, [string[]]$a) { & $exe @a; if ($LASTEXITCODE -ne 0) { throw "$exe $a exited $LASTEXITCODE" } }
 
 Run corepack @('pnpm', 'install', '--frozen-lockfile')

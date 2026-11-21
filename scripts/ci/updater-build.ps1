@@ -4,6 +4,8 @@
 # Inputs come from manual pipeline variables (see .woodpecker/updater-release.yaml).
 $ErrorActionPreference = 'Stop'
 Set-Location (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+# Woodpecker sets CI=woodpecker. The Tauri CLI only accepts true/false.
+$env:CI = 'true'
 function Run($exe, [string[]]$a) { & $exe @a; if ($LASTEXITCODE -ne 0) { throw "$exe $($a -join ' ') exited $LASTEXITCODE" } }
 
 $channel = if ($env:RELEASE_CHANNEL) { $env:RELEASE_CHANNEL } else { 'staging' }
