@@ -1,0 +1,36 @@
+# Windows updater release: build signed NSIS artifacts on M1, verify them on
+# Linux, then (optionally) publish to the staging or production feed over the
+# restricted receiver SSH account. Manual only.
+#
+# Start from the Woodpecker UI (Run pipeline on main) or the CLI with variables:
+#   RELEASE_CHANNEL   staging | production         (default staging)
+#   RELEASE_VERSION   committed stable Tauri version, no v prefix (required)
+#   RELEASE_NOTES     worker-facing notes (required)
+#   RELEASE_PUBLISH   true to publish (default false)
+#   UPGRADE_EVIDENCE  required to publish production
+#
+# Secrets: tauri_signing_private_key, tauri_signing_private_key_password,
+# updater_ssh_key_staging, updater_ssh_key_production (all manual-event only).
+#
+# Not ported from GitHub Actions: the hosted-runner in-app upgrade acceptance
+# (scripts/updater_upgrade_acceptance.ps1 refuses self-hosted runners because it
+# edits hosts and credentials) and the macOS preview. Production publishing
+# still requires UPGRADE_EVIDENCE gathered on a real worker laptop.
+when:
+  - event: manual
+    branch: main
+
+labels:
+  host: m1
+  platform: windows/amd64
+
+steps:
+  build:
+    image: powershell
+    environment:
+      TAURI_SIGNING_PRIVATE_KEY: {from_secret: tauri_signing_private_key}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: {from_secret: tauri_signing_private_key_password}
+      UPDATER_SSH_KEY_STAGING: {from_secret: updater_ssh_key_staging}
+      UPDATER_SSH_KEY_PRODUCTION: {from_secret: updater_ssh_key_production}
+    commands:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ci/updater-build.ps1
